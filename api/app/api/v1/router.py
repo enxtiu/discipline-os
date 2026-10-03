@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from app.api.v1 import auth, devices, foods, meta, nutrition, recipes, settings, tokens
+from app.api.v1 import ai, auth, devices, foods, meta, nutrition, recipes, settings, tokens
 
 api_router = APIRouter()
 
@@ -23,5 +23,8 @@ api_router.include_router(settings.router)
 api_router.include_router(foods.router)
 api_router.include_router(nutrition.router)
 api_router.include_router(recipes.router)
+
+# --- stage 3: AI logging --------------------------------------------------------
+api_router.include_router(ai.router)
 
 __all__ = ["api_router"]
