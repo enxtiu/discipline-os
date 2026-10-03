@@ -1,0 +1,249 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ==========================================================================
+   DisciplineOS design system
+   Dark by default (near-black blue-gray, soft contrast), optional light theme.
+   Mobile-first, one-hand use, 48 px touch targets, safe-area aware.
+   ========================================================================== */
+
+@layer base {
+  :root {
+    --bg: 11 18 32;              /* #0B1220 */
+    --bg-elevated: 17 26 43;     /* #111A2B */
+    --bg-sunken: 8 13 22;        /* #080D16 */
+    --border: 31 44 69;          /* #1F2C45 */
+    --text: 232 238 247;         /* #E8EEF7 */
+    --text-muted: 132 146 171;   /* #8492AB */
+    --accent: 56 224 200;        /* #38E0C8 */
+    --accent-2: 139 92 246;      /* #8B5CF6 */
+    --warn: 251 191 36;          /* #FBBF24 */
+  }
+
+  :root[data-theme='light'] {
+    --bg: 246 248 252;
+    --bg-elevated: 255 255 255;
+    --bg-sunken: 234 238 246;
+    --border: 214 222 235;
+    --text: 17 26 43;
+    --text-muted: 90 104 128;
+    --accent: 14 163 147;
+    --accent-2: 124 58 237;
+    --warn: 217 119 6;
+  }
+
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  html {
+    background-color: rgb(var(--bg));
+    color-scheme: dark;
+  }
+
+  :root[data-theme='light'] html,
+  html[data-theme='light'] {
+    color-scheme: light;
+  }
+
+  body {
+    @apply bg-[rgb(var(--bg))] text-[rgb(var(--text))] font-sans antialiased;
+    /* iOS: keep content clear of the notch and the home indicator */
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    min-height: 100dvh;
+    overscroll-behavior-y: none;
+  }
+
+  /* Numbers in stats line up: tabular figures everywhere they matter */
+  .tnum,
+  input[type='number'],
+  .font-stat {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum' 1;
+  }
+
+  input,
+  textarea,
+  select,
+  button {
+    @apply text-base; /* >=16px prevents iOS Safari zoom on focus */
+    font-family: inherit;
+  }
+
+  ::selection {
+    background: rgb(var(--accent) / 0.3);
+  }
+
+  /* Focus ring that is visible in both themes and never hidden */
+  :focus-visible {
+    outline: 2px solid rgb(var(--accent));
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgb(var(--border));
+    border-radius: 999px;
+  }
+}
+
+@layer components {
+  /* ---- surfaces --------------------------------------------------------- */
+  .card {
+    @apply rounded-card border border-[rgb(var(--border))] bg-[rgb(var(--bg-elevated))] shadow-card;
+  }
+
+  .card-pad {
+    @apply card p-4;
+  }
+
+  .surface-sunken {
+    @apply rounded-2xl bg-[rgb(var(--bg-sunken))];
+  }
+
+  .divider {
+    @apply h-px w-full bg-[rgb(var(--border))];
+  }
+
+  /* ---- typography ------------------------------------------------------- */
+  .h1 {
+    @apply text-2xl font-semibold tracking-tight;
+  }
+  .h2 {
+    @apply text-lg font-semibold tracking-tight;
+  }
+  .label {
+    @apply text-xs font-medium uppercase tracking-wide text-[rgb(var(--text-muted))];
+  }
+  .muted {
+    @apply text-[rgb(var(--text-muted))];
+  }
+  .stat-value {
+    @apply font-stat text-2xl font-semibold tnum;
+  }
+
+  /* ---- controls --------------------------------------------------------- */
+  .btn {
+    @apply inline-flex min-h-tap items-center justify-center gap-2 rounded-2xl px-4 text-[15px]
+      font-semibold transition-all duration-150 active:scale-[.97] disabled:pointer-events-none
+      disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply btn bg-[rgb(var(--accent))] text-ink-950 hover:brightness-110;
+    box-shadow: 0 0 24px -8px rgb(var(--accent) / 0.7);
+  }
+  .btn-secondary {
+    @apply btn border border-[rgb(var(--border))] bg-[rgb(var(--bg-elevated))] text-[rgb(var(--text))]
+      hover:bg-[rgb(var(--border))]/40;
+  }
+  .btn-ghost {
+    @apply btn text-[rgb(var(--text-muted))] hover:bg-[rgb(var(--border))]/30;
+  }
+  .btn-danger {
+    @apply btn border border-rose-500/40 bg-rose-500/10 text-rose-400 hover:bg-rose-500/20;
+  }
+  .btn-sm {
+    @apply min-h-[2.25rem] rounded-xl px-3 text-sm;
+  }
+
+  .input {
+    @apply w-full rounded-2xl border border-[rgb(var(--border))] bg-[rgb(var(--bg-sunken))]
+      px-4 py-3 text-[rgb(var(--text))] placeholder:text-[rgb(var(--text-muted))]/70
+      focus:border-[rgb(var(--accent))] focus:outline-none;
+  }
+
+  .field {
+    @apply flex flex-col gap-1.5;
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-pill border border-[rgb(var(--border))]
+      px-3 py-1.5 text-sm text-[rgb(var(--text-muted))];
+  }
+  .chip-active {
+    @apply border-[rgb(var(--accent))]/50 bg-[rgb(var(--accent))]/10 text-[rgb(var(--accent))];
+  }
+
+  /* segmented control */
+  .segmented {
+    @apply flex gap-1 rounded-2xl border border-[rgb(var(--border))] bg-[rgb(var(--bg-sunken))] p-1;
+  }
+  .segmented > button {
+    @apply min-h-[2.5rem] flex-1 rounded-xl px-3 text-sm font-medium text-[rgb(var(--text-muted))]
+      transition-colors;
+  }
+  .segmented > button[data-active='true'] {
+    @apply bg-[rgb(var(--bg-elevated))] text-[rgb(var(--text))] shadow-card;
+  }
+
+  /* ---- bottom navigation ------------------------------------------------ */
+  .tabbar {
+    @apply fixed inset-x-0 bottom-0 z-40 border-t border-[rgb(var(--border))]
+      bg-[rgb(var(--bg-elevated))]/95 backdrop-blur-xl;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .tab {
+    @apply relative flex flex-1 flex-col items-center justify-center gap-0.5 py-2
+      text-[11px] font-medium text-[rgb(var(--text-muted))] transition-colors;
+  }
+  .tab[data-active='true'] {
+    @apply text-[rgb(var(--accent))];
+  }
+  .tab[data-active='true']::before {
+    content: '';
+    @apply absolute top-0 h-0.5 w-8 rounded-full bg-[rgb(var(--accent))];
+    box-shadow: 0 0 12px 1px rgb(var(--accent) / 0.8);
+  }
+
+  /* ---- misc ------------------------------------------------------------- */
+  .skeleton {
+    @apply relative overflow-hidden rounded-xl bg-[rgb(var(--border))]/50;
+  }
+  .skeleton::after {
+    content: '';
+    @apply absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent
+      via-white/5 to-transparent;
+    animation: shimmer 1.6s infinite;
+  }
+
+  .glow-accent {
+    box-shadow: 0 0 0 1px rgb(var(--accent) / 0.35), 0 0 28px -6px rgb(var(--accent) / 0.5);
+  }
+  .glow-violet {
+    box-shadow: 0 0 0 1px rgb(var(--accent-2) / 0.35), 0 0 28px -6px rgb(var(--accent-2) / 0.5);
+  }
+
+  .scroll-x {
+    @apply -mx-4 flex gap-3 overflow-x-auto px-4 pb-1;
+    scrollbar-width: none;
+  }
+  .scroll-x::-webkit-scrollbar {
+    display: none;
+  }
+
+  .safe-top {
+    padding-top: max(env(safe-area-inset-top, 0px), 0.5rem);
+  }
+
+  /* space for the fixed tab bar */
+  .pb-tabbar {
+    padding-bottom: calc(6.5rem + env(safe-area-inset-bottom, 0px));
+  }
+}

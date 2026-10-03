@@ -1,0 +1,70 @@
+# ---------------------------------------------------------------------------
+# DisciplineOS edge config.
+#   - serves the built SPA
+#   - reverse-proxies /api/* to the api container
+#   - automatic HTTPS (Let's Encrypt) for $DOMAIN
+#   - localhost falls back to an internal CA / self-signed cert for dev
+# ---------------------------------------------------------------------------
+{
+	email {$ACME_EMAIL}
+	servers {
+		protocols h1 h2 h3
+	}
+}
+
+{$DOMAIN} {
+	encode zstd gzip
+
+	# ---- API -------------------------------------------------------------
+	handle /api/* {
+		reverse_proxy api:8000 {
+			header_up X-Real-IP {remote_host}
+			# SSE / long-running AI calls
+			transport http {
+				read_timeout 300s
+			}
+		}
+	}
+
+	# ---- Docs (handy, harmless; remove if you want them private) ---------
+	handle /docs* {
+		reverse_proxy api:8000
+	}
+	handle /openapi.json {
+		reverse_proxy api:8000
+	}
+
+	# ---- Service worker must never be cached by the browser --------------
+	handle /sw.js {
+		header Cache-Control "no-cache, no-store, must-revalidate"
+		root * /srv/www
+		file_server
+	}
+
+	# ---- Immutable hashed assets ----------------------------------------
+	handle /assets/* {
+		header Cache-Control "public, max-age=31536000, immutable"
+		root * /srv/www
+		file_server
+	}
+
+	# ---- SPA fallback ----------------------------------------------------
+	handle {
+		root * /srv/www
+		try_files {path} /index.html
+		file_server
+		header {
+			# Basic hardening
+			X-Content-Type-Options nosniff
+			X-Frame-Options DENY
+			Referrer-Policy strict-origin-when-cross-origin
+			Permissions-Policy "geolocation=(), microphone=(), camera=(self)"
+			-Server
+		}
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

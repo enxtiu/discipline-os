@@ -1,0 +1,148 @@
+name: build & deploy
+
+# Builds both images, pushes them to GHCR under an immutable sha tag plus
+# `latest`, then rolls them out on the VPS over SSH with
+# `docker compose pull && docker compose up -d`.
+#
+# Required repository secrets (Settings → Secrets and variables → Actions):
+#   SSH_HOST     — server IP or hostname
+#   SSH_USER     — deploy user (needs docker group membership)
+#   SSH_KEY      — private key whose public half is in ~/.ssh/authorized_keys
+#   SSH_PORT     — optional, defaults to 22
+#   DEPLOY_PATH  — checkout path on the server, e.g. /opt/disciplineos
+#
+# GHCR uses the built-in GITHUB_TOKEN — no extra secret. Images are published
+# as ghcr.io/<owner>/disciplineos-api and …/disciplineos-web.
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "deploy/backup/**"
+  workflow_dispatch:
+    inputs:
+      skip_deploy:
+        description: "Build and push only (no rollout)"
+        type: boolean
+        default: false
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  API_IMAGE: ${{ github.repository_owner }}/disciplineos-api
+  WEB_IMAGE: ${{ github.repository_owner }}/disciplineos-web
+
+jobs:
+  build:
+    name: build & push images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: compute the immutable tag
+        id: meta
+        run: echo "tag=sha-$(git rev-parse --short=12 HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: build & push api
+        uses: docker/build-push-action@v6
+        with:
+          context: ./api
+          file: docker/api.Dockerfile
+          target: prod
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.API_IMAGE }}:${{ steps.meta.outputs.tag }}
+            ${{ env.REGISTRY }}/${{ env.API_IMAGE }}:latest
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,scope=api,mode=max
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+      - name: build & push web (SPA + Caddy)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/caddy.Dockerfile
+          push: true
+          build-args: |
+            VITE_APP_VERSION=${{ steps.meta.outputs.tag }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.WEB_IMAGE }}:${{ steps.meta.outputs.tag }}
+            ${{ env.REGISTRY }}/${{ env.WEB_IMAGE }}:latest
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,scope=web,mode=max
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+  deploy:
+    name: deploy over ssh
+    needs: build
+    if: ${{ !inputs.skip_deploy }}
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://${{ vars.DOMAIN }}
+    steps:
+      - name: check the required secrets
+        run: |
+          for name in SSH_HOST SSH_USER SSH_KEY DEPLOY_PATH; do
+            [[ -n "${!name:-}" ]] || { echo "::error::secret $name is not set"; exit 1; }
+          done
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+
+      - name: configure ssh
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "${{ secrets.SSH_KEY }}" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          PORT="${{ secrets.SSH_PORT }}"; PORT="${PORT:-22}"
+          ssh-keyscan -p "$PORT" -H "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+          {
+            echo "Host dsos"
+            echo "  HostName ${{ secrets.SSH_HOST }}"
+            echo "  User ${{ secrets.SSH_USER }}"
+            echo "  Port $PORT"
+            echo "  IdentityFile ~/.ssh/id_deploy"
+            echo "  IdentitiesOnly yes"
+          } >> ~/.ssh/config
+
+      - name: rollout
+        env:
+          TAG: ${{ needs.build.outputs.tag }}
+        run: |
+          ssh dsos "cd '${{ secrets.DEPLOY_PATH }}' && BRANCH=main ./deploy/update.sh '$TAG'"
+
+      - name: smoke the public endpoint
+        run: |
+          curl -fsS --retry 5 --retry-delay 5 --retry-all-errors \
+            "https://${{ vars.DOMAIN }}/api/v1/meta/health" | tee /tmp/health.json
+          python3 -c "import json;d=json.load(open('/tmp/health.json'));assert d['status']=='ok' and d['database'],d;print('health ok')"
+
+# No rollback step here on purpose: deploy/update.sh already restores the
+# previous image tag when the container or the health endpoint does not come
+# up on the server, which is the only place that can be done safely.

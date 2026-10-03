@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="ru" data-theme="dark" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover"
+    />
+    <title>DisciplineOS</title>
+    <meta
+      name="description"
+      content="Личный трекер дисциплины: питание, тренировки, шаги, задачи PARA, время и геймификация."
+    />
+
+    <!-- PWA / iOS -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#0B1220" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Discipline" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <link rel="icon" href="/icons/favicon.svg" type="image/svg+xml" />
+    <link rel="mask-icon" href="/icons/icon-mono.svg" color="#38E0C8" />
+
+    <!-- Avoid a white flash before the bundle paints -->
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: #0b1220;
+        color: #e8eef7;
+        font-family:
+          -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
+      }
+      #boot {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      #boot span {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        border: 3px solid rgba(56, 224, 200, 0.25);
+        border-top-color: #38e0c8;
+        animation: spin 0.9s linear infinite;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root">
+      <div id="boot"><span></span></div>
+    </div>
+    <noscript>
+      DisciplineOS requires JavaScript. / DisciplineOS требует включённый JavaScript.
+    </noscript>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

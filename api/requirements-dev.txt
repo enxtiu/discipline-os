@@ -1,0 +1,9 @@
+# Development & test dependencies (installed in the image so that `alembic`,
+# `pytest` and `ruff` are available inside the container).
+-r requirements.txt
+
+pytest==9.1.1
+pytest-asyncio==1.4.0
+pytest-cov==7.1.0
+ruff==0.16.9
+watchfiles==1.1.1

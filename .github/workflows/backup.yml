@@ -1,0 +1,82 @@
+name: nightly backup
+
+# Runs the encrypted pg_dump on the server and verifies the result.
+# 03:15 UTC — the quiet point of the day for Asia/Bangkok (10:15 local).
+#
+# The dump never leaves the VPS unencrypted: backup.sh streams
+# pg_dump | age and pushes only the ciphertext into the private backup repo.
+# This workflow triggers it on a schedule, fails loudly in the Actions tab when
+# something breaks, and keeps the log in the run summary.
+#
+# Required secrets: SSH_HOST, SSH_USER, SSH_KEY, DEPLOY_PATH (same as deploy).
+# Optional variable: BACKUP_WARN_HOURS (default 36).
+
+on:
+  schedule:
+    - cron: "15 3 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: nightly-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    name: encrypted pg_dump → private repo
+    runs-on: ubuntu-latest
+    steps:
+      - name: configure ssh
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "${{ secrets.SSH_KEY }}" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          PORT="${{ secrets.SSH_PORT }}"; PORT="${PORT:-22}"
+          ssh-keyscan -p "$PORT" -H "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+          {
+            echo "Host dsos"
+            echo "  HostName ${{ secrets.SSH_HOST }}"
+            echo "  User ${{ secrets.SSH_USER }}"
+            echo "  Port $PORT"
+            echo "  IdentityFile ~/.ssh/id_deploy"
+            echo "  IdentitiesOnly yes"
+          } >> ~/.ssh/config
+
+      - name: run the backup
+        run: |
+          ssh dsos "cd '${{ secrets.DEPLOY_PATH }}' && ./deploy/backup/backup.sh" | tee /tmp/backup.log
+          grep -q "wrote " /tmp/backup.log \
+            || { echo "::error::the backup script did not report a written archive"; exit 1; }
+
+      - name: verify freshness and the archive header on the server
+        run: |
+          LIMIT="${{ vars.BACKUP_WARN_HOURS }}"; LIMIT="${LIMIT:-36}"
+          ssh dsos "cd '${{ secrets.DEPLOY_PATH }}' && bash -s" <<REMOTE
+          set -euo pipefail
+          set -a; . ./.env; set +a
+          DIR="\${BACKUP_LOCAL_DIR:-/var/backups/dsos}"
+          NEWEST="\$(ls -1t "\$DIR"/*/*.dump.age 2>/dev/null | head -1)"
+          [[ -n "\$NEWEST" ]] || { echo "::error::no encrypted backup found in \$DIR"; exit 1; }
+          HOURS=\$(( ( \$(date +%s) - \$(stat -c %Y "\$NEWEST") ) / 3600 ))
+          echo "newest archive: \$NEWEST (\${HOURS}h old, limit ${LIMIT}h)"
+          echo "local copy: \$(ls -1 "\$DIR" | wc -l) backup(s), \$(du -sh "\$DIR" | cut -f1) total"
+          [[ "\$HOURS" -le ${LIMIT} ]] || { echo "::error::the newest backup is \${HOURS}h old"; exit 1; }
+          KEY="\${AGE_IDENTITY_FILE:-/root/.config/age/dsos.key}"
+          if [[ -r "\$KEY" ]]; then
+            age --decrypt -i "\$KEY" "\$NEWEST" 2>/dev/null | head -c 5 | grep -q PGDMP \
+              && echo "archive header verified (PGDMP)" \
+              || { echo "::error::the archive does not decrypt to a pg_dump payload"; exit 1; }
+          else
+            echo "::warning::could not verify the header — \$KEY is not readable by this user"
+          fi
+          REMOTE
+
+      - name: summary
+        if: always()
+        run: |
+          {
+            echo "### Nightly backup"
+            echo
+            echo '```'
+            tail -n 25 /tmp/backup.log 2>/dev/null || echo "no log"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

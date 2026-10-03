@@ -1,0 +1,50 @@
+# ---- env & secrets (never commit) ----
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+age-key.txt
+backup-age-key.txt
+
+# ---- python ----
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+htmlcov/
+.coverage
+.coverage.*
+build/
+dist/
+/api/.ruff_cache/
+/api/app.egg-info/
+
+# The OpenAPI-derived TypeScript types ARE committed on purpose: the web image
+# build and CI run without a live API. Regenerate with `make gen-api`.
+
+# ---- node ----
+node_modules/
+web/dist/
+web/.vite/
+web/.turbo/
+*.tsbuildinfo
+
+# ---- local data / runtime ----
+*.sqlite
+*.db
+backups/
+pgdata/
+api/.env
+web/.env.local
+
+# ---- os / editors ----
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json

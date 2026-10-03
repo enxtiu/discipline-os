@@ -1,0 +1,31 @@
+# Local development overlay.
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d postgres
+# publishes Postgres on 127.0.0.1:5432 so the API can run on the host with
+# autoreload. The Vite dev server runs on the host too (see Makefile).
+#
+# For a full-stack local run through Caddy with a self-signed cert, use:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile full up -d
+services:
+  postgres:
+    ports:
+      - "127.0.0.1:5432:5432"
+
+  api:
+    profiles: ["full"]
+    build:
+      context: ./api
+      dockerfile: ../docker/api.Dockerfile
+      target: dev
+    environment:
+      ENV: development
+      DEBUG: "true"
+      SCHEDULER_ENABLED: "false"
+      CORS_ORIGINS: "http://localhost:5173,http://127.0.0.1:5173"
+    volumes:
+      - ./api:/srv
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+  caddy:
+    profiles: ["full"]
+    environment:
+      DOMAIN: localhost

@@ -1,0 +1,88 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  api:
+    name: api · lint + tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: dsos_test
+          # Cyrillic trigram search needs a real UTF-8 locale (see compose file)
+          POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=en_US.utf8"
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/dsos_test
+      TEST_DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/dsos_test
+      SECRET_KEY: ci-secret-key-not-used-in-production-0123456789
+      ENV: test
+      SCHEDULER_ENABLED: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: api/requirements-dev.txt
+      - name: install dependencies
+        working-directory: api
+        run: |
+          python -m pip install -U pip
+          pip install -r requirements-dev.txt
+      - name: ruff
+        working-directory: api
+        run: ruff check .
+      - name: ruff format --check
+        working-directory: api
+        run: ruff format --check .
+      - name: migrations apply cleanly
+        working-directory: api
+        run: alembic upgrade head
+      - name: pytest
+        working-directory: api
+        run: pytest -q
+
+  web:
+    name: web · typecheck + build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: install
+        working-directory: web
+        run: npm ci
+      - name: i18n completeness (ru + en in sync, no raw keys in the UI)
+        run: node scripts/check-i18n.mjs
+
+      - name: the committed OpenAPI types must match the schema fixture
+        working-directory: web
+        run: |
+          test -s src/api/generated/schema.d.ts \
+            || { echo "src/api/generated/schema.d.ts is missing — run 'make gen-api' and commit it"; exit 1; }
+      - name: build (tsc + vite + PWA)
+        working-directory: web
+        run: npm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist
+          retention-days: 7
