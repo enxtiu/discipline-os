@@ -6,7 +6,7 @@
  * list grouped by type, and the "burned is not budget" card. Steps arrive in
  * stage 5, gamification in stage 8.
  */
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
@@ -18,17 +18,19 @@ import {
   IconDroplet,
   IconFlame,
   IconFootprints,
+  IconPin,
   IconPlus,
   IconText,
   IconTrash,
 } from '@/components/ui/icons'
 import { useToast } from '@/components/ui/Toast'
-import type { MealLog, MealType } from '@/api/types'
+import type { MealLog, MealType, Recipe } from '@/api/types'
 import { useAuth } from '@/features/auth/AuthProvider'
 import { number, time, today } from '@/lib/format'
 import { errorMessage } from '@/lib/errors'
 import { StageCard } from '@/features/shared/StageCard'
-import { useAddWater, useDay, useDeleteMeal } from '@/features/food/useNutrition'
+import { useAddWater, useDay, useDeleteMeal, useRecipes } from '@/features/food/useNutrition'
+import { LogSheet } from '@/features/food/LogSheet'
 
 const MEAL_ORDER: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack', 'other']
 
@@ -41,6 +43,9 @@ export function TodayPage() {
   const dayQuery = useDay()
   const addWater = useAddWater()
   const deleteMeal = useDeleteMeal()
+  const recipes = useRecipes()
+  const [logRecipe, setLogRecipe] = useState<Recipe | null>(null)
+  const pinned = (recipes.data?.items ?? []).filter((recipe) => recipe.is_pinned)
 
   const day = dayQuery.data
   const eaten = day?.totals ?? { kcal: 0, protein_g: 0, fat_g: 0, carbs_g: 0, fiber_g: 0 }
@@ -127,7 +132,7 @@ export function TodayPage() {
           <div className="divider" />
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <div className="flex items-center justify-between gap-2 text-sm">
+              <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5 text-sm">
                 <span className="flex items-center gap-1.5">
                   <span className="text-aqua-400">
                     <IconDroplet size={16} />
@@ -144,7 +149,7 @@ export function TodayPage() {
               </Button>
             </div>
             <div className="space-y-2">
-              <div className="flex items-center justify-between text-sm">
+              <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5 text-sm">
                 <span className="flex items-center gap-1.5">
                   <span className="text-violet-300">
                     <IconFootprints size={16} />
@@ -170,6 +175,33 @@ export function TodayPage() {
           <p className="mt-0.5 text-xs muted">{t('today.burned_hint')}</p>
         </div>
       </Card>
+
+      {pinned.length > 0 && (
+        <section className="space-y-2" aria-label={t('today.pinned_recipes')}>
+          <p className="flex items-center gap-1.5 text-sm font-semibold">
+            <IconPin size={15} className="text-[rgb(var(--accent))]" filled />
+            {t('today.pinned_recipes')}
+          </p>
+          <div className="scroll-x">
+            {pinned.map((recipe) => (
+              <button
+                key={recipe.id}
+                type="button"
+                onClick={() => setLogRecipe(recipe)}
+                className="surface-sunken flex min-h-tap shrink-0 flex-col items-start justify-center rounded-2xl px-4 py-2 text-left"
+              >
+                <span className="max-w-[11rem] truncate text-sm font-medium">{recipe.name}</span>
+                <span className="tnum text-xs muted">
+                  {t('today.pinned_kcal', {
+                    kcal: number(recipe.per_serving.kcal),
+                    grams: number(recipe.portion_size_g),
+                  })}
+                </span>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section className="space-y-3">
         <div className="flex items-center justify-between">
@@ -253,6 +285,11 @@ export function TodayPage() {
       <p className="pb-2 text-center text-xs muted">
         {today()} · {number(progressPercent)}%
       </p>
+
+      <LogSheet
+        target={logRecipe ? { kind: 'recipe', recipe: logRecipe } : null}
+        onClose={() => setLogRecipe(null)}
+      />
     </div>
   )
 }
