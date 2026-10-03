@@ -38,7 +38,7 @@ fix-migration: ## strip duplicated enum CHECK constraints from the newest migrat
 	cd $(API_DIR) && .venv/bin/python scripts/fix_migration.py "$$(ls -t alembic/versions/*.py | head -1)"
 
 api: ## run the API with autoreload (http://localhost:8000/docs)
-	cd $(API_DIR) && .venv/bin/uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+	cd $(API_DIR) && MEDIA_DIR=$${MEDIA_DIR:-$$PWD/var/media} .venv/bin/uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 web: ## run the Vite dev server (http://localhost:5173)
 	cd $(WEB_DIR) && npm run dev

@@ -21,8 +21,10 @@ RUN pip install -r requirements-dev.txt
 
 COPY . .
 
-# Non-root runtime user (owns nothing but the app; no writes to disk needed)
-RUN useradd --create-home --uid 10001 appuser && chown -R appuser:appuser /srv
+# Non-root runtime user. The only writable path is /data/media (meal photo
+# thumbnails, stage 3) — mounted as the api_media volume in compose.
+RUN useradd --create-home --uid 10001 appuser && chown -R appuser:appuser /srv \
+ && mkdir -p /data/media && chown appuser:appuser /data/media
 USER appuser
 
 EXPOSE 8000

@@ -96,6 +96,20 @@ class Settings(BaseSettings):
     ai_model_text: str = "gpt-4o-mini"
     ai_daily_call_limit: int = 500
     ai_timeout_seconds: int = 60
+    # per-user burst limit on the AI endpoints (the daily cap is the soft budget)
+    ai_rate_limit_per_minute: int = 6
+    # photo upload bounds: the client sends a ~1280 px JPEG, usually 150-400 KB
+    ai_max_image_bytes: int = 3_000_000
+    ai_max_image_px: int = 2048
+    ai_max_text_chars: int = 1000
+    # an analysed photo's 400 px thumbnail waits this long for the meal to be saved
+    ai_pending_thumb_ttl_hours: int = 24
+    # AiJob request/response payloads older than this are pruned (counters stay)
+    ai_job_payload_retention_days: int = 30
+
+    # ------------------------------------------------------------------ media
+    # Meal thumbnails (only when the user opted in). A docker volume in compose.
+    media_dir: str = "/data/media"
 
     # ------------------------------------------------------- open food facts
     # Barcode misses in the local library fall back to one live OFF lookup;

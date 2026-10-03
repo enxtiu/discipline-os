@@ -34,6 +34,9 @@ services:
     environment:
       # Guarantee in-network host regardless of what .env has for host-local dev
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    volumes:
+      # meal photo thumbnails (only when the user opted in; originals are never stored)
+      - api_media:/data/media
     depends_on:
       postgres:
         condition: service_healthy
@@ -72,5 +75,6 @@ services:
 
 volumes:
   pgdata:
+  api_media:
   caddy_data:
   caddy_config:

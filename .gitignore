@@ -48,3 +48,6 @@ Thumbs.db
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# local media (meal thumbnails written by a host-run API)
+api/var/
