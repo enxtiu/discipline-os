@@ -143,7 +143,9 @@
     "stage_badge": "Этап {{stage}}",
     "meals_title": "Приёмы пищи",
     "meals_empty_hint_search": "Найдите продукт и запишите за 10 секунд.",
-    "water_added": "+{{ml}} мл воды"
+    "water_added": "+{{ml}} мл воды",
+    "pinned_recipes": "Закреплённые рецепты",
+    "pinned_kcal": "{{kcal}} ккал · {{grams}} г"
   },
   "food": {
     "title": "Питание",
@@ -188,7 +190,32 @@
     "recipes_empty": "Рецептов пока нет — соберите первый из продуктов.",
     "ingredients": "Ингредиенты",
     "ingredients_empty": "Добавьте хотя бы один продукт.",
-    "add_ingredient": "Добавить ингредиент"
+    "add_ingredient": "Добавить ингредиент",
+    "unverified": "Не проверено",
+    "verify": "Подтвердить",
+    "verify_aria": "Подтвердить данные продукта «{{name}}»",
+    "verified_toast": "Данные подтверждены",
+    "unverified_hint": "Данные не проверены ({{source}}). Сверьте с упаковкой или таблицей и подтвердите.",
+    "cooked_weight": "Вес готового блюда, г",
+    "cooked_weight_hint": "Пусто — как сырые ингредиенты: {{grams}} г",
+    "split_by": "Порция",
+    "split_servings": "Число порций",
+    "split_grams": "Вес порции",
+    "portion_grams": "Вес порции, г",
+    "per_portion": "{{kcal}} ккал в порции {{grams}} г",
+    "per_100g_cooked": "{{kcal}} ккал на 100 г готового",
+    "pin": "Закрепить на «Сегодня»",
+    "unpin": "Открепить",
+    "pinned_toast": "«{{name}}» закреплён на «Сегодня»",
+    "unpinned_toast": "«{{name}}» откреплён",
+    "portions_chip": "{{n}} порц. · {{grams}} г",
+    "source": {
+      "seed": "встроенная база",
+      "usda": "USDA",
+      "off": "Open Food Facts",
+      "custom": "мой продукт",
+      "ai": "оценка ИИ"
+    }
   },
   "train": {
     "title": "Тренировки",
@@ -355,6 +382,8 @@
     "conflict": "Конфликт данных",
     "internal_error": "Внутренняя ошибка сервера",
     "network": "Нет связи с сервером. Проверьте интернет.",
-    "offline_ai": "ИИ-функции доступны только онлайн"
+    "offline_ai": "ИИ-функции доступны только онлайн",
+    "global_food_readonly": "Продукты базы можно только подтвердить",
+    "verify_owner_only": "Подтверждать продукты базы может только владелец"
   }
 }

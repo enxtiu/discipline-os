@@ -6,10 +6,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useSearchParams } from 'react-router-dom'
+import clsx from 'clsx'
 
 import { Button, Card, EmptyState, Input, Skeleton } from '@/components/ui'
 import {
   IconClock,
+  IconPin,
   IconPlus,
   IconSearch,
   IconStar,
@@ -32,7 +34,9 @@ import {
   useRecents,
   useRecipes,
   useToggleFavorite,
+  useUpdateRecipe,
 } from './useNutrition'
+import { VerifyChip } from './VerifyFood'
 
 const MEAL_ORDER: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack', 'other']
 
@@ -56,6 +60,7 @@ export function FoodPage() {
   const deleteMeal = useDeleteMeal()
   const addWater = useAddWater()
   const toggleFavorite = useToggleFavorite()
+  const updateRecipe = useUpdateRecipe()
   const search = useFoodSearch(debounced, debounced.trim().length >= 2)
 
   // one-hand typing: search settles 250 ms after the last key
@@ -114,33 +119,32 @@ export function FoodPage() {
         <section className="space-y-2">
           {search.isPending && <Skeleton className="h-16 rounded-2xl" />}
           {(search.data?.items ?? []).map((match) => (
-            <button
-              key={match.id}
-              type="button"
-              onClick={() => setTarget({ kind: 'food', food: match })}
-              className="surface-sunken flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left"
-            >
-              <span className="min-w-0 flex-1">
+            <div key={match.id} className="surface-sunken flex items-center gap-2 rounded-2xl pr-2">
+              <button
+                type="button"
+                onClick={() => setTarget({ kind: 'food', food: match })}
+                className="min-w-0 flex-1 py-3 pl-4 text-left"
+              >
                 <span className="block truncate text-sm font-medium">{name(match)}</span>
                 <span className="block truncate text-xs muted">
                   {match.brand ? `${match.brand} · ` : ''}
                   {number(match.kcal_per_100g)} {t('common.kcal')} / 100 {t('common.g')}
                 </span>
-              </span>
-              <span
-                role="button"
-                tabIndex={0}
+              </button>
+              <VerifyChip food={match} />
+              <button
+                type="button"
                 aria-label={match.is_favorite ? t('food.unfavorite') : t('food.favorite')}
-                className={match.is_favorite ? 'text-amber-300' : 'muted'}
-                onClick={(event) => {
-                  event.stopPropagation()
-                  toggleFavorite.mutate({ foodId: match.id, favorite: match.is_favorite, grams: 100 })
-                }}
-                onKeyDown={(event) => event.key === 'Enter' && event.stopPropagation()}
+                aria-pressed={match.is_favorite}
+                className={clsx(
+                  'flex h-tap w-10 shrink-0 items-center justify-center',
+                  match.is_favorite ? 'text-amber-300' : 'muted',
+                )}
+                onClick={() => toggleFavorite.mutate({ foodId: match.id, favorite: match.is_favorite, grams: 100 })}
               >
                 <IconStar size={18} />
-              </span>
-            </button>
+              </button>
+            </div>
           ))}
           {search.isSuccess && (search.data?.items.length ?? 0) === 0 && (
             <EmptyState
@@ -282,13 +286,43 @@ export function FoodPage() {
             ) : (
               <div className="grid gap-3 sm:grid-cols-2">
                 {(recipes.data?.items ?? []).map((recipe) => (
-                  <Card key={recipe.id} className="space-y-1">
-                    <button type="button" className="text-left" onClick={() => setTarget({ kind: 'recipe', recipe })}>
-                      <p className="text-sm font-semibold">{recipe.name}</p>
+                  <Card key={recipe.id} className="flex items-center gap-2 py-2 pr-2">
+                    <button
+                      type="button"
+                      className="min-w-0 flex-1 py-1 text-left"
+                      onClick={() => setTarget({ kind: 'recipe', recipe })}
+                    >
+                      <p className="truncate text-sm font-semibold">{recipe.name}</p>
                       <p className="tnum text-xs muted">
-                        {number(recipe.per_serving.kcal)} {t('common.kcal')} / {t('food.serving_short')} ·{' '}
-                        {number(recipe.kcal_per_100g)} / 100 {t('common.g')}
+                        {t('food.per_portion', {
+                          kcal: number(recipe.per_serving.kcal),
+                          grams: number(recipe.portion_size_g),
+                        })}
                       </p>
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={recipe.is_pinned}
+                      aria-label={recipe.is_pinned ? t('food.unpin') : t('food.pin')}
+                      title={recipe.is_pinned ? t('food.unpin') : t('food.pin')}
+                      className={clsx(
+                        'flex h-tap w-tap shrink-0 items-center justify-center rounded-2xl',
+                        recipe.is_pinned ? 'text-[rgb(var(--accent))]' : 'muted',
+                      )}
+                      onClick={() =>
+                        updateRecipe.mutate(
+                          { id: recipe.id, patch: { is_pinned: !recipe.is_pinned } },
+                          {
+                            onSuccess: (saved) =>
+                              toast.success(
+                                t(saved.is_pinned ? 'food.pinned_toast' : 'food.unpinned_toast', { name: saved.name }),
+                              ),
+                            onError: (error) => toast.error(errorMessage(error)),
+                          },
+                        )
+                      }
+                    >
+                      <IconPin size={18} filled={recipe.is_pinned} />
                     </button>
                   </Card>
                 ))}

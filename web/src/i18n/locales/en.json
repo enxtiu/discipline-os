@@ -143,7 +143,9 @@
     "stage_badge": "Stage {{stage}}",
     "meals_title": "Meals",
     "meals_empty_hint_search": "Find a food and log it in ten seconds.",
-    "water_added": "+{{ml}} ml of water"
+    "water_added": "+{{ml}} ml of water",
+    "pinned_recipes": "Pinned recipes",
+    "pinned_kcal": "{{kcal}} kcal · {{grams}} g"
   },
   "food": {
     "title": "Food",
@@ -188,7 +190,32 @@
     "recipes_empty": "No recipes yet — build your first one.",
     "ingredients": "Ingredients",
     "ingredients_empty": "Add at least one ingredient.",
-    "add_ingredient": "Add ingredient"
+    "add_ingredient": "Add ingredient",
+    "unverified": "Unverified",
+    "verify": "Confirm",
+    "verify_aria": "Confirm the numbers for “{{name}}”",
+    "verified_toast": "Numbers confirmed",
+    "unverified_hint": "Not checked yet ({{source}}). Compare with the label or a table, then confirm.",
+    "cooked_weight": "Cooked dish weight, g",
+    "cooked_weight_hint": "Empty — same as raw ingredients: {{grams}} g",
+    "split_by": "Portion",
+    "split_servings": "Number of portions",
+    "split_grams": "Portion weight",
+    "portion_grams": "Portion weight, g",
+    "per_portion": "{{kcal}} kcal per {{grams}} g portion",
+    "per_100g_cooked": "{{kcal}} kcal per 100 g cooked",
+    "pin": "Pin to Today",
+    "unpin": "Unpin",
+    "pinned_toast": "“{{name}}” pinned to Today",
+    "unpinned_toast": "“{{name}}” unpinned",
+    "portions_chip": "{{n}} portion · {{grams}} g",
+    "source": {
+      "seed": "built-in library",
+      "usda": "USDA",
+      "off": "Open Food Facts",
+      "custom": "my food",
+      "ai": "AI estimate"
+    }
   },
   "train": {
     "title": "Train",
@@ -355,6 +382,8 @@
     "conflict": "Data conflict",
     "internal_error": "Internal server error",
     "network": "Cannot reach the server. Check your connection.",
-    "offline_ai": "AI features need a connection"
+    "offline_ai": "AI features need a connection",
+    "global_food_readonly": "Library foods can only be confirmed",
+    "verify_owner_only": "Only the owner can confirm library foods"
   }
 }

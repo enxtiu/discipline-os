@@ -271,3 +271,14 @@ export const IconClock = (props: IconProps) => (
     <path d="M12 7.5V12l3.5 2" />
   </Base>
 )
+
+/** Pushpin; `filled` marks the pinned state (also exposed via aria-pressed). */
+export const IconPin = ({ filled, ...props }: IconProps & { filled?: boolean }) => (
+  <Base {...props}>
+    <path
+      d="M9 4h6l-1 5 3.5 3.5V14h-11v-1.5L10 9 9 4Z"
+      fill={filled ? 'currentColor' : 'none'}
+    />
+    <path d="M12 14v6" />
+  </Base>
+)

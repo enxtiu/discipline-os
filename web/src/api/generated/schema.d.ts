@@ -886,6 +886,12 @@ export interface components {
             food?: components["schemas"]["FoodOut"] | null;
             /** Barcode */
             barcode: string;
+            /**
+             * Lookup
+             * @default local
+             * @enum {string}
+             */
+            lookup: "local" | "off" | "miss" | "unavailable" | "invalid";
         };
         /**
          * FoodIn
@@ -908,11 +914,20 @@ export interface components {
             category?: string | null;
             /** Kcal Per 100G */
             kcal_per_100g: number;
-            /** Protein Per 100G */
+            /**
+             * Protein Per 100G
+             * @default 0
+             */
             protein_per_100g: number;
-            /** Fat Per 100G */
+            /**
+             * Fat Per 100G
+             * @default 0
+             */
             fat_per_100g: number;
-            /** Carbs Per 100G */
+            /**
+             * Carbs Per 100G
+             * @default 0
+             */
             carbs_per_100g: number;
             /**
              * Fiber Per 100G
@@ -1609,8 +1624,15 @@ export interface components {
             servings: number;
             /** Cooked Weight G */
             cooked_weight_g?: number | null;
+            /** Portion Size G */
+            portion_size_g?: number | null;
             /** Items */
             items: components["schemas"]["RecipeItemIn"][];
+            /**
+             * Is Pinned
+             * @default false
+             */
+            is_pinned: boolean;
         };
         /** RecipeItemIn */
         RecipeItemIn: {
@@ -1730,6 +1752,8 @@ export interface components {
             servings?: number | null;
             /** Cooked Weight G */
             cooked_weight_g?: number | null;
+            /** Portion Size G */
+            portion_size_g?: number | null;
             /** Items */
             items?: components["schemas"]["RecipeItemIn"][] | null;
             /** Is Pinned */
@@ -2749,7 +2773,10 @@ export interface operations {
     };
     barcode_api_v1_foods_barcode__code__get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Fall back to a live Open Food Facts lookup on a local miss */
+                live?: boolean;
+            };
             header?: never;
             path: {
                 code: string;

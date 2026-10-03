@@ -171,8 +171,11 @@ export const endpoints = {
   // ---- nutrition (stage 2) --------------------------------------------------
   searchFoods: (q: string, limit = 24) =>
     api.get<import('./types').FoodSearch>('/v1/foods/search', { query: { q, limit } }),
-  barcodeFood: (code: string) =>
-    api.get<{ food: import('./types').Food | null; barcode: string }>(`/v1/foods/barcode/${code}`),
+  barcodeFood: (code: string, live = true) =>
+    api.get<import('./types').FoodBarcode>(`/v1/foods/barcode/${encodeURIComponent(code)}`, { query: { live } }),
+  /** Library rows accept only this flag (owner only); custom rows accept it too. */
+  verifyFood: (id: string, verified = true) =>
+    api.patch<import('./types').Food>(`/v1/foods/${id}`, { verified }),
   favorites: () => api.get<import('./types').Favorite[]>('/v1/foods/favorites'),
   addFavorite: (foodId: string, defaultGrams?: number) =>
     api.post<import('./types').Favorite>('/v1/foods/favorites', {
@@ -196,6 +199,8 @@ export const endpoints = {
   recipes: () => api.get<import('./types').RecipeList>('/v1/recipes'),
   createRecipe: (payload: import('./types').RecipeIn) =>
     api.post<import('./types').Recipe>('/v1/recipes', payload),
+  updateRecipe: (id: string, payload: import('./types').RecipePatch) =>
+    api.patch<import('./types').Recipe>(`/v1/recipes/${id}`, payload),
   deleteRecipe: (id: string) => api.delete<{ ok: boolean; id: string }>(`/v1/recipes/${id}`),
 
   tokens: () => api.get<import('./types').ApiTokenList>('/v1/tokens'),

@@ -7,7 +7,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { endpoints } from '@/api/client'
-import type { FoodIn, MealLogIn, MealType, Recipe, RecipeIn } from '@/api/types'
+import type { FoodIn, MealLogIn, MealType, Recipe, RecipeIn, RecipePatch } from '@/api/types'
 import { queryKeys } from '@/lib/queryClient'
 import { today } from '@/lib/format'
 
@@ -98,6 +98,23 @@ export function useCreateRecipe() {
   const invalidate = useInvalidateNutrition()
   return useMutation({
     mutationFn: (payload: RecipeIn) => endpoints.createRecipe(payload),
+    onSuccess: invalidate,
+  })
+}
+
+export function useUpdateRecipe() {
+  const invalidate = useInvalidateNutrition()
+  return useMutation({
+    mutationFn: ({ id, patch }: { id: string; patch: RecipePatch }) => endpoints.updateRecipe(id, patch),
+    onSuccess: invalidate,
+  })
+}
+
+/** One-tap "the numbers are right" for an unverified library food. */
+export function useVerifyFood() {
+  const invalidate = useInvalidateNutrition()
+  return useMutation({
+    mutationFn: (id: string) => endpoints.verifyFood(id, true),
     onSuccess: invalidate,
   })
 }

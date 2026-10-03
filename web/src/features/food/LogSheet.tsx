@@ -14,6 +14,7 @@ import type { Food, MealType, Recipe } from '@/api/types'
 import { number } from '@/lib/format'
 import { errorMessage } from '@/lib/errors'
 import { macrosFor, useLogMeal } from './useNutrition'
+import { VerifyNote } from './VerifyFood'
 
 export type LogTarget = { kind: 'food'; food: Food } | { kind: 'recipe'; recipe: Recipe }
 
@@ -35,8 +36,13 @@ export function LogSheet({
   const [grams, setGrams] = useState(100)
   const [mealType, setMealType] = useState<MealType>(defaultMealType ?? guessMealType())
 
+  // a recipe opens at one portion of the cooked dish (what "1 portion" means)
   const defaultGrams =
-    target?.kind === 'food' ? (target.food.favorite_grams ?? target.food.default_serving_g ?? 100) : 100
+    target?.kind === 'food'
+      ? (target.food.favorite_grams ?? target.food.default_serving_g ?? 100)
+      : target?.kind === 'recipe'
+        ? target.recipe.portion_size_g || 100
+        : 100
 
   useEffect(() => {
     if (target) {
@@ -96,20 +102,24 @@ export function LogSheet({
           />
         </Field>
 
-        {target?.kind === 'food' && (
+        {target && (
           <div className="flex flex-wrap gap-2">
             {[0.5, 1, 1.5, 2].map((factor) => (
               <button
                 key={factor}
                 type="button"
                 onClick={() => setGrams(Math.round(defaultGrams * factor))}
-                className="chip"
+                className={grams === Math.round(defaultGrams * factor) ? 'chip chip-active' : 'chip'}
               >
-                {number(Math.round(defaultGrams * factor))} {t('common.g')}
+                {target.kind === 'recipe'
+                  ? t('food.portions_chip', { n: number(factor, factor % 1 ? 1 : 0), grams: number(Math.round(defaultGrams * factor)) })
+                  : `${number(Math.round(defaultGrams * factor))} ${t('common.g')}`}
               </button>
             ))}
           </div>
         )}
+
+        {target?.kind === 'food' && <VerifyNote key={target.food.id} food={target.food} />}
 
         <Field label={t('food.meal_type')}>
           <SegmentedControl

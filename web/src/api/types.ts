@@ -118,6 +118,8 @@ export type MealItem = Schemas['MealItemOut']
 export type DaySummary = Schemas['DaySummaryOut']
 export type WaterLog = Schemas['WaterLogOut']
 export type Macros = Schemas['MacrosOut']
+export type FoodBarcode = Schemas['FoodBarcodeOut']
+export type BarcodeLookup = FoodBarcode['lookup']
 
 export type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack' | 'other'
 export type MatchMethod = 'exact' | 'fts' | 'trgm' | 'barcode' | 'manual' | 'ai' | 'none'
@@ -155,12 +157,19 @@ export interface RecipeItemIn {
 }
 
 export interface RecipeIn {
+  id?: string
   name: string
   description?: string
   servings?: number
+  /** weight of the finished dish; omitted = same as the raw ingredients */
   cooked_weight_g?: number
+  /** alternative to servings: one portion weighs this many grams */
+  portion_size_g?: number
+  is_pinned?: boolean
   items: RecipeItemIn[]
 }
+
+export type RecipePatch = Partial<Omit<RecipeIn, 'id'>>
 
 export interface FoodIn {
   name_ru?: string
