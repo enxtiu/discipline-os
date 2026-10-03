@@ -23,7 +23,7 @@ from app.schemas.food import (
     FoodSearchOut,
     RecentListOut,
 )
-from app.services import food_search
+from app.services import food_search, off_lookup
 from app.services.nutrition import _d
 
 log = get_logger(__name__)
@@ -49,10 +49,19 @@ async def search(
 
 
 @router.get("/barcode/{code}", response_model=FoodBarcodeOut, summary="Look a food up by barcode")
-async def barcode(code: str, principal: CurrentPrincipal, db: DbSession) -> FoodBarcodeOut:
-    food = await food_search.barcode_lookup(db, principal.user_id, code)
+async def barcode(
+    code: str,
+    principal: CurrentPrincipal,
+    db: DbSession,
+    live: bool = Query(default=True, description="Fall back to a live Open Food Facts lookup on a local miss"),
+) -> FoodBarcodeOut:
+    result = await off_lookup.resolve_barcode(db, user_id=principal.user_id, code=code, allow_live=live)
     favorites = await food_search.favorite_ids(db, principal.user_id)
-    return FoodBarcodeOut(barcode=code, food=food_out(food, favorites=favorites) if food else None)
+    return FoodBarcodeOut(
+        barcode=result.barcode,
+        lookup=result.outcome,
+        food=food_out(result.food, favorites=favorites) if result.food else None,
+    )
 
 
 @router.get("/favorites", response_model=list[FavoriteOut], summary="Favorite foods (one-tap row)")
@@ -143,10 +152,14 @@ async def patch_food(food_id: uuid.UUID, payload: FoodPatchIn, principal: Curren
     food = await food_search.get_food(db, principal.user_id, food_id)
     if food is None:
         raise NotFound("Food not found", code="food_not_found")
-    if food.is_global and payload.verified is None:
-        # library rows are read-only except the "verified" flag
-        raise Forbidden("Global foods are read-only except verification", code="global_food_readonly")
     updates = payload.model_dump(exclude_unset=True, exclude={"verified"})
+    if food.is_global:
+        # Library rows are shared by every user: only the "verified" flag may
+        # change, and only the instance owner may flip it.
+        if payload.verified is None or updates:
+            raise Forbidden("Global foods are read-only except verification", code="global_food_readonly")
+        if not principal.user.is_owner:
+            raise Forbidden("Only the owner can verify library foods", code="verify_owner_only")
     for key, value in updates.items():
         if key.endswith("_per_100g") and value is not None:
             setattr(food, key, _d(value))
