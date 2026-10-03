@@ -2,6 +2,9 @@
 export default {
   darkMode: ['class', '[data-theme="dark"]'],
   content: ['./index.html', './src/**/*.{ts,tsx}'],
+  // <Button variant> builds `btn-${variant}` at runtime, which the content
+  // scanner cannot see — without this the variants are purged from the build.
+  safelist: ['btn-primary', 'btn-secondary', 'btn-ghost', 'btn-danger'],
   theme: {
     extend: {
       colors: {

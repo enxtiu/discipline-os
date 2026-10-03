@@ -251,7 +251,7 @@ try {
   await shot('08-devices')
 
   await page.goto(`${WEB_URL}/settings/tokens`, { waitUntil: 'networkidle' })
-  check((await text()).includes('ingest:health') || (await text()).includes('Токен'), 'tokens section renders')
+  check((await hasText('ingest:health')) || (await hasText('токен')), 'tokens section renders')
   await shot('09-tokens')
 
   // 7. Every tab is reachable and renders (no crash, no blank route).
