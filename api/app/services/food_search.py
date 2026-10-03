@@ -8,7 +8,10 @@ Ranking contract (stage 2 spec)
 2. The user's own world wins: custom foods, verified rows, favorites and
    recents are boosted above anonymous import rows.
 3. Popular global rows (``use_count``) break the remaining ties.
-4. p95 must stay comfortably below 150 ms: one query, GIN indexes only.
+4. Every query must stay below 150 ms (``took_ms``): one statement whose
+   candidate filter is a BitmapOr over GIN indexes only — the scoring
+   expressions run on candidates, never on the whole library (stage 2b;
+   benchmarked by ``tests/test_stage2b.py`` and ``app.cli bench-search``).
 """
 
 from __future__ import annotations
@@ -17,7 +20,7 @@ import time
 import uuid
 from dataclasses import dataclass
 
-from sqlalchemy import Select, case, cast, delete, func, or_, select, update
+from sqlalchemy import Select, case, cast, delete, func, literal, or_, select, text, union, update
 from sqlalchemy.dialects.postgresql import REGCONFIG
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -31,10 +34,11 @@ log = get_logger(__name__)
 RU_CONFIG = "russian"
 EN_CONFIG = "english"
 TRGM_THRESHOLD = 0.45  # names
-TRGM_ALIAS_THRESHOLD = 0.30  # word-similarity against the alias blob
 PREFIX_FALLBACK_CHARS = 3  # short queries use ILIKE prefix matching instead
 
 MIN_SIMILARITY = TRGM_THRESHOLD
+# rows each matching strategy may contribute before scoring (see search_foods)
+CANDIDATE_CAP = 120
 
 
 @dataclass(slots=True)
@@ -85,19 +89,17 @@ async def search_foods(
         func.coalesce(func.ts_rank(Food.search_vector_ru, q_ru), 0.0),
         func.coalesce(func.ts_rank(Food.search_vector_en, q_en), 0.0),
     )
-    sim = func.greatest(
+    name_sim = func.greatest(
         func.similarity(func.lower(Food.name_ru), nq),
         func.similarity(func.lower(Food.name_en), nq),
-        func.word_similarity(nq, func.lower(Food.aliases_text)),
     )
+    alias_sim = func.word_similarity(nq, func.lower(Food.aliases_text))
+    sim = func.greatest(name_sim, alias_sim)
     exact = or_(func.lower(Food.name_ru) == nq, func.lower(Food.name_en) == nq)
     escaped = nq.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     like = f"{escaped}%" if len(nq) <= PREFIX_FALLBACK_CHARS else f"%{escaped}%"
-    prefix = or_(
-        func.lower(Food.name_ru).like(like),
-        func.lower(Food.name_en).like(like),
-        func.lower(Food.aliases_text).like(f"%{escaped}%"),
-    )
+    name_like = or_(func.lower(Food.name_ru).like(like), func.lower(Food.name_en).like(like))
+    alias_like = func.lower(Food.aliases_text).like(f"%{escaped}%")
 
     fav_sub = select(FoodFavorite.food_id).where(FoodFavorite.user_id == user_id).scalar_subquery()
     is_fav = Food.id.in_(fav_sub)
@@ -109,26 +111,76 @@ async def search_foods(
 
     # Relevance first, then the personal world: the user's own foods, favorites
     # and verified rows outrank anonymous library hits (stage-2 spec).
+    # A hit in the *name* outranks a hit that only came through an alias or the
+    # brand (stage 2b: hundreds of library rows can share one alias word).
     score = (
         _bit(exact) * 1.0
         + fts_rank * 1.2
-        + func.least(sim, 1.0) * 0.9
+        + func.least(name_sim, 1.0) * 0.9
+        + func.least(alias_sim, 1.0) * 0.6
+        + _bit(name_like) * 0.3
         + _bit(own) * 2.0
         + _bit(is_fav) * 0.5
         + _bit(Food.verified) * 0.15
+        # generic rows (no brand: curated seed, USDA, "my food") before branded
+        # packs when the query names no brand; a brand in the query wins via FTS
+        + _bit(Food.brand.is_(None)) * 0.2
         + func.least(Food.use_count, 200) / 200.0 * 0.25
     )
 
+    # Candidates: one capped branch per matching strategy, UNIONed. Each branch
+    # is a single GIN index probe (tsvector @@, pg_trgm % / <% / LIKE) whose
+    # recheck only evaluates its own predicate, and keeps its best CANDIDATE_CAP
+    # rows by its own cheap measure. Only that bounded set is scored below, so
+    # latency no longer grows with how many rows share a common word
+    # ("молоко" × 3 000 brands). The thresholds make `%` / `<%` mean exactly
+    # "similarity >= MIN_SIMILARITY" — the cut the ranking always used.
+    await _set_trgm_thresholds(db)
+    visible = (
+        Food.is_archived.is_(False),
+        or_(Food.is_global.is_(True), Food.user_id == user_id),
+    )
+    # cheap per-row tie-breakers so a cap keeps name hits and curated rows
+    tie_break = (_bit(name_like).desc(), Food.verified.desc(), Food.use_count.desc())
+    any_match = or_(
+        Food.search_vector_ru.op("@@")(q_ru),
+        Food.search_vector_en.op("@@")(q_en),
+        func.lower(Food.name_ru).op("%")(nq),
+        func.lower(Food.name_en).op("%")(nq),
+        literal(nq).op("<%")(func.lower(Food.aliases_text)),
+        name_like,
+        alias_like,
+    )
+    branches = [
+        select(Food.id)
+        .where(Food.search_vector_ru.op("@@")(q_ru), *visible)
+        .order_by(func.ts_rank(Food.search_vector_ru, q_ru).desc(), *tie_break),
+        select(Food.id)
+        .where(Food.search_vector_en.op("@@")(q_en), *visible)
+        .order_by(func.ts_rank(Food.search_vector_en, q_en).desc(), *tie_break),
+        select(Food.id)
+        .where(func.lower(Food.name_ru).op("%")(nq), *visible)
+        .order_by(func.similarity(func.lower(Food.name_ru), nq).desc(), *tie_break),
+        select(Food.id)
+        .where(func.lower(Food.name_en).op("%")(nq), *visible)
+        .order_by(func.similarity(func.lower(Food.name_en), nq).desc(), *tie_break),
+        select(Food.id)
+        .where(literal(nq).op("<%")(func.lower(Food.aliases_text)), *visible)
+        .order_by(func.word_similarity(nq, func.lower(Food.aliases_text)).desc(), *tie_break),
+        # prefix / substring typing ("гре" → гречка); shortest names are closest
+        select(Food.id).where(name_like, *visible).order_by(func.length(func.coalesce(Food.name_ru, Food.name_en))),
+        select(Food.id).where(alias_like, *visible).order_by(func.length(Food.aliases_text)),
+        # the personal world is never cut by a cap: own foods and favorites are
+        # reached through their own small indexes, then filtered by any match
+        select(Food.id).where(Food.user_id == user_id, Food.is_archived.is_(False), any_match),
+        select(Food.id)
+        .join(FoodFavorite, FoodFavorite.food_id == Food.id)
+        .where(FoodFavorite.user_id == user_id, Food.is_archived.is_(False), any_match),
+    ]
+    candidates = union(*(select(branch.limit(CANDIDATE_CAP).subquery().c.id) for branch in branches)).subquery()
     stmt = (
-        _visible_foods(user_id)
-        .where(
-            or_(
-                exact,
-                fts_rank > 0.001,
-                sim >= MIN_SIMILARITY,
-                prefix,
-            )
-        )
+        select(Food)
+        .where(Food.id.in_(select(candidates.c.id)))
         .add_columns(score, sim, fts_rank)
         .order_by(score.desc(), Food.use_count.desc())
         .limit(limit + 1)
@@ -145,6 +197,17 @@ async def search_foods(
             method = "exact"
         hits.append(FoodHit(food=food, score=float(row_score), match_method=method))
     return hits[:limit], _elapsed(started), len(hits) > limit
+
+
+async def _set_trgm_thresholds(db: AsyncSession) -> None:
+    """Transaction-local pg_trgm thresholds for the `%` and `<%` operators."""
+    await db.execute(
+        text(
+            "SELECT set_config('pg_trgm.similarity_threshold', :t, true),"
+            " set_config('pg_trgm.word_similarity_threshold', :t, true)"
+        ),
+        {"t": str(MIN_SIMILARITY)},
+    )
 
 
 def _elapsed(started: float) -> int:

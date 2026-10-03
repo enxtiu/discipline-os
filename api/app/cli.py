@@ -290,8 +290,19 @@ def seed_cmd(
 @cli.command("import-foods")
 def import_foods_cmd(
     source: Annotated[str, typer.Option("--source", help="seed | off | usda")] = "seed",
-    file: Annotated[str | None, typer.Option("--file", help="JSONL (off) / CSV (usda) path")] = None,
+    file: Annotated[
+        str | None,
+        typer.Option("--file", help="JSONL (off) · FDC JSON file, FDC CSV directory or flat CSV (usda)"),
+    ] = None,
     limit: Annotated[int | None, typer.Option("--limit", help="Stop after N source rows")] = None,
+    dataset: Annotated[
+        list[str] | None,
+        typer.Option("--dataset", help="usda only: foundation and/or sr_legacy (default: both)"),
+    ] = None,
+    ru_map: Annotated[
+        str | None,
+        typer.Option("--ru-map", help="usda only: Russian name mapping JSON (default: the bundled one)"),
+    ] = None,
 ) -> None:
     """Import foods into the global library (idempotent by source+id)."""
     from app.importers import off, seed, usda
@@ -307,21 +318,63 @@ def import_foods_cmd(
     elif source == "usda":
         if not file:
             raise typer.BadParameter("--file is required for the usda source")
-        rows, src = usda.iterate_usda(file), FoodSource.USDA
+        rows = usda.iterate_usda(file, datasets=dataset or None, ru_map=ru_map or usda.RU_MAP_PATH)
+        src = FoodSource.USDA
     else:
         raise typer.BadParameter(f"unknown source: {source}")
 
     async def _inner():
+        from app.services.search_bench import vacuum_analyze_foods
+
         async with SessionLocal() as db:
             stats = await run_import(db, rows, source=src, limit=limit)
             await db.commit()
-            return stats
+        if stats.created or stats.updated:
+            await vacuum_analyze_foods()  # search is fast right away, not after autovacuum
+        return stats
 
     stats = _run(_inner())
     typer.secho(
         f"✓ {stats.source}: seen={stats.seen} created={stats.created} updated={stats.updated} skipped={stats.skipped}",
         fg=typer.colors.GREEN,
     )
+
+
+@cli.command("bench-search")
+def bench_search_cmd(
+    synthetic: Annotated[
+        int, typer.Option("--synthetic", help="Add N synthetic library rows first (source_id 'bench-…')")
+    ] = 0,
+    rounds: Annotated[int, typer.Option("--rounds", help="Passes over the query set")] = 3,
+    cleanup: Annotated[bool, typer.Option("--cleanup", help="Delete the synthetic rows afterwards")] = False,
+) -> None:
+    """Measure food-search latency (took_ms) against this database; budget is 150 ms."""
+    from app.services.search_bench import insert_synthetic_foods, remove_synthetic_foods, run_benchmark
+
+    async def _inner():
+        async with SessionLocal() as db:
+            user = (await db.execute(select(User).where(User.is_owner.is_(True)))).scalars().first()
+            if user is None:
+                raise typer.BadParameter("create the owner first (create-owner)")
+            if synthetic:
+                await insert_synthetic_foods(db, synthetic)
+                await db.commit()
+            result = await run_benchmark(db, user_id=user.id, rounds=rounds)
+            await db.rollback()
+            if cleanup:
+                removed = await remove_synthetic_foods(db)
+                await db.commit()
+                typer.echo(f"removed {removed} synthetic rows")
+            return result
+
+    result = _run(_inner())
+    typer.echo(f"rows={result.rows} samples={result.samples}")
+    for query, worst in sorted(result.per_query_max.items(), key=lambda item: -item[1]):
+        typer.echo(f"  {worst:4d} ms  {query}")
+    colour = typer.colors.GREEN if result.max_ms < 150 else typer.colors.RED
+    typer.secho(f"p50={result.p50_ms:.0f} ms  p95={result.p95_ms:.0f} ms  max={result.max_ms} ms", fg=colour)
+    if result.max_ms >= 150:
+        raise typer.Exit(1)
 
 
 @cli.command("vapid-keys")
