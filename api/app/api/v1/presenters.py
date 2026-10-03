@@ -116,13 +116,16 @@ def recipe_brief(recipe: Recipe) -> RecipeBriefOut:
 
 def recipe_out(recipe: Recipe) -> RecipeOut:
     payload = {name: getattr(recipe, name) for name in RecipeOut.model_fields if name != "per_serving"}
-    servings = float(recipe.servings or 1) or 1.0
+    # one portion = portion_size_g of the cooked dish (the same grams the log
+    # sheet writes for "1 portion"); computed from the unrounded totals
+    base = float(recipe.cooked_weight_g or 0) or float(recipe.total_raw_weight_g or 0) or 100.0
+    factor = float(recipe.portion_size_g or 0) / base
     payload["per_serving"] = MacrosOut(
-        kcal=round(float(recipe.total_kcal) / servings, 2),
-        protein_g=round(float(recipe.total_protein_g) / servings, 2),
-        fat_g=round(float(recipe.total_fat_g) / servings, 2),
-        carbs_g=round(float(recipe.total_carbs_g) / servings, 2),
-        fiber_g=round(float(recipe.total_fiber_g) / servings, 2),
+        kcal=round(float(recipe.total_kcal) * factor, 2),
+        protein_g=round(float(recipe.total_protein_g) * factor, 2),
+        fat_g=round(float(recipe.total_fat_g) * factor, 2),
+        carbs_g=round(float(recipe.total_carbs_g) * factor, 2),
+        fiber_g=round(float(recipe.total_fiber_g) * factor, 2),
     )
     return RecipeOut.model_validate(payload)
 

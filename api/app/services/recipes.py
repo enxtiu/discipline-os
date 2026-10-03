@@ -3,6 +3,16 @@
 A recipe stores both the whole-dish totals and per-100 g values of the
 *cooked* dish, so logging "350 g of my borscht" is one multiplication. Item
 snapshots keep the recipe stable even if a food row is edited later.
+
+Yield and portions
+------------------
+* ``cooked_weight_g`` is the weight of the finished dish (water boils off,
+  grains absorb it). Unset (0) means "same as the raw ingredients" and then
+  follows the ingredient list when it changes.
+* A portion is defined either by ``servings`` (the dish is split into N) or
+  by ``portion_size_g`` (one plate weighs X g, servings = cooked / X). Per-portion
+  macros are always ``per_100g × portion_size_g / 100`` — exactly what logging
+  one portion writes to the diary.
 """
 
 from __future__ import annotations
@@ -13,7 +23,7 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import NotFound
+from app.core.errors import Conflict, NotFound
 from app.core.logging import get_logger
 from app.models import Food, Recipe, RecipeItem
 from app.services.nutrition import _d
@@ -38,7 +48,7 @@ async def list_recipes(db: AsyncSession, user_id: uuid.UUID, include_archived: b
     return list((await db.execute(stmt)).scalars().all())
 
 
-def _recompute(recipe: Recipe) -> None:
+def _recompute(recipe: Recipe, *, portion_g: float | None = None) -> None:
     raw_total = _d(sum((item.grams for item in recipe.items), Decimal("0")))
     recipe.total_raw_weight_g = raw_total
     if recipe.cooked_weight_g in (None, Decimal("0")):
@@ -55,7 +65,12 @@ def _recompute(recipe: Recipe) -> None:
     recipe.fat_per_100g = _d(recipe.total_fat_g * factor)
     recipe.carbs_per_100g = _d(recipe.total_carbs_g * factor)
     recipe.fiber_per_100g = _d(recipe.total_fiber_g * factor)
-    recipe.portion_size_g = _d(base / recipe.servings) if recipe.servings else _d(base)
+    if portion_g:
+        portion = _d(portion_g)
+        recipe.portion_size_g = portion
+        recipe.servings = max(Decimal("0.01"), (base / portion).quantize(Decimal("0.01")))
+    else:
+        recipe.portion_size_g = _d(base / recipe.servings) if recipe.servings else _d(base)
 
 
 async def _replace_items(db: AsyncSession, recipe: Recipe, items_in: list) -> None:
@@ -105,6 +120,14 @@ async def _replace_items(db: AsyncSession, recipe: Recipe, items_in: list) -> No
 
 
 async def create_recipe(db: AsyncSession, *, user_id: uuid.UUID, payload) -> Recipe:
+    if payload.id:
+        # idempotent replay (offline queue / double tap): same id → same recipe
+        existing = await db.scalar(select(Recipe).where(Recipe.id == payload.id))
+        if existing is not None:
+            if existing.user_id != user_id:
+                raise Conflict("Recipe id already in use", code="conflict")
+            await db.refresh(existing, ["items"])
+            return existing
     recipe = Recipe(
         id=payload.id or None,
         user_id=user_id,
@@ -113,11 +136,12 @@ async def create_recipe(db: AsyncSession, *, user_id: uuid.UUID, payload) -> Rec
         notes_md=payload.notes_md,
         servings=Decimal(str(payload.servings)),
         cooked_weight_g=_d(payload.cooked_weight_g) if payload.cooked_weight_g else Decimal("0"),
+        is_pinned=payload.is_pinned,
     )
     db.add(recipe)
     await db.flush()
     await _replace_items(db, recipe, payload.items)
-    _recompute(recipe)
+    _recompute(recipe, portion_g=payload.portion_size_g)
     await db.flush()
     await db.refresh(recipe, ["items"])
     return recipe
@@ -133,13 +157,23 @@ async def update_recipe(db: AsyncSession, *, user_id: uuid.UUID, recipe_id: uuid
         recipe.notes_md = payload.notes_md
     if payload.servings is not None:
         recipe.servings = Decimal(str(payload.servings))
-    if payload.cooked_weight_g is not None:
-        recipe.cooked_weight_g = _d(payload.cooked_weight_g)
     if payload.is_pinned is not None:
         recipe.is_pinned = payload.is_pinned
+    if payload.cooked_weight_g is not None:
+        recipe.cooked_weight_g = _d(payload.cooked_weight_g)
+    elif payload.items is not None and recipe.cooked_weight_g == recipe.total_raw_weight_g:
+        # the yield was never set explicitly (it mirrored the raw weight):
+        # keep following the ingredients instead of freezing the old total
+        recipe.cooked_weight_g = Decimal("0")
     if payload.items is not None:
         await _replace_items(db, recipe, payload.items)
-    _recompute(recipe)
+    reshaped = any(
+        value is not None
+        for value in (payload.items, payload.servings, payload.cooked_weight_g, payload.portion_size_g)
+    )
+    if reshaped:
+        # a pin or a rename never re-derives the portion (no rounding drift)
+        _recompute(recipe, portion_g=payload.portion_size_g)
     await db.flush()
     await db.refresh(recipe, ["items"])
     return recipe
