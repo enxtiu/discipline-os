@@ -189,6 +189,11 @@
     @apply min-h-[2.5rem] flex-1 rounded-xl px-3 text-sm font-medium text-[rgb(var(--text-muted))]
       transition-colors;
   }
+  /* five or more options (meal types) must fit a 390 px screen */
+  .segmented > button:first-child:nth-last-child(n + 5),
+  .segmented > button:first-child:nth-last-child(n + 5) ~ button {
+    @apply min-w-0 px-1 text-[13px];
+  }
   .segmented > button[data-active='true'] {
     @apply bg-[rgb(var(--bg-elevated))] text-[rgb(var(--text))] shadow-card;
   }
