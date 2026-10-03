@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Stage-1 browser acceptance check.
+ * Browser acceptance check (stages 1–3).
  *
  * Drives a real Chromium (Playwright) through the whole pairing → onboarding →
  * today → settings flow against a running stack, and asserts the things a
@@ -45,22 +45,36 @@ const bad = (label, detail = '') => {
 }
 const check = (condition, label, detail = '') => (condition ? ok(label, detail) : bad(label, detail))
 
-const browser = await chromium.launch()
+// Stage 3: FAKE_CAMERA=/tmp/barcode.y4m (scripts/make-barcode-y4m.py) makes the
+// barcode scanner see a real EAN-13 through Chromium's fake camera.
+const FAKE_CAMERA = process.env.FAKE_CAMERA && existsSync(process.env.FAKE_CAMERA) ? process.env.FAKE_CAMERA : ''
+const BARCODE = process.env.BARCODE ?? '4607001234562'
+const browser = await chromium.launch({
+  args: FAKE_CAMERA
+    ? [
+        '--use-fake-ui-for-media-stream',
+        '--use-fake-device-for-media-stream',
+        `--use-file-for-fake-video-capture=${FAKE_CAMERA}`,
+      ]
+    : [],
+})
 const context = await browser.newContext({
   ...iPhone,
   viewport: { width: 390, height: 844 },
   locale: 'ru-RU',
   timezoneId: 'Europe/Moscow',
   geolocation: undefined,
-  permissions: ['geolocation'],
+  permissions: FAKE_CAMERA ? ['geolocation', 'camera'] : ['geolocation'],
 })
 const page = await context.newPage()
 
+let offlineMode = false // stage 3 offline check: failures while offline are expected
 page.on('console', (message) => {
-  if (message.type() === 'error') consoleErrors.push(message.text())
+  if (message.type() === 'error' && !offlineMode) consoleErrors.push(message.text())
 })
 page.on('pageerror', (error) => consoleErrors.push(String(error)))
 page.on('requestfailed', (request) => {
+  if (offlineMode) return
   const url = request.url()
   // Navigations abort in-flight requests; that is not an app defect.
   if (url.includes('/api/') && !/ERR_ABORTED/i.test(request.failure()?.errorText ?? '')) {
@@ -364,14 +378,20 @@ try {
   await pinnedChip.scrollIntoViewIfNeeded()
   await page.evaluate(() => window.scrollBy(0, 160))
   await shot('15-today-pinned')
-  const kcalBefore = await page.locator('.stat-value').nth(1).innerText()
+  const dayKcal = () =>
+    page.evaluate(async () => {
+      const token = window.localStorage.getItem('dsos.device_token')
+      const day = await fetch('/api/v1/nutrition/day', { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json())
+      return day.totals.kcal
+    })
+  const kcalBefore = await dayKcal()
   await pinnedChip.click()
   await page.waitForTimeout(600)
   check(await hasText('1 порц. · 150 г'), 'log sheet opens at one portion of the recipe')
   await page.getByRole('button', { name: 'Записать в дневник' }).click()
   await page.waitForTimeout(1200)
-  const kcalAfter = await page.locator('.stat-value').nth(1).innerText()
-  check(kcalBefore !== kcalAfter, 'logging a pinned portion updates the day totals', `${kcalBefore} → ${kcalAfter}`)
+  const kcalAfter = await dayKcal()
+  check(Math.abs(kcalAfter - kcalBefore - 171.5) < 1, 'logging a pinned portion adds its kcal to the day', `${kcalBefore} → ${kcalAfter}`)
 
   // clean up: unpin so the next run starts with a single pinned recipe of its own
   await page.goto(`${WEB_URL}/food`, { waitUntil: 'networkidle' })
@@ -386,6 +406,139 @@ try {
     return response.json()
   })
   check(barcode.lookup === 'invalid', 'barcode endpoint reports its lookup outcome', barcode.lookup)
+
+  // 7⅞. stage 3: AI logging (fake provider on the dev API) and the barcode scanner
+  console.log('\n7⅞. stage 3 AI logging & barcode')
+  const apiFetch = (path, init = {}) =>
+    page.evaluate(
+      async ({ path, init }) => {
+        const token = window.localStorage.getItem('dsos.device_token')
+        const response = await fetch(`/api${path}`, {
+          ...init,
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...(init.headers ?? {}) },
+        })
+        return { status: response.status, body: await response.json().catch(() => null) }
+      },
+      { path, init },
+    )
+  const mealCount = async () => (await apiFetch('/v1/nutrition/day')).body?.logged_meals ?? -1
+  const openQuickAdd = async (tile) => {
+    await page.locator('nav.tabbar button[aria-label]').first().click()
+    await page.waitForTimeout(500)
+    await page.locator('[role="dialog"]').getByText(tile, { exact: true }).click()
+    await page.waitForTimeout(500)
+  }
+
+  const config = (await apiFetch('/v1/meta/app-config')).body
+  check(config?.features?.ai_meal_text === true, 'AI features are on (fake provider)', config?.ai?.provider ?? 'off')
+
+  // text → review → edit → save
+  await page.goto(`${WEB_URL}/today`, { waitUntil: 'networkidle' })
+  const mealsBefore = await mealCount()
+  await openQuickAdd('Текст')
+  check(await hasText('Что вы съели?'), 'quick add → text sheet in one tap')
+  await page.locator('#ai-text').fill('200 г гречки, 2 яйца и куриная грудка 150 g')
+  await page.getByRole('button', { name: 'Распознать' }).click()
+  await page.getByText('Проверьте запись').waitFor({ timeout: 15000 })
+  const reviewItems = page.locator('[data-testid="ai-item"]')
+  check((await reviewItems.count()) === 3, 'review lists the three recognised foods', `${await reviewItems.count()} items`)
+  check(await hasText('≈ 200 г — оценка'), 'grams are shown as an estimate')
+  check(await hasText('из базы'), 'items are matched to the local library')
+  check((await mealCount()) === mealsBefore, 'nothing is saved before confirming (no auto-save)')
+  await reviewItems.nth(0).locator('input[type="number"]').fill('150')
+  await page.waitForTimeout(200)
+  check(/165 ккал/.test(await reviewItems.nth(0).innerText()), 'editing grams recomputes kcal (150 g buckwheat = 165)')
+  await reviewItems.nth(1).getByRole('button', { name: 'Заменить продукт' }).click()
+  await page.waitForTimeout(400)
+  const swapTarget = reviewItems.nth(1).locator('.surface-sunken button').filter({ hasText: 'Яйцо варёное' }).first()
+  if (await swapTarget.count()) {
+    await swapTarget.click()
+    await page.waitForTimeout(300)
+    check((await reviewItems.nth(1).innerText()).includes('Яйцо варёное'), 'swap product from the alternatives')
+  } else {
+    bad('swap product from the alternatives', 'Яйцо варёное not offered')
+  }
+  await reviewItems.nth(2).getByRole('button', { name: /^Убрать/ }).click()
+  await page.waitForTimeout(300)
+  check((await reviewItems.count()) === 2, 'remove an item before saving')
+  await shot('16-ai-review')
+  await page.getByRole('button', { name: /^Записать ·/ }).click()
+  await page.waitForTimeout(1200)
+  check(await hasText('Записано: 2 поз.'), 'explicit save shows the toast')
+  check((await mealCount()) === mealsBefore + 1, 'one meal saved after confirmation')
+  const day = (await apiFetch('/v1/nutrition/day')).body
+  const textMeal = (day?.meals ?? []).find((meal) => meal.source === 'text')
+  check(
+    !!textMeal && textMeal.items.every((item) => item.confidence !== null) && textMeal.items.some((item) => item.is_edited),
+    'saved items keep confidence and the edited flag',
+  )
+
+  // photo (+ opted-in 400 px thumbnail) → review → save → thumbnail on Today
+  const keep = await apiFetch('/v1/settings', { method: 'PATCH', body: JSON.stringify({ keep_photo_thumbnail: true }) })
+  check(keep.status === 200, 'enable "keep photo thumbnail"')
+  await page.reload({ waitUntil: 'networkidle' })
+  const jpegPhoto = await page.screenshot({ type: 'jpeg', quality: 70 })
+  await page.setInputFiles('#ai-photo-input', { name: 'meal.jpg', mimeType: 'image/jpeg', buffer: jpegPhoto })
+  await page.getByText('Проверьте фото-запись').waitFor({ timeout: 15000 })
+  check((await reviewItems.count()) === 3, 'photo → downscaled JPEG → three suggestions')
+  check(await hasText('не видны'), 'the model note is shown in the UI language (hidden oil/sauce)')
+  await shot('17-ai-photo-review')
+  await page.getByRole('button', { name: /^Записать ·/ }).click()
+  await page.waitForTimeout(1500)
+  await page.goto(`${WEB_URL}/today`, { waitUntil: 'networkidle' })
+  await page.waitForTimeout(1200)
+  const thumb = page.locator('img[alt="Фото приёма пищи"]').first()
+  check((await thumb.count()) === 1 && (await thumb.evaluate((img) => img.naturalWidth)) > 0, 'the kept thumbnail shows on Today')
+  await thumb.scrollIntoViewIfNeeded().catch(() => {})
+  await shot('18-today-photo-meal')
+  await apiFetch('/v1/settings', { method: 'PATCH', body: JSON.stringify({ keep_photo_thumbnail: false }) })
+
+  // offline: a clear message, no request
+  offlineMode = true
+  await context.setOffline(true)
+  await openQuickAdd('Текст')
+  await page.locator('#ai-text').fill('банан')
+  await page.getByRole('button', { name: 'Распознать' }).click()
+  await page.waitForTimeout(600)
+  check(await hasText('ИИ-функции доступны только онлайн'), 'offline: AI shows a clear message')
+  await context.setOffline(false)
+  await page.keyboard.press('Escape')
+  await page.waitForTimeout(800)
+  offlineMode = false
+
+  // barcode: a product with this EAN must exist (created once as "my food")
+  const known = await apiFetch(`/v1/foods/barcode/${BARCODE}?live=false`)
+  if (!known.body?.food) {
+    await apiFetch('/v1/foods', {
+      method: 'POST',
+      body: JSON.stringify({ name_ru: 'Кефир сканер UI', kcal_per_100g: 52, protein_per_100g: 3, barcode: BARCODE }),
+    })
+  }
+  await page.goto(`${WEB_URL}/today`, { waitUntil: 'networkidle' })
+  await openQuickAdd('Штрих-код')
+  if (FAKE_CAMERA) {
+    // the real zxing decoder reads the EAN-13 from the fake camera feed
+    const found = await page
+      .getByText('Записать в дневник')
+      .waitFor({ timeout: 15000 })
+      .then(() => true)
+      .catch(() => false)
+    check(found, 'camera scan (zxing) → product → log sheet', BARCODE)
+  } else {
+    await page.getByText('Сканер штрихкода').waitFor({ timeout: 8000 })
+    await page.locator('#barcode-manual').fill(BARCODE)
+    await page.getByRole('button', { name: 'Найти' }).click()
+    await page.getByText('Записать в дневник').waitFor({ timeout: 8000 })
+    ok('typed barcode → product → log sheet (no fake camera in this run)')
+  }
+  check(await hasText('Кефир сканер UI'), 'the scanned product opens in the log sheet')
+  const otherTab = await page.getByRole('tab', { name: 'Другое' }).boundingBox()
+  check(!!otherTab && otherTab.x + otherTab.width <= 390, 'five meal types fit a 390 px screen', `${Math.round((otherTab?.x ?? 0) + (otherTab?.width ?? 0))} px`)
+  await shot('19-barcode-log-sheet')
+  await page.getByRole('button', { name: 'Записать в дневник' }).click()
+  await page.waitForTimeout(1200)
+  const barcodeMeal = ((await apiFetch('/v1/nutrition/day')).body?.meals ?? []).find((meal) => meal.source === 'barcode')
+  check(!!barcodeMeal && barcodeMeal.items[0]?.match_method === 'barcode', 'barcode meal saved with source=barcode')
 
   // 8. Reload keeps the session (token persisted).
   console.log('\n8. session persistence')

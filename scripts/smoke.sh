@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# End-to-end smoke test against a running API (stage 1 + nutrition library 2b).
+# End-to-end smoke test against a running API (stages 1–3).
 #
 #   API_BASE=http://127.0.0.1:8000/api scripts/smoke.sh VKT6-S6D5
 #
@@ -163,6 +163,23 @@ split "$(api DELETE "/v1/recipes/$RECIPE_ID" '' "$TOKEN")"
 [[ "$STATUS" == "200" ]] || fail "recipe delete returned $STATUS"
 pass "300 g cooked / 150 g portion → 2 portions × $GOT kcal (cleaned up)"
 
+step "13d. AI logging (stage 3): availability, and a parse with the fake provider"
+split "$(api GET /v1/ai/usage '' "$TOKEN")"
+[[ "$STATUS" == "200" ]] || fail "ai usage returned $STATUS: $BODY"
+PROVIDER="$(parse "$BODY" "d['provider'] or 'off'")"
+if [[ "$PROVIDER" == "fake" || -n "${SMOKE_AI:-}" ]]; then
+  MEALS_BEFORE="$(parse "$(sed '$d' <<<"$(api GET /v1/nutrition/day '' "$TOKEN")")" "d['logged_meals']")"
+  split "$(api POST /v1/ai/parse-text '{"text":"200 g buckwheat, 2 eggs"}' "$TOKEN")"
+  [[ "$STATUS" == "200" ]] || fail "parse-text returned $STATUS: $BODY"
+  ITEMS="$(parse "$BODY" "len(d['items'])")"
+  (( ITEMS >= 1 )) || fail "parse-text found no items: $BODY"
+  MEALS_AFTER="$(parse "$(sed '$d' <<<"$(api GET /v1/nutrition/day '' "$TOKEN")")" "d['logged_meals']")"
+  [[ "$MEALS_BEFORE" == "$MEALS_AFTER" ]] || fail "AI saved a meal on its own ($MEALS_BEFORE → $MEALS_AFTER)"
+  pass "provider $PROVIDER: $ITEMS suggestion(s), nothing auto-saved"
+else
+  pass "provider $PROVIDER (set SMOKE_AI=1 to spend one real AI call)"
+fi
+
 step "14. device self-revoke (cleanup)"
 split "$(api DELETE "/v1/devices/$DEVICE_ID" '' "$TOKEN")"
 [[ "$STATUS" == "200" ]] || fail "device revoke returned $STATUS: $BODY"
@@ -170,4 +187,4 @@ split "$(api GET /v1/auth/session '' "$TOKEN")"
 [[ "$STATUS" == "401" ]] || fail "a revoked device token still works ($STATUS)"
 pass "smoke device revoked, its token is dead"
 
-printf '\n\033[32mAll smoke checks passed (stage 1 + 2b).\033[0m\n'
+printf '\n\033[32mAll smoke checks passed (stages 1–3).\033[0m\n'
