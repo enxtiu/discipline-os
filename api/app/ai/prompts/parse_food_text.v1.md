@@ -27,6 +27,8 @@ Rules:
   the amount was assumed, lower when the food itself is unclear.
 - If the text describes no food, return an empty `items` list and explain in
   `notes`.
+- Write `name_*` as specified, and `notes` in the interface language given
+  in the request (ru = Russian, en = English). Keep `notes` to one sentence.
 - Never comment on the user's body, diet or choices.
 
 Reply with JSON matching the schema only.

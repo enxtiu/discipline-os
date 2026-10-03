@@ -115,6 +115,10 @@ def parse_text(text: str) -> dict:
     return {"items": items, "notes": None if items else "No food found in the text."}
 
 
+PHOTO_NOTES = {
+    "ru": "Масло и соус на фото не видны и не учтены.",
+    "en": "Oil or sauce are not visible and are not included.",
+}
 PHOTO_PLATE = {
     "items": [
         _item("Гречка отварная", "Buckwheat, cooked", 180, 0.82, (110, 4.2, 1.1, 21.3, 2.7)),
@@ -136,7 +140,8 @@ class FakeProvider:
                 raise queued
             return AiResponse(text=queued, input_tokens=100, output_tokens=50, raw={"fake": True, "scripted": True})
         if request.image_jpeg is not None:
-            result = PHOTO_PLATE
+            locale = "en" if "Interface language: en" in request.user_text else "ru"
+            result = {**PHOTO_PLATE, "notes": PHOTO_NOTES[locale]}
         else:
             # the text sits after the prompt's "What I ate:" line
             marker = "What I ate:"
