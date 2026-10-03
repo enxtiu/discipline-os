@@ -97,6 +97,16 @@ class Settings(BaseSettings):
     ai_daily_call_limit: int = 500
     ai_timeout_seconds: int = 60
 
+    # ------------------------------------------------------- open food facts
+    # Barcode misses in the local library fall back to one live OFF lookup;
+    # a usable product is cached as a library row, a miss is remembered in memory.
+    off_live_lookup: bool = True
+    off_base_url: str = "https://world.openfoodfacts.org"
+    off_timeout_seconds: float = 6.0
+    off_user_agent: str = "DisciplineOS/0.1 (self-hosted personal tracker)"
+    off_lookups_per_minute: int = 20
+    off_miss_ttl_hours: int = 24
+
     # --------------------------------------------------------------- web push
     vapid_public_key: str = ""
     vapid_private_key: str = ""
