@@ -12,7 +12,7 @@ from functools import lru_cache
 from typing import Annotated, Any, Literal
 
 from pydantic import BeforeValidator, Field, computed_field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 def _split_csv(value: Any) -> list[str]:
@@ -34,7 +34,9 @@ def _split_csv(value: Any) -> list[str]:
     return [part.strip() for part in text.split(",") if part.strip()]
 
 
-CsvList = Annotated[list[str], BeforeValidator(_split_csv)]
+# NoDecode: pydantic-settings would otherwise JSON-decode ``a,b`` before the
+# validator runs and fail on the documented comma-separated form.
+CsvList = Annotated[list[str], NoDecode, BeforeValidator(_split_csv)]
 
 _INSECURE_SECRET = "change-me-openssl-rand-hex-32"
 
