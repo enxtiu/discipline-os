@@ -41,6 +41,9 @@ class RawFood:
     default_serving_g: float | None = None
     default_serving_label: str | None = None
     is_liquid: bool = False
+    # None → the source default (curated seed rows verified, imports not).
+    # Only applied on insert: a later re-import never overrides a user's confirmation.
+    verified: bool | None = None
 
     def valid(self) -> bool:
         return bool(self.source_id) and bool(self.name_ru or self.name_en) and self.kcal_per_100g >= 0
@@ -166,7 +169,7 @@ async def run_import(
                     default_serving_g=_dec(row.default_serving_g) if row.default_serving_g else None,
                     default_serving_label=row.default_serving_label,
                     is_liquid=row.is_liquid,
-                    verified=source is FoodSource.SEED,
+                    verified=row.verified if row.verified is not None else source is FoodSource.SEED,
                 )
             )
             stats.created += 1

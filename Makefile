@@ -46,7 +46,7 @@ web: ## run the Vite dev server (http://localhost:5173)
 seed-exercises: ## seed the exercise library (stage 4)
 	cd $(API_DIR) && .venv/bin/python -m app.seeds.exercises
 
-seed-foods: ## import the bundled RU/EN food library (~85 foods)
+seed-foods: ## import the bundled RU/EN food library (~320 foods)
 	cd $(API_DIR) && .venv/bin/python -m app.cli import-foods --source seed
 
 # --------------------------------------------------------------------------- #

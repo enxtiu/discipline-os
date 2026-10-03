@@ -1,9 +1,14 @@
 """Curated RU seed library bundled with the repo.
 
 ``make seed-foods`` (or ``python -m app.cli import-foods --source seed``) fills
-an empty database with ~85 everyday foods in both languages so search, logging
-and the dashboards are useful before any external dump is imported. Rows are
-marked ``verified`` — they come from published composition tables.
+an empty database with ~320 everyday foods and home-cooked dishes in both
+languages so search, logging and the dashboards are useful before any external
+dump is imported.
+
+The original 84 rows come from published composition tables and are
+``verified``. Rows added in stage 2b carry ``"verified": false`` until the owner
+confirms them in the app (one tap); re-running the seed never resets a
+confirmation because the importer only sets ``verified`` on insert.
 """
 
 from __future__ import annotations
@@ -37,4 +42,5 @@ def iterate_seed(path: str | Path | None = None) -> Iterator[RawFood]:
             default_serving_g=entry.get("serving_g"),
             default_serving_label=entry.get("serving_label"),
             is_liquid=bool(entry.get("liquid", False)),
+            verified=entry.get("verified", True),
         )
