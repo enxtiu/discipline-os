@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# End-to-end smoke test against a running API (stage 1).
+# End-to-end smoke test against a running API (stage 1 + nutrition library 2b).
 #
 #   API_BASE=http://127.0.0.1:8000/api scripts/smoke.sh VKT6-S6D5
 #
@@ -132,6 +132,37 @@ split "$(api GET /v1/devices '' "$TOKEN")"
 [[ "$STATUS" == "200" ]] || fail "device list returned $STATUS"
 pass "$(parse "$BODY" "len(d['devices'])") device(s) registered"
 
+step "13a. food library search (stage 2b: seed of ~320 foods, 150 ms budget)"
+split "$(api GET "/v1/foods/search?q=%D0%B1%D0%BE%D1%80%D1%89" '' "$TOKEN")"   # q=борщ
+[[ "$STATUS" == "200" ]] || fail "search returned $STATUS: $BODY"
+FIRST="$(parse "$BODY" "d['items'][0]['name_ru'] if d['items'] else ''")"
+[[ "$FIRST" == Борщ* ]] || fail "'борщ' did not find the seed dish (got '$FIRST') — run: make seed-foods"
+TOOK="$(parse "$BODY" "d['took_ms']")"
+(( TOOK < 150 )) || fail "search took ${TOOK} ms (budget 150 ms)"
+pass "'борщ' → $FIRST in ${TOOK} ms"
+
+step "13b. barcode lookup reports its outcome"
+split "$(api GET "/v1/foods/barcode/not-a-code" '' "$TOKEN")"
+[[ "$STATUS" == "200" && "$(parse "$BODY" "d['lookup']")" == "invalid" ]] || fail "barcode: $STATUS $BODY"
+split "$(api GET "/v1/foods/barcode/4600000000000?live=false" '' "$TOKEN")"
+[[ "$STATUS" == "200" ]] || fail "barcode (local only) returned $STATUS"
+pass "invalid code rejected, local lookup → $(parse "$BODY" "d['lookup']")"
+
+step "13c. recipe yield and portion (stage 2b)"
+split "$(api GET "/v1/foods/search?q=buckwheat" '' "$TOKEN")"
+FOOD_ID="$(parse "$BODY" "d['items'][0]['id']")"
+FOOD_KCAL="$(parse "$BODY" "d['items'][0]['kcal_per_100g']")"
+split "$(api POST /v1/recipes "{\"name\":\"smoke recipe\",\"cooked_weight_g\":300,\"portion_size_g\":150,\"items\":[{\"food_id\":\"$FOOD_ID\",\"grams\":100}]}" "$TOKEN")"
+[[ "$STATUS" == "201" ]] || fail "recipe create returned $STATUS: $BODY"
+RECIPE_ID="$(parse "$BODY" "d['id']")"
+EXPECTED="$(python3 -c "print(round($FOOD_KCAL * 150 / 300, 2))")"
+GOT="$(parse "$BODY" "d['per_serving']['kcal']")"
+python3 -c "import sys; sys.exit(0 if abs($GOT - $EXPECTED) < 0.05 else 1)" || fail "per-portion kcal $GOT, expected $EXPECTED"
+[[ "$(parse "$BODY" "d['servings']")" == "2.0" ]] || fail "servings not derived from the portion: $BODY"
+split "$(api DELETE "/v1/recipes/$RECIPE_ID" '' "$TOKEN")"
+[[ "$STATUS" == "200" ]] || fail "recipe delete returned $STATUS"
+pass "300 g cooked / 150 g portion → 2 portions × $GOT kcal (cleaned up)"
+
 step "14. device self-revoke (cleanup)"
 split "$(api DELETE "/v1/devices/$DEVICE_ID" '' "$TOKEN")"
 [[ "$STATUS" == "200" ]] || fail "device revoke returned $STATUS: $BODY"
@@ -139,4 +170,4 @@ split "$(api GET /v1/auth/session '' "$TOKEN")"
 [[ "$STATUS" == "401" ]] || fail "a revoked device token still works ($STATUS)"
 pass "smoke device revoked, its token is dead"
 
-printf '\n\033[32mAll stage-1 smoke checks passed.\033[0m\n'
+printf '\n\033[32mAll smoke checks passed (stage 1 + 2b).\033[0m\n'

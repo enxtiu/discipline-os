@@ -269,7 +269,7 @@ try {
   const searchBox = page.locator('input[placeholder*="Поиск"], input[placeholder*="Search"]').first()
   await searchBox.fill('гречка отварная')
   await page.waitForTimeout(900) // debounce + query
-  const firstResult = page.locator('section button.surface-sunken').first()
+  const firstResult = page.locator('section div.surface-sunken > button').first()
   await firstResult.click()
   await page.waitForTimeout(600)
   check(await hasText('Граммы'), 'log sheet opens from a search result')
@@ -301,6 +301,91 @@ try {
   check(await hasText('Новый рецепт'), 'recipe sheet opens from the quick-add deep link')
   await page.keyboard.press('Escape')
   await page.waitForTimeout(400)
+
+  // 7¾. stage 2b: confirm an unverified food, recipe yield/portion, pinned on Today
+  console.log('\n7¾. stage 2b backfill')
+  await page.goto(`${WEB_URL}/food`, { waitUntil: 'networkidle' })
+  await searchBox.fill('борщ')
+  await page.waitForTimeout(900)
+  const borschtRow = page.locator('section div.surface-sunken').filter({ hasText: 'Борщ с мясом' }).first()
+  check((await borschtRow.count()) === 1, 'new seed dish is searchable in Russian', 'Борщ с мясом')
+  const tookText = (await page.locator('p.text-right.muted').first().innerText().catch(() => '')).trim()
+  const tookMs = Number((tookText.match(/(\d+)\s*ms/) ?? [])[1] ?? NaN)
+  check(tookMs < 150, 'search took_ms under the 150 ms budget', `${tookMs} ms`)
+  const confirmChip = borschtRow.getByRole('button', { name: /Подтвердить/ })
+  const wasUnverified = (await confirmChip.count()) === 1
+  if (wasUnverified) {
+    await shot('13-verify-chip')
+    await confirmChip.click()
+    await page.waitForTimeout(1000)
+    check(await hasText('Данные подтверждены'), 'one tap confirms the food (toast)')
+    check((await borschtRow.getByRole('button', { name: /Подтвердить/ }).count()) === 0, 'confirm chip disappears after confirming')
+  } else {
+    ok('food was confirmed by an earlier run — chip correctly absent')
+  }
+
+  await searchBox.fill('сырники')
+  await page.waitForTimeout(900)
+  await page.locator('section div.surface-sunken > button').first().click()
+  await page.waitForTimeout(600)
+  check(await hasText('не проверены'), 'log sheet explains an unverified food and offers confirm')
+  await page.keyboard.press('Escape')
+  await page.waitForTimeout(400)
+
+  // recipe with an explicit cooked weight and a portion defined in grams, pinned
+  const recipeName = `Каша UI ${Date.now() % 100000}`
+  await page.goto(`${WEB_URL}/food?action=recipe`, { waitUntil: 'networkidle' })
+  await page.waitForTimeout(600)
+  await page.locator('#recipe-name').fill(recipeName)
+  await page.getByRole('button', { name: 'Добавить ингредиент' }).click()
+  await page.locator('[role="dialog"] input[placeholder*="Поиск"]').fill('гречка (ядрица')
+  await page.waitForTimeout(1000)
+  await page.locator('[role="dialog"] .max-h-56 button').first().click()
+  await page.waitForTimeout(300)
+  await page.locator('[role="dialog"] input[aria-label="Граммы"]').first().fill('100')
+  await page.locator('#recipe-cooked').fill('300')
+  await page.getByRole('tab', { name: 'Вес порции', exact: true }).click()
+  await page.locator('#recipe-portion').fill('150')
+  await page.waitForTimeout(300)
+  const recipePreview = await text()
+  // 100 g dry buckwheat = 343 kcal → 300 g cooked → 150 g portion = 172 kcal (rounded)
+  check(/172 ккал в порции 150 г/.test(recipePreview), 'recipe preview: per-portion kcal from the cooked weight', '172 kcal / 150 g')
+  check(/114 ккал на 100 г готового/.test(recipePreview), 'recipe preview: per 100 g of the cooked dish', '114 kcal')
+  await page.getByRole('switch', { name: 'Закрепить на «Сегодня»' }).click()
+  await shot('14-recipe-sheet')
+  await page.getByRole('button', { name: 'Сохранить рецепт' }).click()
+  await page.waitForTimeout(1200)
+  check(await hasText(recipeName), 'recipe saved and listed')
+
+  await page.goto(`${WEB_URL}/today`, { waitUntil: 'networkidle' })
+  await page.waitForTimeout(800)
+  const pinnedChip = page.locator('section[aria-label="Закреплённые рецепты"] button').filter({ hasText: recipeName })
+  check((await pinnedChip.count()) === 1, 'pinned recipe shows on Today')
+  await pinnedChip.scrollIntoViewIfNeeded()
+  await page.evaluate(() => window.scrollBy(0, 160))
+  await shot('15-today-pinned')
+  const kcalBefore = await page.locator('.stat-value').nth(1).innerText()
+  await pinnedChip.click()
+  await page.waitForTimeout(600)
+  check(await hasText('1 порц. · 150 г'), 'log sheet opens at one portion of the recipe')
+  await page.getByRole('button', { name: 'Записать в дневник' }).click()
+  await page.waitForTimeout(1200)
+  const kcalAfter = await page.locator('.stat-value').nth(1).innerText()
+  check(kcalBefore !== kcalAfter, 'logging a pinned portion updates the day totals', `${kcalBefore} → ${kcalAfter}`)
+
+  // clean up: unpin so the next run starts with a single pinned recipe of its own
+  await page.goto(`${WEB_URL}/food`, { waitUntil: 'networkidle' })
+  await page.waitForTimeout(500)
+  await page.getByRole('button', { name: 'Открепить' }).first().click().catch(() => {})
+  await page.waitForTimeout(600)
+
+  // barcode API: invalid codes are answered, never sent to Open Food Facts
+  const barcode = await page.evaluate(async () => {
+    const token = window.localStorage.getItem('dsos.device_token')
+    const response = await fetch('/api/v1/foods/barcode/not-a-code', { headers: { Authorization: `Bearer ${token}` } })
+    return response.json()
+  })
+  check(barcode.lookup === 'invalid', 'barcode endpoint reports its lookup outcome', barcode.lookup)
 
   // 8. Reload keeps the session (token persisted).
   console.log('\n8. session persistence')
