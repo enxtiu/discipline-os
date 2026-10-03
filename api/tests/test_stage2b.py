@@ -566,3 +566,29 @@ async def test_search_stays_under_150_ms_with_a_large_library(authed: Any, owner
         body = (await authed.get("/api/v1/foods/search", params={"q": query})).json()
         assert body["items"][0]["name_ru"] == expected, (query, [item["name_ru"] for item in body["items"][:3]])
         assert body["took_ms"] < 150
+
+
+async def test_barcode_prefers_the_users_own_food(authed: Any) -> None:
+    code = "4600000000097"
+    async with SessionLocal() as session:
+        session.add(
+            Food(
+                is_global=True,
+                source=FoodSource.OFF,
+                source_id=code,
+                name_ru="Библиотечный йогурт",
+                barcode=code,
+                verified=True,
+                kcal_per_100g=Decimal("80"),
+                protein_per_100g=Decimal("3"),
+                fat_per_100g=Decimal("2"),
+                carbs_per_100g=Decimal("12"),
+                fiber_per_100g=Decimal("0"),
+            )
+        )
+        await session.commit()
+    own = await authed.post("/api/v1/foods", json={"name_ru": "Мой йогурт", "barcode": code, "kcal_per_100g": 70})
+    assert own.status_code == 201, own.text
+    for _ in range(3):
+        found = (await authed.get(f"/api/v1/foods/barcode/{code}")).json()
+        assert (found["lookup"], found["food"]["name_ru"]) == ("local", "Мой йогурт")

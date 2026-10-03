@@ -63,7 +63,13 @@ async def barcode_lookup(db: AsyncSession, user_id: uuid.UUID, code: str) -> Foo
     cleaned = code.strip()
     if not cleaned:
         return None
-    return await db.scalar(_visible_foods(user_id).where(Food.barcode == cleaned))
+    # the user's own food for this barcode wins over library rows, then curated ones
+    return await db.scalar(
+        _visible_foods(user_id)
+        .where(Food.barcode == cleaned)
+        .order_by(Food.user_id.is_(None), Food.verified.desc(), Food.created_at)
+        .limit(1)
+    )
 
 
 async def search_foods(

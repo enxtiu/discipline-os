@@ -21,6 +21,7 @@ import uuid
 from decimal import Decimal
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import Conflict, NotFound
@@ -138,8 +139,16 @@ async def create_recipe(db: AsyncSession, *, user_id: uuid.UUID, payload) -> Rec
         cooked_weight_g=_d(payload.cooked_weight_g) if payload.cooked_weight_g else Decimal("0"),
         is_pinned=payload.is_pinned,
     )
-    db.add(recipe)
-    await db.flush()
+    try:
+        async with db.begin_nested():  # a concurrent replay of the same id may win the insert
+            db.add(recipe)
+            await db.flush()
+    except IntegrityError:
+        existing = await db.scalar(select(Recipe).where(Recipe.id == payload.id))
+        if existing is None or existing.user_id != user_id:
+            raise Conflict("Recipe id already in use", code="conflict") from None
+        await db.refresh(existing, ["items"])
+        return existing
     await _replace_items(db, recipe, payload.items)
     _recompute(recipe, portion_g=payload.portion_size_g)
     await db.flush()

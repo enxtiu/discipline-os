@@ -204,6 +204,10 @@ async def resolve_barcode(db: AsyncSession, *, user_id: uuid.UUID, code: str, al
     if not allowed:
         raise RateLimited(retry_after, "Too many barcode lookups, please wait a moment")
 
+    # Never hold a transaction (and a pooled connection) open across a network
+    # call of up to OFF_TIMEOUT_SECONDS: end the read transaction first. Pending
+    # writes of this request (e.g. the device's last-seen touch) are committed.
+    await db.commit()
     product, reachable = await _fetch_product(cleaned)
     if not reachable:
         return BarcodeResult(barcode=cleaned, outcome="unavailable")
