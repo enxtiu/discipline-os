@@ -6,9 +6,11 @@ import uuid
 from datetime import date
 
 from fastapi import APIRouter, Depends, Query
+from fastapi.responses import FileResponse
 
 from app.api.deps import CurrentPrincipal, DbSession, require_device
 from app.api.v1.presenters import day_summary_out, meal_out, water_out
+from app.core.errors import NotFound
 from app.core.logging import get_logger
 from app.core.tz import today_in
 from app.schemas.common import OkOut
@@ -22,7 +24,7 @@ from app.schemas.food import (
     WaterIn,
     WaterLogOut,
 )
-from app.services import nutrition
+from app.services import media, nutrition
 
 log = get_logger(__name__)
 router = APIRouter(prefix="/nutrition", tags=["nutrition"], dependencies=[Depends(require_device)])
@@ -58,6 +60,20 @@ async def patch_meal(
         db, user=principal.user, timezone=_tz(principal), meal_id=meal_id, payload=payload
     )
     return meal_out(meal)
+
+
+@router.get(
+    "/meals/{meal_id}/photo",
+    summary="The meal's 400 px photo thumbnail (only if the user opted in)",
+    response_class=FileResponse,
+    responses={200: {"content": {"image/jpeg": {}}}, 404: {"description": "no thumbnail"}},
+)
+async def meal_photo(meal_id: uuid.UUID, principal: CurrentPrincipal, db: DbSession) -> FileResponse:
+    meal = await nutrition.get_meal_log(db, principal.user_id, meal_id)
+    path = media.path_of(meal.photo_thumb_path)
+    if path is None:
+        raise NotFound("This meal has no photo", code="photo_not_found")
+    return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=86400"})
 
 
 @router.delete("/meals/{meal_id}", response_model=OkOut, summary="Delete a logged meal (soft)")

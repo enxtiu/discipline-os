@@ -64,6 +64,9 @@ class ItemSnapshot:
     match_method: MatchMethod
     food_id: uuid.UUID | None
     recipe_id: uuid.UUID | None
+    confidence: float | None = None
+    ai_name_raw: str | None = None
+    is_edited: bool = False
 
 
 def _macros_for_100g(food_or_recipe_per100: tuple[float, float, float, float, float], grams: Decimal) -> tuple:
@@ -212,12 +215,17 @@ async def build_item_snapshots(db: AsyncSession, user_id: uuid.UUID, items: list
                     fat_g=fat,
                     carbs_g=carbs,
                     fiber_g=fiber,
-                    item_source=ItemSource.CUSTOM,
-                    match_method=MatchMethod.MANUAL,
+                    # an unmatched item the user accepted from the AI review keeps source=ai
+                    item_source=ItemSource.AI if getattr(item, "item_source", None) == "ai" else ItemSource.CUSTOM,
+                    match_method=MatchMethod.AI if getattr(item, "item_source", None) == "ai" else MatchMethod.MANUAL,
                     food_id=None,
                     recipe_id=None,
                 )
             )
+    for snap, item in zip(snapshots, items, strict=True):
+        snap.confidence = getattr(item, "confidence", None)
+        snap.ai_name_raw = getattr(item, "ai_name_raw", None)
+        snap.is_edited = bool(getattr(item, "is_edited", False))
     return snapshots
 
 
@@ -241,6 +249,9 @@ def _apply_snapshots(meal: MealLog, snapshots: list[ItemSnapshot], sort_from: in
                 match_method=snap.match_method,
                 food_id=snap.food_id,
                 recipe_id=snap.recipe_id,
+                confidence=snap.confidence,
+                ai_name_raw=snap.ai_name_raw,
+                is_edited=snap.is_edited,
                 sort_order=sort_from + offset,
             )
         )
@@ -282,6 +293,10 @@ async def create_meal_log(
     _apply_snapshots(meal, snapshots)
     db.add(meal)
     await db.flush()
+    if getattr(payload, "ai_job_id", None) is not None:
+        from app.services import ai_meal  # stage 3; imported lazily to keep stage-2 imports flat
+
+        await ai_meal.attach_job_to_meal(db, user=user, meal=meal, job_id=payload.ai_job_id)
 
     for snap in snapshots:
         if snap.food_id:
@@ -331,6 +346,11 @@ async def update_meal_log(
 async def delete_meal_log(db: AsyncSession, user_id: uuid.UUID, meal_id: uuid.UUID) -> None:
     meal = await get_meal_log(db, user_id, meal_id)
     meal.is_deleted = True
+    if meal.photo_thumb_path:  # a deleted meal keeps no picture
+        from app.services import media
+
+        media.delete(meal.photo_thumb_path)
+        meal.photo_thumb_path = None
     await db.flush()
 
 

@@ -131,7 +131,9 @@ def recipe_out(recipe: Recipe) -> RecipeOut:
 
 
 def meal_out(meal: MealLog) -> MealLogOut:
-    return MealLogOut.model_validate(meal)
+    out = MealLogOut.model_validate(meal)
+    out.has_photo = bool(meal.photo_thumb_path)
+    return out
 
 
 def water_out(row: WaterLog) -> WaterLogOut:

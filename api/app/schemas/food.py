@@ -255,6 +255,13 @@ class MealItemIn(ApiModel):
     carbs_per_100g: float | None = Field(default=None, ge=0, le=100)
     fiber_per_100g: float | None = Field(default=None, ge=0, le=100)
     match_method: MatchMethodLiteral = "manual"
+    # stage 3 (AI review): provenance of an item the user confirmed
+    item_source: Literal["ai", "custom"] | None = Field(
+        default=None, description="unmatched items only: 'ai' = macros estimated by the model"
+    )
+    confidence: float | None = Field(default=None, ge=0, le=1, description="model confidence 0..1")
+    ai_name_raw: str | None = Field(default=None, max_length=255, description="what the model called it")
+    is_edited: bool = Field(default=False, description="the user changed grams or swapped the product")
 
     @field_validator("grams")
     @classmethod
@@ -280,6 +287,9 @@ class MealItemOut(ORMModel):
     item_source: ItemSourceLiteral
     match_method: MatchMethodLiteral
     match_score: float | None = None
+    confidence: float | None = None
+    ai_name_raw: str | None = None
+    is_edited: bool = False
     sort_order: int
 
 
@@ -291,6 +301,9 @@ class MealLogIn(ApiModel):
     title: str | None = Field(default=None, max_length=200)
     notes: str | None = Field(default=None, max_length=4000)
     items: list[MealItemIn] = Field(min_length=1, max_length=60)
+    # the AI analysis this meal was reviewed from (photo/text); links the audit
+    # record and decides what happens to the photo thumbnail
+    ai_job_id: uuid.UUID | None = None
 
 
 class MealLogPatchIn(ApiModel):
@@ -316,6 +329,8 @@ class MealLogOut(ORMModel):
     carbs_g: float
     fiber_g: float
     item_count: int
+    ai_job_id: uuid.UUID | None = None
+    has_photo: bool = False
     items: list[MealItemOut] = Field(default_factory=list)
 
 
