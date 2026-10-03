@@ -31,6 +31,7 @@ os.environ["LOG_JSON"] = "false"
 os.environ["LOG_LEVEL"] = "WARNING"
 os.environ["AUTH_RATE_LIMIT_PER_MINUTE"] = "10000"  # limits are tested explicitly
 os.environ["AI_PROVIDER"] = "fake"
+os.environ["OFF_LIVE_LOOKUP"] = "false"  # never reach the internet; OFF tests mock the transport
 
 import httpx  # noqa: E402
 import sqlalchemy as sa  # noqa: E402
