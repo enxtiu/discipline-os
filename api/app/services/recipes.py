@@ -24,12 +24,15 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import Conflict, NotFound
+from app.core.errors import Conflict, NotFound, Unprocessable
 from app.core.logging import get_logger
 from app.models import Food, Recipe, RecipeItem
 from app.services.nutrition import _d
 
 log = get_logger(__name__)
+
+# the same ceiling RecipeIn.servings has; also keeps NUMERIC(6,2) from overflowing
+MAX_SERVINGS = Decimal("1000")
 
 
 async def get_recipe(db: AsyncSession, user_id: uuid.UUID, recipe_id: uuid.UUID) -> Recipe:
@@ -68,8 +71,13 @@ def _recompute(recipe: Recipe, *, portion_g: float | None = None) -> None:
     recipe.fiber_per_100g = _d(recipe.total_fiber_g * factor)
     if portion_g:
         portion = _d(portion_g)
+        servings = (base / portion).quantize(Decimal("0.01"))
+        if servings > MAX_SERVINGS:
+            raise Unprocessable(
+                "Portion is too small for this dish", code="portion_too_small", details={"max_servings": 1000}
+            )
         recipe.portion_size_g = portion
-        recipe.servings = max(Decimal("0.01"), (base / portion).quantize(Decimal("0.01")))
+        recipe.servings = max(Decimal("0.01"), servings)
     else:
         recipe.portion_size_g = _d(base / recipe.servings) if recipe.servings else _d(base)
 
@@ -123,10 +131,8 @@ async def _replace_items(db: AsyncSession, recipe: Recipe, items_in: list) -> No
 async def create_recipe(db: AsyncSession, *, user_id: uuid.UUID, payload) -> Recipe:
     if payload.id:
         # idempotent replay (offline queue / double tap): same id → same recipe
-        existing = await db.scalar(select(Recipe).where(Recipe.id == payload.id))
+        existing = await db.scalar(select(Recipe).where(Recipe.id == payload.id, Recipe.user_id == user_id))
         if existing is not None:
-            if existing.user_id != user_id:
-                raise Conflict("Recipe id already in use", code="conflict")
             await db.refresh(existing, ["items"])
             return existing
     recipe = Recipe(
@@ -144,8 +150,9 @@ async def create_recipe(db: AsyncSession, *, user_id: uuid.UUID, payload) -> Rec
             db.add(recipe)
             await db.flush()
     except IntegrityError:
-        existing = await db.scalar(select(Recipe).where(Recipe.id == payload.id))
-        if existing is None or existing.user_id != user_id:
+        # either a concurrent replay of this user's create, or another user's id
+        existing = await db.scalar(select(Recipe).where(Recipe.id == payload.id, Recipe.user_id == user_id))
+        if existing is None:
             raise Conflict("Recipe id already in use", code="conflict") from None
         await db.refresh(existing, ["items"])
         return existing

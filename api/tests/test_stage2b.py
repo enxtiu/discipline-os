@@ -592,3 +592,14 @@ async def test_barcode_prefers_the_users_own_food(authed: Any) -> None:
     for _ in range(3):
         found = (await authed.get(f"/api/v1/foods/barcode/{code}")).json()
         assert (found["lookup"], found["food"]["name_ru"]) == ("local", "Мой йогурт")
+
+
+async def test_recipe_portion_bounds(authed: Any) -> None:
+    flour = await _add_food("Мука тест", 364, carbs=76)
+    base = {"name": "Тесто", "cooked_weight_g": 5000, "items": [{"food_id": str(flour.id), "grams": 1000}]}
+    tiny = await authed.post("/api/v1/recipes", json=base | {"portion_size_g": 1})
+    assert tiny.status_code == 422 and tiny.json()["error"]["code"] == "portion_too_small"
+    zero = await authed.post("/api/v1/recipes", json=base | {"portion_size_g": 0.001})
+    assert zero.status_code == 422 and zero.json()["error"]["code"] == "validation_error"
+    fine = await authed.post("/api/v1/recipes", json=base | {"portion_size_g": 50})
+    assert fine.status_code == 201 and fine.json()["servings"] == 100.0

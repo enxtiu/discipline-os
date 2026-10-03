@@ -8,10 +8,12 @@ Ranking contract (stage 2 spec)
 2. The user's own world wins: custom foods, verified rows, favorites and
    recents are boosted above anonymous import rows.
 3. Popular global rows (``use_count``) break the remaining ties.
-4. Every query must stay below 150 ms (``took_ms``): one statement whose
-   candidate filter is a BitmapOr over GIN indexes only — the scoring
-   expressions run on candidates, never on the whole library (stage 2b;
-   benchmarked by ``tests/test_stage2b.py`` and ``app.cli bench-search``).
+4. Every query must stay below 150 ms (``took_ms``): candidates come from a
+   UNION of single-index branches (GIN on tsvector / pg_trgm), each capped at
+   CANDIDATE_CAP library rows, and the full score runs on that bounded set only,
+   never on the whole library. A branch still ranks every row its index
+   matches before the cap, so the budget is verified by measurement, not
+   assumed (stage 2b: ``tests/test_stage2b.py``, ``app.cli bench-search``).
 """
 
 from __future__ import annotations
@@ -134,12 +136,12 @@ async def search_foods(
         + func.least(Food.use_count, 200) / 200.0 * 0.25
     )
 
-    # Candidates: one capped branch per matching strategy, UNIONed. Each branch
-    # is a single GIN index probe (tsvector @@, pg_trgm % / <% / LIKE) whose
-    # recheck only evaluates its own predicate, and keeps its best CANDIDATE_CAP
-    # rows by its own cheap measure. Only that bounded set is scored below, so
-    # latency no longer grows with how many rows share a common word
-    # ("молоко" × 3 000 brands). The thresholds make `%` / `<%` mean exactly
+    # Candidates: one capped branch per matching strategy, UNIONed. Each library
+    # branch is a single GIN index probe (tsvector @@, pg_trgm % / <% / LIKE)
+    # whose recheck only evaluates its own predicate, and keeps its best
+    # CANDIDATE_CAP rows by its own measure. Only that bounded set gets the full
+    # score below, so a common word ("молоко" × 3 000 brands) no longer means
+    # scoring thousands of rows. The thresholds make `%` / `<%` mean exactly
     # "similarity >= MIN_SIMILARITY" — the cut the ranking always used.
     await _set_trgm_thresholds(db)
     visible = (
@@ -157,7 +159,7 @@ async def search_foods(
         name_like,
         alias_like,
     )
-    branches = [
+    library_branches = [
         select(Food.id)
         .where(Food.search_vector_ru.op("@@")(q_ru), *visible)
         .order_by(func.ts_rank(Food.search_vector_ru, q_ru).desc(), *tie_break),
@@ -176,14 +178,19 @@ async def search_foods(
         # prefix / substring typing ("гре" → гречка); shortest names are closest
         select(Food.id).where(name_like, *visible).order_by(func.length(func.coalesce(Food.name_ru, Food.name_en))),
         select(Food.id).where(alias_like, *visible).order_by(func.length(Food.aliases_text)),
-        # the personal world is never cut by a cap: own foods and favorites are
-        # reached through their own small indexes, then filtered by any match
+    ]
+    # The personal world is never cut by a cap: own foods (ix_foods_user_id) and
+    # favorites (food_favorites.user_id) are small per user, filtered by any match.
+    personal_branches = [
         select(Food.id).where(Food.user_id == user_id, Food.is_archived.is_(False), any_match),
         select(Food.id)
         .join(FoodFavorite, FoodFavorite.food_id == Food.id)
         .where(FoodFavorite.user_id == user_id, Food.is_archived.is_(False), any_match),
     ]
-    candidates = union(*(select(branch.limit(CANDIDATE_CAP).subquery().c.id) for branch in branches)).subquery()
+    candidates = union(
+        *(select(branch.limit(CANDIDATE_CAP).subquery().c.id) for branch in library_branches),
+        *personal_branches,
+    ).subquery()
     stmt = (
         select(Food)
         .where(Food.id.in_(select(candidates.c.id)))

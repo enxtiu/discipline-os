@@ -83,7 +83,13 @@ export function RecipeSheet({ open, onClose }: { open: boolean; onClose: () => v
     setPinned(false)
   }
 
-  const valid = name.trim() && items.length > 0 && items.every((item) => item.grams > 0)
+  const valid =
+    name.trim() &&
+    items.length > 0 &&
+    items.every((item) => item.grams > 0) &&
+    // in "portion weight" mode the weight must be typed: the server would otherwise
+    // treat the whole dish as one portion while the preview shows something else
+    (split === 'servings' ? servings > 0 : portionGrams >= 1)
 
   const save = () => {
     if (!valid) return

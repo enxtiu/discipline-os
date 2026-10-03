@@ -203,7 +203,7 @@ class RecipeIn(ApiModel):
     servings: float = Field(default=1, gt=0, le=1000)
     cooked_weight_g: float | None = Field(default=None, ge=0, le=100_000)
     # alternative to servings: one portion weighs X g (servings = cooked / X)
-    portion_size_g: float | None = Field(default=None, gt=0, le=100_000)
+    portion_size_g: float | None = Field(default=None, ge=1, le=100_000)
     items: list[RecipeItemIn] = Field(min_length=1, max_length=80)
     is_pinned: bool = False
 
@@ -214,7 +214,7 @@ class RecipePatchIn(ApiModel):
     notes_md: str | None = None
     servings: float | None = Field(default=None, gt=0, le=1000)
     cooked_weight_g: float | None = Field(default=None, ge=0, le=100_000)
-    portion_size_g: float | None = Field(default=None, gt=0, le=100_000)
+    portion_size_g: float | None = Field(default=None, ge=1, le=100_000)
     items: list[RecipeItemIn] | None = Field(default=None, min_length=1, max_length=80)
     is_pinned: bool | None = None
 

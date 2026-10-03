@@ -125,10 +125,11 @@ def product_to_raw(product: dict[str, Any]) -> RawFood | None:
 
 
 def iterate_off(path: str | Path) -> Iterator[RawFood]:
-    """Usable products from a JSONL file; rejected lines are simply not yielded.
+    """Usable products from a JSONL file, one row per line.
 
-    Rejections still count as *seen* in the import stats: the generator yields
-    an invalid placeholder for them so ``run_import`` reports them as skipped.
+    A rejected line (bad JSON, failed quality bar) yields an invalid placeholder
+    instead of a product, so ``run_import`` counts it as seen *and* skipped and
+    the import stats account for every line of the dump.
     """
     with Path(path).open(encoding="utf-8") as handle:
         for line in handle:

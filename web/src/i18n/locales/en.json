@@ -384,6 +384,7 @@
     "network": "Cannot reach the server. Check your connection.",
     "offline_ai": "AI features need a connection",
     "global_food_readonly": "Library foods can only be confirmed",
-    "verify_owner_only": "Only the owner can confirm library foods"
+    "verify_owner_only": "Only the owner can confirm library foods",
+    "portion_too_small": "The portion is too small for this dish"
   }
 }
