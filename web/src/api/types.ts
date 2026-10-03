@@ -119,6 +119,9 @@ export type DaySummary = Schemas['DaySummaryOut']
 export type WaterLog = Schemas['WaterLogOut']
 export type Macros = Schemas['MacrosOut']
 export type FoodBarcode = Schemas['FoodBarcodeOut']
+export type AiAnalysis = Schemas['AiAnalysisOut']
+export type AiItem = Schemas['AiItemOut']
+export type AiUsage = Schemas['AiUsageOut']
 export type BarcodeLookup = FoodBarcode['lookup']
 
 export type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack' | 'other'
@@ -138,16 +141,24 @@ export interface MealItemIn {
   fat_per_100g?: number
   carbs_per_100g?: number
   fiber_per_100g?: number
+  name_en?: string
+  /** stage 3: an unmatched item accepted from the AI review keeps source=ai */
+  item_source?: 'ai' | 'custom'
+  confidence?: number
+  ai_name_raw?: string
+  is_edited?: boolean
 }
 
 export interface MealLogIn {
   id?: string
   logged_at?: string
   meal_type?: MealType
-  source?: 'search' | 'favorite' | 'recent' | 'recipe' | 'copy' | 'manual' | 'barcode'
+  source?: 'search' | 'favorite' | 'recent' | 'recipe' | 'copy' | 'manual' | 'barcode' | 'photo' | 'text'
   title?: string
   notes?: string
   items: MealItemIn[]
+  /** the AI analysis this meal was reviewed from */
+  ai_job_id?: string
 }
 
 export interface RecipeItemIn {

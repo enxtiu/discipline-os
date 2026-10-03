@@ -15,6 +15,7 @@ import { QuickAddSheet } from './QuickAddSheet'
 import { SyncStatus } from './SyncStatus'
 import { useAuth } from '@/features/auth/AuthProvider'
 import { IconButton } from '@/components/ui'
+import { AiCaptureProvider } from '@/features/ai/AiCapture'
 
 export function AppShell() {
   const { t } = useTranslation()
@@ -26,37 +27,39 @@ export function AppShell() {
   const name = session?.user.display_name ?? ''
 
   return (
-    <div className="flex min-h-[100dvh] flex-col">
-      <header className="sticky top-0 z-30 border-b border-[rgb(var(--border))]/70 bg-[rgb(var(--bg))]/85 backdrop-blur-xl">
-        <div className="safe-top mx-auto flex max-w-lg items-center gap-3 px-4 pb-2.5">
-          <div className="min-w-0 flex-1">
-            <button
-              type="button"
-              onClick={() => navigate('/today')}
-              className="block max-w-full truncate text-left"
-            >
-              <span className="block truncate text-[13px] muted">{t(greeting)}</span>
-              <span className="block truncate text-[15px] font-semibold">{name}</span>
-            </button>
+    <AiCaptureProvider>
+      <div className="flex min-h-[100dvh] flex-col">
+        <header className="sticky top-0 z-30 border-b border-[rgb(var(--border))]/70 bg-[rgb(var(--bg))]/85 backdrop-blur-xl">
+          <div className="safe-top mx-auto flex max-w-lg items-center gap-3 px-4 pb-2.5">
+            <div className="min-w-0 flex-1">
+              <button
+                type="button"
+                onClick={() => navigate('/today')}
+                className="block max-w-full truncate text-left"
+              >
+                <span className="block truncate text-[13px] muted">{t(greeting)}</span>
+                <span className="block truncate text-[15px] font-semibold">{name}</span>
+              </button>
+            </div>
+            <SyncStatus />
+            <IconButton
+              label={t('nav.settings')}
+              icon={<IconSettings size={20} />}
+              onClick={() => navigate('/settings')}
+              variant="secondary"
+              className="h-9 w-9 min-h-9 rounded-xl"
+            />
           </div>
-          <SyncStatus />
-          <IconButton
-            label={t('nav.settings')}
-            icon={<IconSettings size={20} />}
-            onClick={() => navigate('/settings')}
-            variant="secondary"
-            className="h-9 w-9 min-h-9 rounded-xl"
-          />
-        </div>
-      </header>
+        </header>
 
-      <main className="mx-auto w-full max-w-lg flex-1 px-4 pt-4 pb-tabbar">
-        <Outlet />
-      </main>
+        <main className="mx-auto w-full max-w-lg flex-1 px-4 pt-4 pb-tabbar">
+          <Outlet />
+        </main>
 
-      <BottomTabBar onQuickAdd={() => setQuickAddOpen(true)} />
-      <QuickAddSheet open={quickAddOpen} onClose={() => setQuickAddOpen(false)} />
-    </div>
+        <BottomTabBar onQuickAdd={() => setQuickAddOpen(true)} />
+        <QuickAddSheet open={quickAddOpen} onClose={() => setQuickAddOpen(false)} />
+      </div>
+    </AiCaptureProvider>
   )
 }
 

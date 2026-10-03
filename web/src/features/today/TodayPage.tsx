@@ -31,6 +31,8 @@ import { errorMessage } from '@/lib/errors'
 import { StageCard } from '@/features/shared/StageCard'
 import { useAddWater, useDay, useDeleteMeal, useRecipes } from '@/features/food/useNutrition'
 import { LogSheet } from '@/features/food/LogSheet'
+import { PhotoTrigger, useAiCapture } from '@/features/ai/AiCapture'
+import { MealPhoto } from '@/features/ai/MealPhoto'
 
 const MEAL_ORDER: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack', 'other']
 
@@ -43,6 +45,7 @@ export function TodayPage() {
   const dayQuery = useDay()
   const addWater = useAddWater()
   const deleteMeal = useDeleteMeal()
+  const capture = useAiCapture()
   const recipes = useRecipes()
   const [logRecipe, setLogRecipe] = useState<Recipe | null>(null)
   const pinned = (recipes.data?.items ?? []).filter((recipe) => recipe.is_pinned)
@@ -225,6 +228,7 @@ export function TodayPage() {
               {(mealsByType.get(type) ?? []).map((meal) => (
                 <div key={meal.id} className="flex items-center gap-3">
                   <span className="tnum w-11 shrink-0 text-xs muted">{time(meal.logged_at, session?.settings.timezone)}</span>
+                  {meal.has_photo && <MealPhoto mealId={meal.id} />}
                   <span className="min-w-0 flex-1 truncate text-sm">{(meal.items ?? []).map((item) => item.name).join(', ')}</span>
                   <span className="tnum shrink-0 text-sm">{number(meal.kcal)}</span>
                   <button
@@ -247,10 +251,11 @@ export function TodayPage() {
             description={t('today.meals_empty_hint')}
             action={
               <div className="flex gap-2">
-                <Button size="sm" icon={<IconCamera size={16} />} disabled>
+                <PhotoTrigger className="btn-primary btn-sm cursor-pointer">
+                  <IconCamera size={16} />
                   {t('food.photo')}
-                </Button>
-                <Button size="sm" variant="secondary" icon={<IconText size={16} />} disabled>
+                </PhotoTrigger>
+                <Button size="sm" variant="secondary" icon={<IconText size={16} />} onClick={capture.openText}>
                   {t('food.text')}
                 </Button>
                 <Button size="sm" variant="secondary" onClick={() => navigate('/food?action=search')}>

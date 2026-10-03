@@ -12,7 +12,12 @@ export function errorMessage(error: unknown): string {
     if (translated !== key) return translated
     return error.message || i18n.t('app.error_generic')
   }
-  if (error instanceof Error) return error.message || i18n.t('app.error_generic')
+  if (error instanceof Error) {
+    // client-side failures carry an errors.* code as their message (e.g. image_decode_failed)
+    const key = `errors.${error.message}`
+    if (i18n.exists(key)) return i18n.t(key)
+    return error.message || i18n.t('app.error_generic')
+  }
   return i18n.t('app.error_generic')
 }
 

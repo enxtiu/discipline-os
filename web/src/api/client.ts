@@ -76,7 +76,9 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   }
   const token = getToken()
   if (token) finalHeaders.Authorization = `Bearer ${token}`
-  if (body !== undefined) finalHeaders['Content-Type'] = 'application/json'
+  // FormData (photo upload) sets its own multipart boundary header
+  const isForm = typeof FormData !== 'undefined' && body instanceof FormData
+  if (body !== undefined && !isForm) finalHeaders['Content-Type'] = 'application/json'
   if (clientUuid) finalHeaders['X-Client-UUID'] = clientUuid
 
   let response: Response
@@ -84,7 +86,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     response = await fetch(buildUrl(path, query), {
       method,
       headers: finalHeaders,
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: body === undefined ? undefined : isForm ? (body as FormData) : JSON.stringify(body),
       signal,
       credentials: 'omit', // token auth, no cookies
     })
@@ -202,6 +204,23 @@ export const endpoints = {
   updateRecipe: (id: string, payload: import('./types').RecipePatch) =>
     api.patch<import('./types').Recipe>(`/v1/recipes/${id}`, payload),
   deleteRecipe: (id: string) => api.delete<{ ok: boolean; id: string }>(`/v1/recipes/${id}`),
+
+  // ---- AI logging (stage 3) — suggestions only, saving is logMeal ---------
+  analyzeMealPhoto: (form: FormData) =>
+    api.post<import('./types').AiAnalysis>('/v1/ai/analyze-meal', form),
+  parseFoodText: (payload: { text: string; meal_type?: import('./types').MealType }) =>
+    api.post<import('./types').AiAnalysis>('/v1/ai/parse-text', payload),
+  aiUsage: () => api.get<import('./types').AiUsage>('/v1/ai/usage'),
+  /** The opted-in 400 px meal thumbnail as an object URL (auth header, so no <img src>). */
+  mealPhotoUrl: async (mealId: string): Promise<string> => {
+    const token = getToken()
+    const response = await fetch(apiPath(`/v1/nutrition/meals/${mealId}/photo`), {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      credentials: 'omit',
+    })
+    if (!response.ok) throw new ApiError(response.status, { code: 'photo_not_found', message: 'No photo' })
+    return URL.createObjectURL(await response.blob())
+  },
 
   tokens: () => api.get<import('./types').ApiTokenList>('/v1/tokens'),
   createToken: (payload: import('./types').ApiTokenCreate) =>

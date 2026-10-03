@@ -24,10 +24,13 @@ export function LogSheet({
   target,
   onClose,
   defaultMealType,
+  source,
 }: {
   target: LogTarget | null
   onClose: () => void
   defaultMealType?: MealType
+  /** how the food was found (stage 3: a scanned barcode) */
+  source?: 'barcode'
 }) {
   const { t, i18n } = useTranslation()
   const toast = useToast()
@@ -68,13 +71,13 @@ export function LogSheet({
     if (!target || !grams) return
     const item =
       target.kind === 'food'
-        ? { food_id: target.food.id, grams, match_method: 'manual' as const }
+        ? { food_id: target.food.id, grams, match_method: source === 'barcode' ? ('barcode' as const) : ('manual' as const) }
         : { recipe_id: target.recipe.id, grams, match_method: 'manual' as const }
     logMeal.mutate(
       {
         id: crypto.randomUUID(),
         meal_type: mealType,
-        source: target.kind === 'food' ? 'search' : 'recipe',
+        source: target.kind === 'food' ? (source ?? 'search') : 'recipe',
         items: [item],
       },
       {

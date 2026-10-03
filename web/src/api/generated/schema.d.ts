@@ -504,6 +504,23 @@ export interface paths {
         patch: operations["patch_meal_api_v1_nutrition_meals__meal_id__patch"];
         trace?: never;
     };
+    "/api/v1/nutrition/meals/{meal_id}/photo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The meal's 400 px photo thumbnail (only if the user opted in) */
+        get: operations["meal_photo_api_v1_nutrition_meals__meal_id__photo_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/nutrition/meals/copy": {
         parameters: {
             query?: never;
@@ -592,10 +609,188 @@ export interface paths {
         patch: operations["patch_api_v1_recipes__recipe_id__patch"];
         trace?: never;
     };
+    "/api/v1/ai/analyze-meal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Recognise foods on a meal photo (suggestions only — never saved) */
+        post: operations["analyze_meal_api_v1_ai_analyze_meal_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/parse-text": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Turn a free-text meal description into suggestions (never saved) */
+        post: operations["parse_text_api_v1_ai_parse_text_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** AI availability and today's soft budget */
+        get: operations["usage_api_v1_ai_usage_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AiAnalysisOut */
+        AiAnalysisOut: {
+            /**
+             * Job Id
+             * Format: uuid
+             */
+            job_id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "photo" | "text";
+            /** Provider */
+            provider: string;
+            /** Model */
+            model: string;
+            /** Prompt Version */
+            prompt_version: string;
+            /** Took Ms */
+            took_ms: number;
+            /** Items */
+            items: components["schemas"]["AiItemOut"][];
+            /** Notes */
+            notes?: string | null;
+            /**
+             * Thumbnail Kept
+             * @description a 400 px thumbnail waits for the save (setting 'keep thumbnail')
+             */
+            thumbnail_kept: boolean;
+            usage: components["schemas"]["AiUsageOut"];
+        };
+        /** AiItemOut */
+        AiItemOut: {
+            /**
+             * Key
+             * @description stable id of this suggestion inside the analysis
+             */
+            key: string;
+            /** Name Ru */
+            name_ru: string;
+            /** Name En */
+            name_en: string;
+            /**
+             * Estimated Grams
+             * @description an estimate — the user adjusts it on the review screen
+             */
+            estimated_grams: number;
+            /** Confidence */
+            confidence: number;
+            /**
+             * Confidence Level
+             * @enum {string}
+             */
+            confidence_level: "high" | "medium" | "low";
+            /** Kcal */
+            kcal: number;
+            /** Protein */
+            protein: number;
+            /** Fat */
+            fat: number;
+            /** Carbs */
+            carbs: number;
+            /** Fiber */
+            fiber: number;
+            ai_per_100g: components["schemas"]["AiPer100Out"];
+            /**
+             * Kcal Adjusted
+             * @description energy was recomputed from the macros (model disagreed with itself)
+             */
+            kcal_adjusted: boolean;
+            match?: components["schemas"]["AiMatchOut"] | null;
+            /**
+             * Alternatives
+             * @description other local candidates to swap to
+             */
+            alternatives?: components["schemas"]["FoodOut"][];
+        };
+        /**
+         * AiMatchOut
+         * @description The local food the item was resolved to (custom and verified rows first).
+         */
+        AiMatchOut: {
+            food: components["schemas"]["FoodOut"];
+            /**
+             * Match Method
+             * @enum {string}
+             */
+            match_method: "exact" | "fts" | "trgm" | "barcode" | "manual" | "ai" | "none";
+            /** Score */
+            score: number;
+        };
+        /** AiPer100Out */
+        AiPer100Out: {
+            /** Kcal Per 100G */
+            kcal_per_100g: number;
+            /** Protein Per 100G */
+            protein_per_100g: number;
+            /** Fat Per 100G */
+            fat_per_100g: number;
+            /** Carbs Per 100G */
+            carbs_per_100g: number;
+            /** Fiber Per 100G */
+            fiber_per_100g: number;
+        };
+        /** AiTextIn */
+        AiTextIn: {
+            /**
+             * Text
+             * @description free text in Russian or English (dictation OK)
+             */
+            text: string;
+            /** Meal Type */
+            meal_type?: ("breakfast" | "lunch" | "dinner" | "snack" | "other") | null;
+        };
+        /** AiUsageOut */
+        AiUsageOut: {
+            /** Enabled */
+            enabled: boolean;
+            /** Provider */
+            provider?: string | null;
+            /** Calls Today */
+            calls_today: number;
+            /** Daily Limit */
+            daily_limit: number;
+            /** Remaining */
+            remaining?: number | null;
+        };
         /** ApiTokenCreateIn */
         ApiTokenCreateIn: {
             /** Name */
@@ -726,6 +921,21 @@ export interface components {
             lean_body_mass_kg?: number | null;
             /** Bmi */
             bmi?: number | null;
+        };
+        /** Body_analyze_meal_api_v1_ai_analyze_meal_post */
+        Body_analyze_meal_api_v1_ai_analyze_meal_post: {
+            /**
+             * Photo
+             * @description JPEG, ~1280 px on the long side (the app downscales)
+             */
+            photo: string;
+            /**
+             * Thumbnail
+             * @description optional 400 px JPEG, kept only with 'keep photo thumbnail' on
+             */
+            thumbnail?: string | null;
+            /** Meal Type */
+            meal_type?: ("breakfast" | "lunch" | "dinner" | "snack" | "other") | null;
         };
         /** CopiedMealOut */
         CopiedMealOut: {
@@ -1226,6 +1436,27 @@ export interface components {
              * @enum {string}
              */
             match_method: "exact" | "fts" | "trgm" | "barcode" | "manual" | "ai" | "none";
+            /**
+             * Item Source
+             * @description unmatched items only: 'ai' = macros estimated by the model
+             */
+            item_source?: ("ai" | "custom") | null;
+            /**
+             * Confidence
+             * @description model confidence 0..1
+             */
+            confidence?: number | null;
+            /**
+             * Ai Name Raw
+             * @description what the model called it
+             */
+            ai_name_raw?: string | null;
+            /**
+             * Is Edited
+             * @description the user changed grams or swapped the product
+             * @default false
+             */
+            is_edited: boolean;
         };
         /** MealItemOut */
         MealItemOut: {
@@ -1272,6 +1503,15 @@ export interface components {
             match_method: "exact" | "fts" | "trgm" | "barcode" | "manual" | "ai" | "none";
             /** Match Score */
             match_score?: number | null;
+            /** Confidence */
+            confidence?: number | null;
+            /** Ai Name Raw */
+            ai_name_raw?: string | null;
+            /**
+             * Is Edited
+             * @default false
+             */
+            is_edited: boolean;
             /** Sort Order */
             sort_order: number;
         };
@@ -1305,6 +1545,8 @@ export interface components {
             notes?: string | null;
             /** Items */
             items: components["schemas"]["MealItemIn"][];
+            /** Ai Job Id */
+            ai_job_id?: string | null;
         };
         /** MealLogOut */
         MealLogOut: {
@@ -1354,6 +1596,13 @@ export interface components {
             fiber_g: number;
             /** Item Count */
             item_count: number;
+            /** Ai Job Id */
+            ai_job_id?: string | null;
+            /**
+             * Has Photo
+             * @default false
+             */
+            has_photo: boolean;
             /** Items */
             items?: components["schemas"]["MealItemOut"][];
         };
@@ -3170,6 +3419,44 @@ export interface operations {
             };
         };
     };
+    meal_photo_api_v1_nutrition_meals__meal_id__photo_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                meal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": unknown;
+                };
+            };
+            /** @description no thumbnail */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     copy_meals_api_v1_nutrition_meals_copy_post: {
         parameters: {
             query?: never;
@@ -3413,6 +3700,92 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    analyze_meal_api_v1_ai_analyze_meal_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_analyze_meal_api_v1_ai_analyze_meal_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiAnalysisOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    parse_text_api_v1_ai_parse_text_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AiTextIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiAnalysisOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    usage_api_v1_ai_usage_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiUsageOut"];
                 };
             };
         };

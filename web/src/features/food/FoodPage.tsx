@@ -10,8 +10,11 @@ import clsx from 'clsx'
 
 import { Button, Card, EmptyState, Input, Skeleton } from '@/components/ui'
 import {
+  IconCamera,
   IconClock,
   IconPin,
+  IconScan,
+  IconText,
   IconPlus,
   IconSearch,
   IconStar,
@@ -37,6 +40,7 @@ import {
   useUpdateRecipe,
 } from './useNutrition'
 import { VerifyChip } from './VerifyFood'
+import { PhotoTrigger, useAiCapture } from '@/features/ai/AiCapture'
 
 const MEAL_ORDER: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack', 'other']
 
@@ -61,6 +65,7 @@ export function FoodPage() {
   const addWater = useAddWater()
   const toggleFavorite = useToggleFavorite()
   const updateRecipe = useUpdateRecipe()
+  const capture = useAiCapture()
   const search = useFoodSearch(debounced, debounced.trim().length >= 2)
 
   // one-hand typing: search settles 250 ms after the last key
@@ -85,6 +90,11 @@ export function FoodPage() {
     }
     if (action === 'recipe') setRecipeSheet(true)
     if (action === 'custom') setCustomSheet(true)
+    // stage 3 capture flows (the shell owns them; a photo deep link can only try
+    // a programmatic click — the in-app buttons are labels that always work)
+    if (action === 'photo') capture.openPhoto()
+    if (action === 'text') capture.openText()
+    if (action === 'barcode') capture.openBarcode()
     setParams({}, { replace: true })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params])
@@ -103,6 +113,21 @@ export function FoodPage() {
 
   return (
     <div className="space-y-5">
+      <div className="grid grid-cols-3 gap-2" aria-label={t('ai.capture_row')}>
+        <PhotoTrigger className="btn-secondary btn-sm min-h-tap cursor-pointer flex-col gap-1 py-2 text-xs">
+          <IconCamera size={20} className="text-[rgb(var(--accent))]" />
+          {t('food.photo')}
+        </PhotoTrigger>
+        <button type="button" onClick={capture.openText} className="btn-secondary btn-sm min-h-tap flex-col gap-1 py-2 text-xs">
+          <IconText size={20} className="text-[rgb(var(--accent))]" />
+          {t('food.text')}
+        </button>
+        <button type="button" onClick={capture.openBarcode} className="btn-secondary btn-sm min-h-tap flex-col gap-1 py-2 text-xs">
+          <IconScan size={20} className="text-[rgb(var(--accent))]" />
+          {t('food.barcode')}
+        </button>
+      </div>
+
       <div className="relative">
         <IconSearch size={18} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 muted" />
         <Input

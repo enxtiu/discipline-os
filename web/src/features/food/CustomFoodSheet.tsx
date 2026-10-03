@@ -10,9 +10,21 @@ import { Button, Field, Input, Sheet } from '@/components/ui'
 import { useToast } from '@/components/ui/Toast'
 import { number } from '@/lib/format'
 import { errorMessage } from '@/lib/errors'
+import type { Food } from '@/api/types'
 import { useCreateFood } from './useNutrition'
 
-export function CustomFoodSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function CustomFoodSheet({
+  open,
+  onClose,
+  barcode,
+  onCreated,
+}: {
+  open: boolean
+  onClose: () => void
+  /** stage 3: a scanned code nobody knew — the new food carries it */
+  barcode?: string
+  onCreated?: (food: Food) => void
+}) {
   const { t } = useTranslation()
   const toast = useToast()
   const createFood = useCreateFood()
@@ -51,12 +63,14 @@ export function CustomFoodSheet({ open, onClose }: { open: boolean; onClose: () 
         carbs_per_100g: Number(carbs) || 0,
         fiber_per_100g: Number(fiber) || 0,
         default_serving_g: Number(serving) || undefined,
+        barcode: barcode || undefined,
       },
       {
         onSuccess: (food) => {
           toast.success(t('food.custom_saved', { name: food.name_ru ?? food.name_en ?? '' }))
           reset()
           onClose()
+          onCreated?.(food)
         },
         onError: (error) => toast.error(errorMessage(error)),
       },
@@ -66,6 +80,7 @@ export function CustomFoodSheet({ open, onClose }: { open: boolean; onClose: () 
   return (
     <Sheet open={open} onClose={onClose} title={t('food.custom_title')}>
       <div className="space-y-4 pb-2">
+        {barcode && <p className="tnum text-sm muted">{t('scan.barcode_value', { code: barcode })}</p>}
         <Field label={t('food.custom_name_ru')} htmlFor="cf-ru">
           <Input id="cf-ru" value={nameRu} onChange={(event) => setNameRu(event.target.value)} />
         </Field>
