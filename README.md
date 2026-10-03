@@ -58,6 +58,7 @@ default, one-handed, every frequent action within two taps.
 | Food library importers (seed RU/EN, OFF, USDA) + ranked search + barcode lookup | ✅ stage 2 |
 | Manual logging, favorites, recents, copy-previous-meal, recipes & portions | ✅ stage 2 |
 | Daily nutrition dashboard (ring, macros, water, meals) in the user's timezone | ✅ stage 2 |
+| 320-food curated RU library (one-tap confirm), USDA Foundation/SR Legacy with Russian names, live Open Food Facts barcode fallback, recipe yield/portions, pinned recipes on Today, search < 150 ms | ✅ stage 2b |
 | AI photo logging, training, planner, push, gamification | stages 3–8 |
 
 ---
@@ -103,8 +104,8 @@ discipline-os/
 │   │   ├── seeds/           seed framework + exercise library
 │   │   └── cli.py           server-side admin commands
 │   ├── alembic/versions/    migrations (0001 = the whole schema)
-│   ├── importers/           seed (84 foods RU/EN), Open Food Facts, USDA
-│   └── tests/               pytest suite (100 tests)
+│   ├── importers/           seed (320 foods RU/EN), Open Food Facts, USDA FDC (+ RU names)
+│   └── tests/               pytest suite (122 tests)
 ├── web/                     React 18 + TS + Vite PWA
 │   ├── src/api/             fetch client, types, generated OpenAPI types
 │   ├── src/components/      design system (ui/) + shell (layout/)
@@ -214,6 +215,9 @@ All of them live in `.env` (copy from `.env.example`; never commit the real one)
 `AI_PROVIDER` (`openai` \| `anthropic` \| `google` \| `openrouter` \| `fake`),
 `AI_API_KEY`, `AI_BASE_URL`, `AI_MODEL_VISION`, `AI_MODEL_TEXT`,
 `AI_DAILY_CALL_LIMIT`, `AI_TIMEOUT_SECONDS`;
+`OFF_LIVE_LOOKUP`, `OFF_BASE_URL`, `OFF_TIMEOUT_SECONDS`, `OFF_USER_AGENT`,
+`OFF_LOOKUPS_PER_MINUTE`, `OFF_MISS_TTL_HOURS` (stage 2b: a barcode missing locally
+is looked up once on Open Food Facts and cached);
 `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` (generate with
 `python -m app.cli vapid-keys`), `VAPID_SUBJECT`.
 
@@ -307,18 +311,35 @@ make help              # every target with its description
 | `make owner` / `make pair` | create the owner / print a fresh pairing code |
 | `make backup` / `make restore f=…` | encrypted backup / restore (see below) |
 | `make seed-exercises` | load the exercise library |
+| `make seed-foods` | load the curated RU/EN food library (320 rows, idempotent) |
 
 Server-side admin CLI (`docker compose exec api python -m app.cli …`):
 `create-owner`, `pairing-code`, `api-token`, `list-devices`, `revoke-device`,
-`recompute-targets`, `seed`, `run-job`, `vapid-keys`, `stats`.
+`recompute-targets`, `seed`, `run-job`, `import-foods`, `bench-search`, `vapid-keys`, `stats`.
+
+### Food library imports (stage 2b)
+
+```bash
+python -m app.cli import-foods --source seed                       # curated RU library, 320 rows
+python -m app.cli import-foods --source usda --file FoodData_Central_foundation_food_json_<date>.json
+python -m app.cli import-foods --source usda --file FoodData_Central_csv_<date>/ --dataset sr_legacy
+python -m app.cli import-foods --source off  --file off-ru.jsonl  # complete nutriments + ru/en names only
+python -m app.cli bench-search                                     # search latency on this DB (budget 150 ms)
+```
+
+Download the FDC files from fdc.nal.usda.gov → Download Datasets (prefer the CSV
+bundle for SR Legacy: it is streamed). Russian names come from
+`api/app/importers/data/usda_ru.json`; edit it and re-import to update rows in
+place. New library rows are **unverified** until the owner taps *Подтвердить*.
 
 ---
 
 ## Testing
 
 ```bash
-# backend: 100 tests — calorie math, food search & ranking, importers, meal
-# logging, recipes, day boundaries, recurrence, tokens/devices
+# backend: 122 tests — calorie math, food search & ranking (incl. the 150 ms
+# budget on a 50k-row library), importers (seed/USDA/OFF), live barcode fallback
+# (mocked), meal logging, recipes, day boundaries, recurrence, tokens/devices
 cd api
 TEST_DATABASE_URL=postgresql+psycopg://postgres:postgres@127.0.0.1:5432/dsos_test \
   SECRET_KEY=test-secret-key-please-change-0123456789 .venv/bin/pytest -q
@@ -609,11 +630,13 @@ the migrate/test equivalents).
 - [x] CD: build → GHCR → SSH deploy with health gating and rollback
 - [x] Encrypted nightly backups + restore script + health check cron
 - [x] README: setup, env vars, deploy, backup/restore, iOS Shortcut recipe
-- [x] `pytest` 100 passed · `ruff` clean · `tsc` clean · production build with PWA
-- [x] `scripts/smoke.sh` — 14 end-to-end checks green against the live API
-- [x] `scripts/ui-check.mjs` — 55 browser acceptance checks green in Chromium (incl. the nutrition flow)
-- [x] `scripts/check-i18n.mjs` — 309 keys per locale, every UI key resolved (CI gate)
+- [x] `pytest` 122 passed · `ruff` clean · `tsc` clean · production build with PWA
+- [x] `scripts/smoke.sh` — 17 end-to-end checks green against the live API (incl. stage 2b)
+- [x] `scripts/ui-check.mjs` — 67 browser acceptance checks green in Chromium (incl. nutrition + stage 2b)
+- [x] `scripts/check-i18n.mjs` — 339 keys per locale, every UI key resolved (CI gate)
 
 Stage 2 (food importers, ranked search, logging, recipes, the daily nutrition
-dashboard) is delivered — see `docs/stage-2.md`. Stage 3 (AI photo/text logging
-with the review flow, barcode scanning) starts next.
+dashboard) is delivered — see `docs/stage-2.md` — and stage 2b closed its gaps
+(320-food seed, USDA + RU names, OFF fallback, recipe yield/portions, the search
+budget) — see `docs/stage-2b.md`. Stage 3 (AI photo/text logging with the review
+flow, barcode scanning) starts next.
