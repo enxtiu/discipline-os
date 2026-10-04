@@ -46,11 +46,21 @@ export default function BarcodeScannerSheet({
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const controlsRef = useRef<IScannerControls | null>(null)
   const busyRef = useRef(false)
+  // bumped by every stop: a start still waiting for the camera sees it and lets go
+  const sessionRef = useRef(0)
+  // latest callbacks without restarting the camera when the parent re-renders
+  const onFoundRef = useRef(onFound)
+  const onCreateFoodRef = useRef(onCreateFood)
+  useEffect(() => {
+    onFoundRef.current = onFound
+    onCreateFoodRef.current = onCreateFood
+  })
   const [state, setState] = useState<ScanState>({ kind: 'scanning' })
   const [manual, setManual] = useState('')
   const [error, setError] = useState<string | null>(null)
 
   const stopCamera = useCallback(() => {
+    sessionRef.current += 1
     controlsRef.current?.stop()
     controlsRef.current = null
   }, [])
@@ -65,7 +75,7 @@ export default function BarcodeScannerSheet({
         const result: FoodBarcode = await endpoints.barcodeFood(code)
         if (result.food) {
           stopCamera()
-          onFound(result.food, result.barcode)
+          onFoundRef.current(result.food, result.barcode)
           return
         }
         if (result.lookup === 'invalid') {
@@ -81,11 +91,12 @@ export default function BarcodeScannerSheet({
         busyRef.current = false
       }
     },
-    [onFound, stopCamera],
+    [stopCamera],
   )
 
   const startCamera = useCallback(async () => {
     stopCamera()
+    const session = sessionRef.current
     setState({ kind: 'scanning' })
     if (!videoRef.current || !navigator.mediaDevices?.getUserMedia) {
       setState({ kind: 'camera_error' })
@@ -93,15 +104,20 @@ export default function BarcodeScannerSheet({
     }
     try {
       const reader = new BrowserMultiFormatReader(HINTS, { delayBetweenScanAttempts: 150 })
-      controlsRef.current = await reader.decodeFromConstraints(
+      const controls = await reader.decodeFromConstraints(
         { video: { facingMode: { ideal: 'environment' } }, audio: false },
         videoRef.current,
         (result) => {
           if (result && !busyRef.current) void lookup(result.getText())
         },
       )
+      if (session !== sessionRef.current) {
+        controls.stop() // the sheet closed (or restarted) while the camera was opening
+        return
+      }
+      controlsRef.current = controls
     } catch {
-      setState({ kind: 'camera_error' })
+      if (session === sessionRef.current) setState({ kind: 'camera_error' })
     }
   }, [lookup, stopCamera])
 
@@ -151,7 +167,7 @@ export default function BarcodeScannerSheet({
 
         {(state.kind === 'miss' || state.kind === 'unavailable') && (
           <div className="flex flex-wrap gap-2">
-            {state.kind === 'miss' && <Button onClick={() => onCreateFood(state.code)}>{t('scan.create_food')}</Button>}
+            {state.kind === 'miss' && <Button onClick={() => onCreateFoodRef.current(state.code)}>{t('scan.create_food')}</Button>}
             <Button variant="secondary" onClick={() => void startCamera()}>
               {t('scan.again')}
             </Button>
