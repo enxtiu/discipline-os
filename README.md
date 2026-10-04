@@ -5,7 +5,9 @@ training, steps, PARA tasks and planner, time tracking, gamification. Built as a
 mobile-first PWA for iPhone (iOS 17+, Safari → Add to Home Screen), dark by
 default, one-handed, every frequent action within two taps.
 
-> **Status: stage 1 of 9 is complete.** The foundation is live: repository,
+> **Status: stages 1, 2, 2b and 3 of 9 are complete** — foundation, nutrition
+> core, nutrition backfill and AI logging (photo/text → review → save, camera
+> barcode scanner). The foundation is live: repository,
 > infrastructure, the full database schema for every entity of the whole
 > product, device-token auth with pairing, settings with target calculation, the
 > design system and app shell with bottom navigation, i18n (ru/en), PWA basics
@@ -59,7 +61,9 @@ default, one-handed, every frequent action within two taps.
 | Manual logging, favorites, recents, copy-previous-meal, recipes & portions | ✅ stage 2 |
 | Daily nutrition dashboard (ring, macros, water, meals) in the user's timezone | ✅ stage 2 |
 | 320-food curated RU library (one-tap confirm), USDA Foundation/SR Legacy with Russian names, live Open Food Facts barcode fallback, recipe yield/portions, pinned recipes on Today, search < 150 ms | ✅ stage 2b |
-| AI photo logging, training, planner, push, gamification | stages 3–8 |
+| AI meal logging: photo or text (ru/en) → local-library matching → review screen (editable grams, swap/remove/add) → explicit save, never auto-saved; provider abstraction (OpenAI / Anthropic / Google / OpenRouter / fake), versioned prompts, soft daily budget; optional 400 px thumbnail, original photo never stored | ✅ stage 3 |
+| Camera barcode scanner (`@zxing/browser`, works in iOS Safari) with typed-digits fallback | ✅ stage 3 |
+| Training, health ingest, planner, push, gamification | stages 4–8 |
 
 ---
 
@@ -96,7 +100,8 @@ yet.
 discipline-os/
 ├── api/                     FastAPI service
 │   ├── app/
-│   │   ├── api/             routers (v1: auth, devices, tokens, settings, meta)
+│   │   ├── ai/              provider adapters, strict schema, runner, prompts/*.vN.md (stage 3)
+│   │   ├── api/             routers (v1: auth, devices, tokens, settings, meta, foods, nutrition, ai)
 │   │   ├── core/            config, logging, errors, security, rate limit, tz, ids
 │   │   ├── models/          SQLAlchemy 2 models — every entity, every stage
 │   │   ├── schemas/         pydantic v2 request/response models
@@ -105,11 +110,11 @@ discipline-os/
 │   │   └── cli.py           server-side admin commands
 │   ├── alembic/versions/    migrations (0001 = the whole schema)
 │   ├── importers/           seed (320 foods RU/EN), Open Food Facts, USDA FDC (+ RU names)
-│   └── tests/               pytest suite (122 tests)
+│   └── tests/               pytest suite (157 tests)
 ├── web/                     React 18 + TS + Vite PWA
 │   ├── src/api/             fetch client, types, generated OpenAPI types
 │   ├── src/components/      design system (ui/) + shell (layout/)
-│   ├── src/features/        auth, today, food (stage 2), settings, placeholders
+│   ├── src/features/        auth, today, food (stage 2), ai (stage 3), settings, placeholders
 │   ├── src/i18n/            ru.json / en.json (all strings live here)
 │   ├── src/lib/             device, offline queue, formatting, errors, targets
 │   └── public/              icons, offline.html, sw-push.js (stage 7)
@@ -117,7 +122,7 @@ discipline-os/
 ├── deploy/                  install.sh, update.sh, healthcheck.sh, backup/
 ├── scripts/                 dev-api.sh, smoke.sh, check-i18n.mjs, ui-check.mjs
 ├── .github/workflows/       ci.yml, deploy.yml, backup.yml
-├── docs/                    stage-1.md, roadmap.md
+├── docs/                    roadmap.md, stage-1/2/2b/3.md, screenshots/
 ├── docker-compose.yml       postgres + api + caddy (production)
 ├── docker-compose.dev.yml   overlay: published postgres, api with reload
 └── Makefile                 every developer shortcut
@@ -202,6 +207,8 @@ All of them live in `.env` (copy from `.env.example`; never commit the real one)
 | `CORS_ORIGINS` | empty | Extra allowed origins; empty in production (same origin via Caddy) |
 | `DEFAULT_TIMEZONE` | `Asia/Bangkok` | Used before the device reports its own |
 | `AUTH_RATE_LIMIT_PER_MINUTE` | `10` | Per-IP limit for pairing/refresh |
+| `MAX_REQUEST_BYTES` | `4000000` | Any larger request body is refused with 413 before it is parsed (Caddy backstop: 6 MB) |
+| `MEDIA_DIR` | `/data/media` | Opted-in meal thumbnails (the `api_media` volume in compose) |
 
 ### Scheduler
 
@@ -212,9 +219,14 @@ All of them live in `.env` (copy from `.env.example`; never commit the real one)
 
 ### AI (stage 3) and push (stage 7)
 
-`AI_PROVIDER` (`openai` \| `anthropic` \| `google` \| `openrouter` \| `fake`),
-`AI_API_KEY`, `AI_BASE_URL`, `AI_MODEL_VISION`, `AI_MODEL_TEXT`,
-`AI_DAILY_CALL_LIMIT`, `AI_TIMEOUT_SECONDS`;
+`AI_PROVIDER` (`openai` \| `anthropic` \| `google` \| `openrouter` \| `fake` —
+deterministic, no key, for dev/CI), `AI_API_KEY`, `AI_BASE_URL`,
+`AI_MODEL_VISION`, `AI_MODEL_TEXT` (cheaper model for text),
+`AI_DAILY_CALL_LIMIT` (soft cap per day for the whole server, 0 = unlimited),
+`AI_TIMEOUT_SECONDS`, `AI_RATE_LIMIT_PER_MINUTE` (per user),
+`AI_MAX_IMAGE_BYTES`, `AI_MAX_IMAGE_PX`, `AI_MAX_TEXT_CHARS`,
+`AI_PENDING_THUMB_TTL_HOURS`, `AI_JOB_PAYLOAD_RETENTION_DAYS` (stage 3; endpoints
+`POST /api/v1/ai/analyze-meal`, `POST /api/v1/ai/parse-text`, `GET /api/v1/ai/usage`);
 `OFF_LIVE_LOOKUP`, `OFF_BASE_URL`, `OFF_TIMEOUT_SECONDS`, `OFF_USER_AGENT`,
 `OFF_LOOKUPS_PER_MINUTE`, `OFF_MISS_TTL_HOURS` (stage 2b: a barcode missing locally
 is looked up once on Open Food Facts and cached);
@@ -337,9 +349,10 @@ place. New library rows are **unverified** until the owner taps *Подтвер�
 ## Testing
 
 ```bash
-# backend: 122 tests — calorie math, food search & ranking (incl. the 150 ms
+# backend: 157 tests — calorie math, food search & ranking (incl. the 150 ms
 # budget on a 50k-row library), importers (seed/USDA/OFF), live barcode fallback
-# (mocked), meal logging, recipes, day boundaries, recurrence, tokens/devices
+# (mocked), meal logging, recipes, day boundaries, recurrence, tokens/devices,
+# AI logging (fake provider + every adapter behind httpx.MockTransport)
 cd api
 TEST_DATABASE_URL=postgresql+psycopg://postgres:postgres@127.0.0.1:5432/dsos_test \
   SECRET_KEY=test-secret-key-please-change-0123456789 .venv/bin/pytest -q
@@ -348,20 +361,24 @@ TEST_DATABASE_URL=postgresql+psycopg://postgres:postgres@127.0.0.1:5432/dsos_tes
 # frontend: types + production build (also verifies the PWA generation)
 cd web && npm run typecheck && npm run build
 
-# end-to-end against a running API (14 checks: pairing, scopes, targets, revoke)
+# end-to-end against a running API (19 checks: pairing, scopes, targets, search
+# budget, barcode, recipes, AI parse without auto-save, 413 upload guard, revoke)
 API_BASE=http://127.0.0.1:8000/api ./scripts/smoke.sh <PAIRING-CODE>
 
 # i18n gate (also runs in the CI web job): every key the UI uses exists in both
 # locales, the locales do not drift, dynamic prefixes resolve
 node scripts/check-i18n.mjs
 
-# browser acceptance: 45 checks in a real Chromium — pairing gate, code entry,
+# browser acceptance: 90 checks in a real Chromium — pairing gate, code entry,
 # the 4-step onboarding with the live target preview, Today, quick add,
-# settings (language / theme / timezone), every route, the built PWA manifest.
-# Needs a running api + web and a fresh single-use code:
+# settings (language / theme / timezone), every route, the built PWA manifest,
+# food logging, recipes, AI text/photo review → save, offline AI message, and
+# the camera barcode scanner (FAKE_CAMERA plays an EAN-13 video:
+# python3 scripts/make-barcode-y4m.py 460700123456 /tmp/barcode.y4m).
+# Needs a running api (AI_PROVIDER=fake) + web and a fresh single-use code:
 npm i -D playwright && npx playwright install chromium   # once per machine
 cd api && .venv/bin/python -m app.cli pairing-code       # copy the printed code
-PAIRING_CODE=XXXX-XXXX node scripts/ui-check.mjs         # screenshots → $SHOTS
+FAKE_CAMERA=/tmp/barcode.y4m PAIRING_CODE=XXXX-XXXX node scripts/ui-check.mjs   # screenshots → $SHOTS
 ```
 
 What the suite covers: pairing-code lifecycle and single use, device limits,
@@ -473,9 +490,11 @@ python -m app.cli stats          # users/devices/settings sanity check
 ```
 
 Backups include everything you cannot regenerate: devices and their tokens,
-settings, targets, and every logged row. `postgres` and `caddy` volumes are the
-only stateful volumes in the stack; `caddy_data` only holds certificates, which
-Caddy re-issues automatically.
+settings, targets, and every logged row. `postgres` is the stateful volume that
+matters; `caddy_data` only holds certificates, which Caddy re-issues
+automatically. `api_media` holds the optional 400 px meal thumbnails (stage 3);
+it is **not** in the `pg_dump` backup — copy the volume too if you want the
+pictures to survive a server loss (the meals themselves are in the database).
 
 ---
 
