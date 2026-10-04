@@ -21,6 +21,7 @@ from app.models import (
     UserSettings,
     WaterLog,
 )
+from app.schemas.ai import AiAnalysisOut, AiItemOut, AiMatchOut, AiPer100Out, AiUsageOut
 from app.schemas.auth import ApiTokenOut, DeviceOut, SessionOut, UserSummaryOut
 from app.schemas.food import (
     DaySummaryOut,
@@ -35,6 +36,7 @@ from app.schemas.food import (
     RecipeOut,
     WaterLogOut,
 )
+from app.services.ai_meal import AiBudget, MealAnalysis, ResolvedItem, confidence_level
 from app.services.food_search import FoodHit
 
 
@@ -170,4 +172,72 @@ def day_summary_out(day: date, meals: list[MealLog], water_logs: list[WaterLog])
         water_ml=sum(row.amount_ml for row in water_logs),
         water_logs=[water_out(row) for row in water_logs],
         logged_meals=len(meals),
+    )
+
+
+# --------------------------------------------------------------------------- #
+# AI meal logging (stage 3)
+# --------------------------------------------------------------------------- #
+def ai_usage_out(budget: AiBudget) -> AiUsageOut:
+    return AiUsageOut(
+        enabled=budget.enabled,
+        provider=budget.provider,
+        calls_today=budget.my_calls_today,
+        daily_limit=budget.daily_limit,
+        remaining=budget.remaining,
+    )
+
+
+def ai_item_out(index: int, resolved: ResolvedItem, *, favorites: dict[uuid.UUID, float | None]) -> AiItemOut:
+    item = resolved.item
+    factor = item.estimated_grams / 100
+    chosen = resolved.match
+    return AiItemOut(
+        key=f"i{index}",
+        name_ru=item.name_ru,
+        name_en=item.name_en,
+        estimated_grams=round(item.estimated_grams, 1),
+        confidence=round(item.confidence, 2),
+        confidence_level=confidence_level(item.confidence),
+        kcal=round(item.kcal_per_100g * factor, 1),
+        protein=round(item.protein_per_100g * factor, 1),
+        fat=round(item.fat_per_100g * factor, 1),
+        carbs=round(item.carbs_per_100g * factor, 1),
+        fiber=round(item.fiber_per_100g * factor, 1),
+        ai_per_100g=AiPer100Out(
+            kcal_per_100g=item.kcal_per_100g,
+            protein_per_100g=item.protein_per_100g,
+            fat_per_100g=item.fat_per_100g,
+            carbs_per_100g=item.carbs_per_100g,
+            fiber_per_100g=item.fiber_per_100g,
+        ),
+        kcal_adjusted=item.kcal_adjusted,
+        match=(
+            AiMatchOut(
+                food=food_out(chosen.food, favorites=favorites),
+                match_method=chosen.match_method,
+                score=round(chosen.score, 3),
+            )
+            if chosen
+            else None
+        ),
+        alternatives=[food_out(hit.food, favorites=favorites) for hit in resolved.alternatives],
+    )
+
+
+def ai_analysis_out(analysis: MealAnalysis) -> AiAnalysisOut:
+    job = analysis.job
+    return AiAnalysisOut(
+        job_id=job.id,
+        kind="photo" if analysis.kind == "photo" else "text",
+        provider=job.provider or "",
+        model=job.model or "",
+        prompt_version=analysis.prompt_label,
+        took_ms=analysis.took_ms,
+        items=[
+            ai_item_out(index, resolved, favorites=analysis.favorites) for index, resolved in enumerate(analysis.items)
+        ],
+        notes=analysis.notes,
+        thumbnail_kept=analysis.thumbnail_kept,
+        usage=ai_usage_out(analysis.budget),
     )

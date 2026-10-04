@@ -12,6 +12,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 
 from app.api.deps import CurrentPrincipal, DbSession, require_device
+from app.api.v1.presenters import ai_analysis_out, ai_usage_out
 from app.core.config import get_settings
 from app.core.errors import RateLimited, Unprocessable
 from app.core.logging import get_logger
@@ -47,6 +48,20 @@ async def _read_bounded(upload: UploadFile, limit: int) -> bytes:
     return data
 
 
+THUMBNAIL_MAX_BYTES = 300_000
+
+
+async def _read_optional_thumbnail(upload: UploadFile | None) -> bytes | None:
+    """The thumbnail is optional: an oversized one is dropped, never an error."""
+    if upload is None:
+        return None
+    data = await upload.read(THUMBNAIL_MAX_BYTES + 1)
+    if len(data) > THUMBNAIL_MAX_BYTES:
+        log.info("ai_thumbnail_dropped", bytes=len(data))
+        return None
+    return data
+
+
 @router.post(
     "/analyze-meal",
     response_model=AiAnalysisOut,
@@ -64,9 +79,9 @@ async def analyze_meal(
 ) -> AiAnalysisOut:
     settings = get_settings()
     data = await _read_bounded(photo, settings.ai_max_image_bytes)
-    thumb = await _read_bounded(thumbnail, 300_000) if thumbnail is not None else None
+    thumb = await _read_optional_thumbnail(thumbnail)
     row = principal.settings_row
-    return await ai_meal.analyze_photo(
+    analysis = await ai_meal.analyze_photo(
         db,
         user=principal.user,
         tz=_tz(principal),
@@ -76,6 +91,7 @@ async def analyze_meal(
         thumbnail=thumb,
         meal_type=meal_type,
     )
+    return ai_analysis_out(analysis)
 
 
 @router.post(
@@ -85,7 +101,7 @@ async def analyze_meal(
     dependencies=[Depends(_ai_rate_limit)],
 )
 async def parse_text(payload: AiTextIn, principal: CurrentPrincipal, db: DbSession) -> AiAnalysisOut:
-    return await ai_meal.parse_text(
+    analysis = await ai_meal.parse_text(
         db,
         user=principal.user,
         tz=_tz(principal),
@@ -93,8 +109,9 @@ async def parse_text(payload: AiTextIn, principal: CurrentPrincipal, db: DbSessi
         text=payload.text,
         meal_type=payload.meal_type,
     )
+    return ai_analysis_out(analysis)
 
 
-@router.get("/usage", response_model=AiUsageOut, summary="AI availability and today's soft budget")
+@router.get("/usage", response_model=AiUsageOut, summary="AI availability, your calls today, the shared daily budget")
 async def usage(principal: CurrentPrincipal, db: DbSession) -> AiUsageOut:
-    return await ai_meal.usage(db, _tz(principal))
+    return ai_usage_out(await ai_meal.budget(db, user_id=principal.user_id, tz=_tz(principal)))

@@ -50,11 +50,13 @@ class AiItemOut(ApiModel):
 
 
 class AiUsageOut(ApiModel):
+    """AI availability. The daily cap is a soft budget shared by all users of this server."""
+
     enabled: bool
     provider: str | None = None
-    calls_today: int
-    daily_limit: int
-    remaining: int | None = None
+    calls_today: int = Field(description="your AI calls today (retries count), in your timezone")
+    daily_limit: int = Field(description="server-wide soft cap per day, all users together; 0 = unlimited")
+    remaining: int | None = Field(default=None, description="calls left under the server-wide cap; null = unlimited")
 
 
 class AiAnalysisOut(ApiModel):

@@ -26,7 +26,7 @@ from app.core.config import get_settings
 from app.db import SessionLocal
 from app.importers.base import run_import
 from app.importers.seed import iterate_seed
-from app.models import AiJob, AiJobStatus, AiUsageDaily, Food, FoodSource, MealItem, MealLog, User
+from app.models import AiJob, AiJobKind, AiJobStatus, AiUsageDaily, Food, FoodSource, MealItem, MealLog, User
 from app.services import ai_meal, media
 
 pytestmark = pytest.mark.anyio
@@ -564,3 +564,117 @@ async def test_end_to_end_through_a_real_adapter(authed: Any, monkeypatch: pytes
         assert await session.scalar(select(func.count()).select_from(Food).where(Food.user_id.is_not(None))) == 0
         assert await session.scalar(select(func.count()).select_from(MealItem)) == 0
     assert Decimal(str(body["items"][0]["kcal"])) == Decimal("220.0")
+
+
+# --------------------------------------------------------------------------- #
+# hardening after the stage-3 review
+# --------------------------------------------------------------------------- #
+_MULTIPART_HEAD = (
+    b'--b\r\nContent-Disposition: form-data; name="photo"; filename="a.jpg"\r\nContent-Type: image/jpeg\r\n\r\n'
+)
+
+
+async def test_oversized_body_refused_before_parsing_and_auth(client: httpx.AsyncClient) -> None:
+    limit = get_settings().max_request_bytes
+    headers = {"content-type": "multipart/form-data; boundary=b"}
+    declared = await client.post(
+        "/api/v1/ai/analyze-meal", content=_MULTIPART_HEAD + b"x" * limit, headers=headers
+    )  # no Authorization: the size check comes first
+    assert declared.status_code == 413 and declared.json()["error"]["code"] == "payload_too_large"
+
+    async def chunked():  # no Content-Length: counted while it streams
+        yield _MULTIPART_HEAD
+        for _ in range(limit // 65_536 + 2):
+            yield b"x" * 65_536
+
+    streamed = await client.post("/api/v1/ai/analyze-meal", content=chunked(), headers=headers)
+    assert streamed.status_code == 413 and streamed.json()["error"]["code"] == "payload_too_large"
+
+
+async def test_no_transaction_is_held_across_the_retry(authed: Any) -> None:
+    async with SessionLocal() as session:
+        user_id = (await session.execute(select(User.id))).scalars().first()
+        in_transaction: list[bool] = []
+
+        class Flaky:
+            name = "fake"
+
+            async def complete(self, request: AiRequest):
+                in_transaction.append(session.in_transaction())
+                if len(in_transaction) == 1:
+                    raise AiProviderError("timeout", transient=True)
+                return await fake.FakeProvider().complete(request)
+
+        run = await ai_meal.runner.run_meal_ai(
+            session,
+            user_id=user_id,
+            tz=None,
+            kind=AiJobKind.PARSE_FOOD_TEXT,
+            prompt=load_prompt("parse_food_text"),
+            user_text="What I ate: банан",
+            provider=Flaky(),
+        )
+    assert in_transaction == [False, False] and run.job.attempt == 2
+
+
+async def test_one_analysis_saves_one_meal(authed: Any) -> None:
+    await _seed()
+    body = (await authed.post("/api/v1/ai/parse-text", json={"text": "банан"})).json()
+    meal = {
+        "id": str(uuid.uuid4()),
+        "meal_type": "snack",
+        "source": "text",
+        "ai_job_id": body["job_id"],
+        "items": [_item_payload(body["items"][0])],
+    }
+    first = await authed.post("/api/v1/nutrition/meals", json=meal)
+    assert first.status_code == 201
+    replay = await authed.post("/api/v1/nutrition/meals", json=meal)  # same client id: idempotent
+    assert replay.status_code in (200, 201) and replay.json()["id"] == first.json()["id"]
+    again = await authed.post("/api/v1/nutrition/meals", json={**meal, "id": str(uuid.uuid4())})
+    assert again.status_code == 409 and again.json()["error"]["code"] == "ai_job_already_saved"
+    assert await _count(MealLog) == 1
+
+
+async def test_thumbnail_problems_never_fail_the_analysis(authed: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    await authed.patch("/api/v1/settings", json={"keep_photo_thumbnail": True})
+    oversized = await authed.post(
+        "/api/v1/ai/analyze-meal",
+        files={
+            "photo": ("meal.jpg", jpeg(), "image/jpeg"),
+            "thumbnail": ("t.jpg", jpeg(400, 300, 400_000), "image/jpeg"),
+        },
+    )
+    assert oversized.status_code == 200 and oversized.json()["thumbnail_kept"] is False
+
+    def full_disk(relative: str, data: bytes) -> None:
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(media, "write", full_disk)
+    response = await _analyze_photo(authed, thumbnail=True)
+    assert response.status_code == 200 and response.json()["thumbnail_kept"] is False
+    assert (await _job(response.json()["job_id"])).input_thumb_path is None
+
+
+async def test_usage_shows_my_calls_against_the_shared_budget(authed: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(get_settings(), "ai_daily_call_limit", 10)
+    assert (await authed.post("/api/v1/ai/parse-text", json={"text": "банан"})).status_code == 200
+    async with SessionLocal() as session:
+        mine = (await session.execute(select(AiUsageDaily))).scalar_one()
+        other = User(display_name="Other")
+        session.add(other)
+        await session.flush()
+        session.add(AiUsageDaily(user_id=other.id, local_day=mine.local_day, calls=4))
+        await session.commit()
+    usage = (await authed.get("/api/v1/ai/usage")).json()
+    assert (usage["calls_today"], usage["daily_limit"], usage["remaining"]) == (1, 10, 5)
+
+
+async def test_own_food_beats_a_fuller_library_name(authed: Any) -> None:
+    await _seed()
+    mine = await authed.post(
+        "/api/v1/foods",
+        json={"name_ru": "Гречка", "kcal_per_100g": 112, "protein_per_100g": 4, "carbs_per_100g": 21},
+    )
+    body = (await authed.post("/api/v1/ai/parse-text", json={"text": "гречка 200 г"})).json()
+    assert body["items"][0]["match"]["food"]["id"] == mine.json()["id"]  # not the library «Гречка отварная»
