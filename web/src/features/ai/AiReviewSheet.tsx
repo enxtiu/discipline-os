@@ -8,7 +8,7 @@
  * remove the item or — for AI-only items — save the AI numbers as "my food".
  * Items can be added from the regular search.
  */
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import clsx from 'clsx'
 
@@ -39,6 +39,13 @@ interface DraftItem {
   gramsTouched: boolean
   choice: Choice
   alternatives: Food[]
+  /** fixed when the item is created (or grams are typed past it): a range that
+   *  rescaled while dragging would move under the thumb */
+  sliderMax: number
+}
+
+function sliderMaxFor(grams: number): number {
+  return Math.max(300, Math.ceil((grams * 2.5) / 50) * 50)
 }
 
 function foodPer100(food: Food): Per100 {
@@ -76,6 +83,7 @@ function toDraft(item: AiItem): DraftItem {
       ? { kind: 'food', food: item.match.food, method: item.match.match_method as MatchMethod }
       : { kind: 'ai' },
     alternatives: item.alternatives ?? [],
+    sliderMax: sliderMaxFor(item.estimated_grams),
   }
 }
 
@@ -102,9 +110,13 @@ export function AiReviewSheet({
   const [items, setItems] = useState<DraftItem[]>([])
   const [mealType, setMealType] = useState<MealType>(initialMealType ?? guessMealType())
   const [adding, setAdding] = useState(false)
+  // one client id per analysis: a retried or double-tapped save replays the
+  // same meal instead of logging it twice (the server also allows one meal per job)
+  const mealId = useRef('')
 
   useEffect(() => {
     if (analysis) {
+      mealId.current = crypto.randomUUID()
       setItems(analysis.items.map(toDraft))
       setMealType(initialMealType ?? guessMealType())
       setAdding(false)
@@ -143,6 +155,7 @@ export function AiReviewSheet({
         gramsTouched: true,
         choice: { kind: 'food', food, method: 'manual' },
         alternatives: [],
+        sliderMax: sliderMaxFor(food.default_serving_g ?? 100),
       },
     ])
     setAdding(false)
@@ -179,7 +192,7 @@ export function AiReviewSheet({
     })
     logMeal.mutate(
       {
-        id: crypto.randomUUID(),
+        id: mealId.current,
         meal_type: mealType,
         source: analysis.kind,
         ai_job_id: analysis.job_id,
@@ -278,7 +291,6 @@ function ReviewItem({
   const kcal = (base.kcal * item.grams) / 100
   const title = item.choice.kind === 'food' ? foodName(item.choice.food) : (item.ai?.name_ru ?? '')
   const level = item.ai?.confidence_level
-  const sliderMax = Math.max(300, Math.ceil(((item.ai?.estimated_grams ?? item.grams) * 2.5) / 50) * 50)
   const renamed = item.ai && item.choice.kind === 'food' && foodName(item.choice.food) !== item.ai.name_ru
 
   const saveAsMine = () => {
@@ -328,7 +340,7 @@ function ReviewItem({
           type="button"
           onClick={onRemove}
           aria-label={t('ai.remove_item', { name: title })}
-          className="flex h-tap w-10 shrink-0 items-center justify-center muted"
+          className="-mr-2 -mt-1.5 flex h-tap w-tap shrink-0 items-center justify-center muted"
         >
           <IconTrash size={18} />
         </button>
@@ -339,7 +351,7 @@ function ReviewItem({
           <input
             type="range"
             min={0}
-            max={sliderMax}
+            max={item.sliderMax}
             step={5}
             value={item.grams}
             onChange={(event) => onChange({ grams: Number(event.target.value), gramsTouched: true })}
@@ -352,7 +364,14 @@ function ReviewItem({
             inputMode="decimal"
             min={1}
             value={item.grams || ''}
-            onChange={(event) => onChange({ grams: Number(event.target.value), gramsTouched: true })}
+            onChange={(event) => {
+              const grams = Number(event.target.value)
+              onChange({
+                grams,
+                gramsTouched: true,
+                sliderMax: grams > item.sliderMax ? sliderMaxFor(grams) : item.sliderMax,
+              })
+            }}
             className="tnum w-20 px-2 text-center"
             aria-label={t('food.grams')}
           />
@@ -446,7 +465,7 @@ function FoodPicker({
     <div className="surface-sunken space-y-2 rounded-2xl p-3">
       <div className="flex items-center justify-between">
         <p className="text-sm font-semibold">{title}</p>
-        <button type="button" onClick={onCancel} aria-label={t('app.cancel')} className="flex h-9 w-9 items-center justify-center muted">
+        <button type="button" onClick={onCancel} aria-label={t('app.cancel')} className="-my-2 -mr-2 flex h-tap w-tap items-center justify-center muted">
           <IconClose size={16} />
         </button>
       </div>
