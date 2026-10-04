@@ -190,16 +190,31 @@ export function PhotoTrigger({
   children: ReactNode
   onTrigger?: () => void
 }) {
+  const { t } = useTranslation()
+  const toast = useToast()
+  // offline: say so before the camera opens, not after the photo is taken
+  const blockedOffline = () => {
+    if (typeof navigator === 'undefined' || navigator.onLine !== false) return false
+    toast.error(t('errors.offline_ai'))
+    return true
+  }
   return (
     <label
       htmlFor={PHOTO_INPUT_ID}
       className={className}
-      onClick={onTrigger}
+      onClick={(event) => {
+        if (blockedOffline()) {
+          event.preventDefault()
+          return
+        }
+        onTrigger?.()
+      }}
       role="button"
       tabIndex={0}
       onKeyDown={(event) => {
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault()
+          if (blockedOffline()) return
           onTrigger?.()
           document.getElementById(PHOTO_INPUT_ID)?.click()
         }
