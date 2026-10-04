@@ -650,7 +650,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** AI availability and today's soft budget */
+        /** AI availability, your calls today, the shared daily budget */
         get: operations["usage_api_v1_ai_usage_get"];
         put?: never;
         post?: never;
@@ -778,17 +778,29 @@ export interface components {
             /** Meal Type */
             meal_type?: ("breakfast" | "lunch" | "dinner" | "snack" | "other") | null;
         };
-        /** AiUsageOut */
+        /**
+         * AiUsageOut
+         * @description AI availability. The daily cap is a soft budget shared by all users of this server.
+         */
         AiUsageOut: {
             /** Enabled */
             enabled: boolean;
             /** Provider */
             provider?: string | null;
-            /** Calls Today */
+            /**
+             * Calls Today
+             * @description your AI calls today (retries count), in your timezone
+             */
             calls_today: number;
-            /** Daily Limit */
+            /**
+             * Daily Limit
+             * @description server-wide soft cap per day, all users together; 0 = unlimited
+             */
             daily_limit: number;
-            /** Remaining */
+            /**
+             * Remaining
+             * @description calls left under the server-wide cap; null = unlimited
+             */
             remaining?: number | null;
         };
         /** ApiTokenCreateIn */

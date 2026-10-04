@@ -393,9 +393,13 @@
     "image_invalid": "This is not a JPEG photo",
     "image_too_large": "The photo is too large",
     "image_decode_failed": "The photo could not be opened. Try another one.",
+    "canvas_unavailable": "The browser could not prepare the photo. Try again or describe the meal in text.",
+    "encode_failed": "The photo could not be compressed. Try another one.",
+    "payload_too_large": "The file is too large to upload",
     "text_too_long": "The description is too long",
     "ai_job_not_found": "The analysis was not found — try again",
     "ai_job_not_usable": "This analysis failed — try again",
+    "ai_job_already_saved": "This analysis is already saved as a meal",
     "photo_not_found": "Photo not found"
   },
   "ai": {
