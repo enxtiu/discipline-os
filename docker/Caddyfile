@@ -17,6 +17,10 @@
 
 	# ---- API -------------------------------------------------------------
 	handle /api/* {
+		# backstop for chunked uploads; the API answers 413 above MAX_REQUEST_BYTES (4 MB)
+		request_body {
+			max_size 6MB
+		}
 		reverse_proxy api:8000 {
 			header_up X-Real-IP {remote_host}
 			# SSE / long-running AI calls

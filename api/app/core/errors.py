@@ -149,6 +149,7 @@ def register_exception_handlers(app: FastAPI) -> None:
             404: "not_found",
             405: "method_not_allowed",
             409: "conflict",
+            413: "payload_too_large",
             429: "rate_limited",
         }.get(exc.status_code, "http_error")
         return JSONResponse(

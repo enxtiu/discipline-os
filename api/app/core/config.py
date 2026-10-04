@@ -102,6 +102,8 @@ class Settings(BaseSettings):
     ai_max_image_bytes: int = 3_000_000
     ai_max_image_px: int = 2048
     ai_max_text_chars: int = 1000
+    # any request body (rejected with 413 before parsing/auth); fits photo + thumbnail
+    max_request_bytes: int = 4_000_000
     # an analysed photo's 400 px thumbnail waits this long for the meal to be saved
     ai_pending_thumb_ttl_hours: int = 24
     # AiJob request/response payloads older than this are pruned (counters stay)

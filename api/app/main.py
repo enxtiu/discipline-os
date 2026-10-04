@@ -18,6 +18,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.api.v1.router import api_router
+from app.core.body_limit import BodySizeLimitMiddleware
 from app.core.config import get_settings
 from app.core.errors import register_exception_handlers
 from app.core.logging import bind_request_context, configure_logging, get_logger
@@ -101,6 +102,9 @@ def create_app() -> FastAPI:
     )
 
     register_exception_handlers(app)
+    # innermost (added first): refuses an oversized body before FastAPI parses
+    # it (and before auth); its 413 is logged and CORS-wrapped like any response
+    app.add_middleware(BodySizeLimitMiddleware, max_bytes=settings.max_request_bytes)
     app.add_middleware(RequestContextMiddleware)
     app.add_middleware(GZipMiddleware, minimum_size=1024)
     if settings.cors_origins:
