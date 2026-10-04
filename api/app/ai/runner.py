@@ -96,6 +96,14 @@ async def calls_today(db: AsyncSession, tz: str | None) -> int:
     return int(total or 0)
 
 
+async def user_calls_today(db: AsyncSession, user_id, tz: str | None) -> int:
+    """One user's AI calls (retries included) on their local day."""
+    total = await db.scalar(
+        select(AiUsageDaily.calls).where(AiUsageDaily.user_id == user_id, AiUsageDaily.local_day == today_in(tz))
+    )
+    return int(total or 0)
+
+
 async def _count_call(db: AsyncSession, *, user_id, tz: str | None, failed: bool, response: AiResponse | None) -> None:
     values = {
         "calls": 1,
@@ -109,6 +117,9 @@ async def _count_call(db: AsyncSession, *, user_id, tz: str | None, failed: bool
         set_={key: getattr(AiUsageDaily, key) + stmt.excluded[key] for key in values},
     )
     await db.execute(stmt)
+    # a failed first attempt is followed by another provider call: never keep
+    # the upsert's row lock and an open transaction across it
+    await db.commit()
 
 
 async def run_meal_ai(
