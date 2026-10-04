@@ -223,7 +223,8 @@ async def run_meal_ai(
         raise AiUnavailable("The AI service is not available right now; please try again")
     job.status = AiJobStatus.SUCCEEDED
     job.result = result.model_dump(mode="json")
-    await db.flush()
+    # durable audit + usage even if something later in this request fails
+    await db.commit()
     log.info(
         "ai_job_succeeded",
         job_id=str(job.id),
