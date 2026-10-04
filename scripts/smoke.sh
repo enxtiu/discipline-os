@@ -179,6 +179,11 @@ if [[ "$PROVIDER" == "fake" || -n "${SMOKE_AI:-}" ]]; then
 else
   pass "provider $PROVIDER (set SMOKE_AI=1 to spend one real AI call)"
 fi
+# an oversized upload is refused before the body is read (no auth needed)
+BIG_STATUS="$(head -c 4200000 /dev/zero | curl -s -o /dev/null -w '%{http_code}' -X POST \
+  -H 'Content-Type: multipart/form-data; boundary=b' --data-binary @- "$API_BASE/v1/ai/analyze-meal")"
+[[ "$BIG_STATUS" == "413" ]] || fail "a 4.2 MB upload returned $BIG_STATUS, expected 413"
+pass "oversized upload refused with 413 before parsing"
 
 step "14. device self-revoke (cleanup)"
 split "$(api DELETE "/v1/devices/$DEVICE_ID" '' "$TOKEN")"

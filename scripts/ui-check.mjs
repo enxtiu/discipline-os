@@ -458,9 +458,41 @@ try {
   } else {
     bad('swap product from the alternatives', 'Яйцо варёное not offered')
   }
+  const removeBox = await reviewItems.nth(2).getByRole('button', { name: /^Убрать/ }).boundingBox()
+  check(
+    !!removeBox && removeBox.width >= 44 && removeBox.height >= 44,
+    'remove button is a full tap target',
+    removeBox ? `${Math.round(removeBox.width)}×${Math.round(removeBox.height)}` : 'missing',
+  )
   await reviewItems.nth(2).getByRole('button', { name: /^Убрать/ }).click()
   await page.waitForTimeout(300)
   check((await reviewItems.count()) === 2, 'remove an item before saving')
+  // a hand-added item: its slider range stays put while dragging
+  await page.getByRole('button', { name: 'Добавить продукт' }).click()
+  const pickerClose = await page.locator('.surface-sunken').getByRole('button', { name: 'Отмена' }).boundingBox()
+  check(!!pickerClose && pickerClose.width >= 44 && pickerClose.height >= 44, 'picker close is a full tap target')
+  await page.locator('.surface-sunken input').fill('банан')
+  const bananaPick = page.locator('.surface-sunken button').filter({ hasText: 'Банан' }).first()
+  await bananaPick.waitFor({ timeout: 5000 }).catch(() => {})
+  if (await bananaPick.count()) {
+    await bananaPick.click()
+    await page.waitForTimeout(300)
+    const added = reviewItems.nth(2)
+    const slider = added.locator('input[type="range"]')
+    const maxBefore = await slider.getAttribute('max')
+    await slider.fill(maxBefore ?? '300')
+    await page.waitForTimeout(150)
+    const maxAfter = await slider.getAttribute('max')
+    check(
+      maxBefore === maxAfter && (await added.locator('input[type="number"]').inputValue()) === maxBefore,
+      'slider range is anchored (dragging to the end does not rescale it)',
+      `max ${maxBefore} → ${maxAfter}`,
+    )
+    await added.getByRole('button', { name: /^Убрать/ }).click()
+    await page.waitForTimeout(300)
+  } else {
+    bad('slider range is anchored (dragging to the end does not rescale it)', 'Банан not found in the picker')
+  }
   await shot('16-ai-review')
   await page.getByRole('button', { name: /^Записать ·/ }).click()
   await page.waitForTimeout(1200)
