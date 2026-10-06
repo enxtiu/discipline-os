@@ -742,6 +742,7 @@ try {
   console.log('\n7¹⁰. stage 5 health')
   const digits = (value) => Number(String(value).replace(/\D/g, ''))
   const foodBefore = (await apiFetch('/v1/nutrition/day')).body?.totals
+  const profileWeightBefore = (await apiFetch('/v1/settings')).body?.settings?.weight_kg
   await page.goto(`${WEB_URL}/settings`, { waitUntil: 'networkidle' })
   await page.getByText('Команда iOS', { exact: true }).click()
   await page.waitForURL(/\/settings\/shortcut$/, { timeout: 8000 })
@@ -846,6 +847,23 @@ try {
   await shot('30-health-sleep-weight')
   const foodAfter = (await apiFetch('/v1/nutrition/day')).body?.totals
   check(JSON.stringify(foodBefore) === JSON.stringify(foodAfter), 'food totals unchanged by steps, weight and sleep')
+
+  // clean up: this run's steps, sleep and Shortcut token; the profile weight goes back
+  const serverToday = (await apiFetch('/v1/health/today')).body?.day?.date
+  const yesterday = new Date(Date.parse(`${serverToday}T12:00:00Z`) - 86_400_000).toISOString().slice(0, 10)
+  const cleaned = [
+    (await apiFetch(`/v1/health/steps/${serverToday}`, { method: 'DELETE' })).status,
+    (await apiFetch(`/v1/health/steps/${yesterday}`, { method: 'DELETE' })).status,
+    (await apiFetch(`/v1/health/sleep/${serverToday}`, { method: 'DELETE' })).status,
+  ]
+  if (profileWeightBefore != null) {
+    await apiFetch(`/v1/health/weight/${serverToday}`, { method: 'PUT', body: JSON.stringify({ weight_kg: profileWeightBefore }) })
+  }
+  for (const token of (await apiFetch('/v1/tokens')).body?.tokens ?? []) {
+    if (token.is_active && token.name === 'Команда iOS') await apiFetch(`/v1/tokens/${token.id}`, { method: 'DELETE' })
+  }
+  const restored = (await apiFetch('/v1/settings')).body?.settings?.weight_kg
+  check(cleaned.every((status) => status === 200) && restored === profileWeightBefore, 'stage-5 test data removed, profile weight restored', `${restored} kg`)
 
   // 8. Reload keeps the session (token persisted).
   console.log('\n8. session persistence')

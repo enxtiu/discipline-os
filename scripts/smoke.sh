@@ -220,7 +220,11 @@ split "$(api POST /v1/tokens '{"name":"smoke shortcut","scopes":["ingest:health"
 SHORTCUT="$(parse "$BODY" "d['token']")"
 SHORTCUT_ID="$(parse "$BODY" "d['api_token']['id']")"
 # a day 400 days back (the oldest the API accepts) so a real day is never touched; removed below
-OLD_DAY="$(python3 -c 'import datetime;print(datetime.date.today()-datetime.timedelta(days=399))')"
+OLD_DAY="${OLD_DAY:-$(python3 -c 'import datetime;print(datetime.date.today()-datetime.timedelta(days=399))')}"
+split "$(api GET "/v1/health/steps?days=1&end=$OLD_DAY" '' "$TOKEN")"
+[[ "$STATUS" == "200" ]] || fail "steps read returned $STATUS: $BODY"
+[[ "$(parse "$BODY" "d['days'][0]['source']")" == "None" ]] \
+  || fail "$OLD_DAY already holds steps — refusing to touch real data (choose another day: OLD_DAY)"
 FOOD_BEFORE="$(parse "$(sed '$d' <<<"$(api GET /v1/nutrition/day '' "$TOKEN")")" "d['totals']")"
 for RUN in 1 2; do
   split "$(api POST /v1/ingest/health "{\"date\":\"$OLD_DAY\",\"steps\":\"8 342\",\"active_kcal\":\"512,5\",\"distance_km\":6.2}" "$SHORTCUT")"
