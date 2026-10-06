@@ -122,7 +122,7 @@ export function TrainPage() {
               </p>
               <div className="grid grid-cols-2 gap-2">
                 <Button icon={<IconTrain size={18} />} onClick={() => setStarting(true)}>
-                  {t('train.start')}
+                  {t('train.strength_short')}
                 </Button>
                 <Button variant="secondary" icon={<IconFlame size={18} />} onClick={() => setCardio(true)}>
                   {t('train.cardio')}

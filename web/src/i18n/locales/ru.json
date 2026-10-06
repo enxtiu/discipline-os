@@ -417,7 +417,8 @@
     "week_current": "Сейчас",
     "archive_exercise": "Убрать из списка",
     "exercise_archived": "Упражнение убрано из списка",
-    "archive_hint": "История и рекорды по нему сохранятся."
+    "archive_hint": "История и рекорды по нему сохранятся.",
+    "strength_short": "Тренировка"
   },
   "plan": {
     "title": "План",

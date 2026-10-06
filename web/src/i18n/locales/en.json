@@ -417,7 +417,8 @@
     "week_current": "Now",
     "archive_exercise": "Remove from the list",
     "exercise_archived": "Exercise removed from the list",
-    "archive_hint": "Its history and records are kept."
+    "archive_hint": "Its history and records are kept.",
+    "strength_short": "Workout"
   },
   "plan": {
     "title": "Plan",
