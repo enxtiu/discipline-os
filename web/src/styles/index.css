@@ -19,6 +19,7 @@
     --accent: 56 224 200;        /* #38E0C8 */
     --accent-2: 139 92 246;      /* #8B5CF6 */
     --warn: 251 191 36;          /* #FBBF24 */
+    --chart-burn: 201 122 6;     /* #C97A06 — burned-kcal bars (validated for dark) */
   }
 
   :root[data-theme='light'] {
@@ -31,6 +32,7 @@
     --accent: 14 163 147;
     --accent-2: 124 58 237;
     --warn: 217 119 6;
+    --chart-burn: 217 119 6;     /* #D97706 */
   }
 
   * {
@@ -245,6 +247,14 @@
 
   .safe-top {
     padding-top: max(env(safe-area-inset-top, 0px), 0.5rem);
+  }
+
+  /* stage 4: burned-kcal bars; the rest timer floats just above the tab bar */
+  .chart-burn {
+    background-color: rgb(var(--chart-burn));
+  }
+  .above-tabbar {
+    bottom: calc(4.75rem + env(safe-area-inset-bottom, 0px));
   }
 
   /* space for the fixed tab bar */

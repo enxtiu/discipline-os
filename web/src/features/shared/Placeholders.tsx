@@ -1,18 +1,6 @@
-/** Stage placeholders for Train / Plan / Stats route targets (Food is real since stage 2). */
+/** Stage placeholders for Plan / Stats route targets (Food since stage 2, Train since stage 4). */
 import { useTranslation } from 'react-i18next'
 import { StagePage } from './StageCard'
-
-export function TrainPage() {
-  const { t } = useTranslation()
-  return (
-    <StagePage
-      stage={4}
-      title={t('train.title')}
-      description={t('train.subtitle_planned')}
-      bullets={[t('train.start'), t('today.burned_card'), '1RM · PR · volume', 'templates + weekly plan']}
-    />
-  )
-}
 
 export function PlanPage() {
   const { t } = useTranslation()

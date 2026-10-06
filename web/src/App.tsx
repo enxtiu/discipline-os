@@ -8,7 +8,7 @@
  * The onboarding wizard shows up after pairing until `onboarding_completed` is
  * true (skippable — the user can also live with defaults and set things later).
  */
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 
@@ -25,7 +25,10 @@ import { NotificationsSection } from '@/features/settings/NotificationsSection'
 import { DevicesSection } from '@/features/settings/DevicesSection'
 import { TokensSection } from '@/features/settings/TokensSection'
 import { DataSection } from '@/features/settings/DataSection'
-import { PlanPage, StatsPage, TrainPage } from '@/features/shared/Placeholders'
+import { PlanPage, StatsPage } from '@/features/shared/Placeholders'
+// stage 4: the training screens load on first visit (Today stays light)
+const TrainPage = lazy(() => import('@/features/train/TrainPage').then((m) => ({ default: m.TrainPage })))
+const WorkoutPage = lazy(() => import('@/features/train/WorkoutPage').then((m) => ({ default: m.WorkoutPage })))
 import { FoodPage } from '@/features/food/FoodPage'
 import { SettingsHeader } from '@/features/settings/SettingsHeader'
 
@@ -49,7 +52,8 @@ function Shell() {
         <Route path="/" element={<Navigate to="/today" replace />} />
         <Route path="/today" element={<TodayPage />} />
         <Route path="/food" element={<FoodPage />} />
-        <Route path="/train" element={<TrainPage />} />
+        <Route path="/train" element={<Lazy><TrainPage /></Lazy>} />
+        <Route path="/train/workout/:id" element={<Lazy><WorkoutPage /></Lazy>} />
         <Route path="/plan" element={<PlanPage />} />
         <Route path="/stats" element={<StatsPage />} />
 
@@ -112,5 +116,19 @@ function BootSplash() {
       <Spinner size={28} className="text-aqua-400" />
       <p className="text-sm muted">{t('app.loading')}</p>
     </div>
+  )
+}
+
+function Lazy({ children }: { children: React.ReactNode }) {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex justify-center py-16">
+          <Spinner />
+        </div>
+      }
+    >
+      {children}
+    </Suspense>
   )
 }

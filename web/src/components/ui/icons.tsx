@@ -259,9 +259,13 @@ export const IconSearch = (props: IconProps) => (
   </Base>
 )
 
-export const IconStar = (props: IconProps) => (
+/** Star; `filled` marks a favourite or a personal record. */
+export const IconStar = ({ filled, ...props }: IconProps & { filled?: boolean }) => (
   <Base {...props}>
-    <path d="m12 4 2.5 5 5.5.8-4 3.9.9 5.4L12 16.6 7.1 19.1l1-5.4-4-3.9L9.5 9 12 4Z" />
+    <path
+      d="m12 4 2.5 5 5.5.8-4 3.9.9 5.4L12 16.6 7.1 19.1l1-5.4-4-3.9L9.5 9 12 4Z"
+      fill={filled ? 'currentColor' : 'none'}
+    />
   </Base>
 )
 
