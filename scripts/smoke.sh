@@ -185,6 +185,35 @@ BIG_STATUS="$(head -c 4200000 /dev/zero | curl -s -o /dev/null -w '%{http_code}'
 [[ "$BIG_STATUS" == "413" ]] || fail "a 4.2 MB upload returned $BIG_STATUS, expected 413"
 pass "oversized upload refused with 413 before parsing"
 
+step "13e. training (stage 4): a workout end to end, burned kcal kept out of the food budget"
+split "$(api GET '/v1/training/exercises?q=bench' '' "$TOKEN")"
+[[ "$STATUS" == "200" ]] || fail "exercise search returned $STATUS: $BODY"
+BENCH="$(parse "$BODY" "next((e['id'] for e in d['items'] if e['name_en']=='Barbell bench press'), '')")"
+if [[ -z "$BENCH" ]]; then
+  pass "exercise library not seeded here (python -m app.cli seed exercises) — skipped"
+else
+  split "$(api GET /v1/training/today '' "$TOKEN")"
+  ACTIVE="$(parse "$BODY" "(d.get('active') or {}).get('id') or ''")"
+  [[ -n "$ACTIVE" ]] && api DELETE "/v1/training/workouts/$ACTIVE" '' "$TOKEN" >/dev/null
+  FOOD_BEFORE="$(parse "$(sed '$d' <<<"$(api GET /v1/nutrition/day '' "$TOKEN")")" "d['totals']")"
+  WID="$(python3 -c 'import uuid;print(uuid.uuid4())')"
+  SID="$(python3 -c 'import uuid;print(uuid.uuid4())')"
+  split "$(api POST /v1/training/workouts "{\"id\":\"$WID\"}" "$TOKEN")"
+  [[ "$STATUS" == "201" ]] || fail "start workout returned $STATUS: $BODY"
+  for _ in 1 2; do  # the same set twice: idempotent by its id
+    split "$(api PUT "/v1/training/workouts/$WID/sets/$SID" "{\"exercise_id\":\"$BENCH\",\"reps\":5,\"weight_kg\":40}" "$TOKEN")"
+    [[ "$STATUS" == "200" ]] || fail "log set returned $STATUS: $BODY"
+  done
+  [[ "$(parse "$BODY" "d['total_sets']")" == "1" ]] || fail "a replayed set was counted twice"
+  split "$(api POST "/v1/training/workouts/$WID/finish" '{"duration_s":1200}' "$TOKEN")"
+  [[ "$STATUS" == "200" && "$(parse "$BODY" "d['status']")" == "completed" ]] || fail "finish returned $STATUS: $BODY"
+  KCAL="$(parse "$BODY" "d['kcal_burned']")"
+  FOOD_AFTER="$(parse "$(sed '$d' <<<"$(api GET /v1/nutrition/day '' "$TOKEN")")" "d['totals']")"
+  [[ "$FOOD_BEFORE" == "$FOOD_AFTER" ]] || fail "a workout changed the food totals"
+  api DELETE "/v1/training/workouts/$WID" '' "$TOKEN" >/dev/null
+  pass "start → set (replayed) → finish: ${KCAL} kcal burned, food totals untouched (cleaned up)"
+fi
+
 step "14. device self-revoke (cleanup)"
 split "$(api DELETE "/v1/devices/$DEVICE_ID" '' "$TOKEN")"
 [[ "$STATUS" == "200" ]] || fail "device revoke returned $STATUS: $BODY"
@@ -192,4 +221,4 @@ split "$(api GET /v1/auth/session '' "$TOKEN")"
 [[ "$STATUS" == "401" ]] || fail "a revoked device token still works ($STATUS)"
 pass "smoke device revoked, its token is dead"
 
-printf '\n\033[32mAll smoke checks passed (stages 1–3).\033[0m\n'
+printf '\n\033[32mAll smoke checks passed (stages 1–4).\033[0m\n'
