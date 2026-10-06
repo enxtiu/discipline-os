@@ -958,6 +958,195 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/health/today": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Steps, latest weight and last night's sleep */
+        get: operations["today_api_v1_health_today_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/health/steps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Steps per day (zero-filled), target and average */
+        get: operations["steps_api_v1_health_steps_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/health/steps/{day}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Type in a day's steps (manual fallback) */
+        put: operations["put_steps_api_v1_health_steps__day__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/health/weight": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Weigh-ins, 7-day trend and 30-day change */
+        get: operations["weight_api_v1_health_weight_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/health/weight/{day}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Log the weigh-in of a day (one per day) */
+        put: operations["put_weight_api_v1_health_weight__day__put"];
+        post?: never;
+        /** Remove a weigh-in */
+        delete: operations["delete_weight_api_v1_health_weight__day__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/health/sleep": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Sleep entries (newest first) and the average */
+        get: operations["sleep_api_v1_health_sleep_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/health/sleep/{day}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Log the night that ended on this day */
+        put: operations["put_sleep_api_v1_health_sleep__day__put"];
+        post?: never;
+        /** Remove a sleep entry */
+        delete: operations["delete_sleep_api_v1_health_sleep__day__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ingest/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Steps / active energy of a day (iOS Shortcut; upsert by local day) */
+        post: operations["ingest_health_api_v1_ingest_health_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ingest/health/batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Up to 62 days at once (backfill from a Health export) */
+        post: operations["ingest_health_batch_api_v1_ingest_health_batch_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ingest/weight": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** A weigh-in (smart scale / Shortcut; one per local day) */
+        post: operations["ingest_weight_api_v1_ingest_weight_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ingest/sleep": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** A night of sleep (bed and wake time; stored on the wake day) */
+        post: operations["ingest_sleep_api_v1_ingest_sleep_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1208,6 +1397,15 @@ export interface components {
              * @constant
              */
             units: "metric";
+        };
+        /** BatchResultOut */
+        BatchResultOut: {
+            /** Days */
+            days: components["schemas"]["HealthDayOut"][];
+            /** Created */
+            created: number;
+            /** Updated */
+            updated: number;
         };
         /**
          * BestsOut
@@ -1875,6 +2073,86 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /** HealthBatchIn */
+        HealthBatchIn: {
+            /** Days */
+            days: components["schemas"]["HealthDayIn"][];
+        };
+        /** HealthDayIn */
+        HealthDayIn: {
+            /**
+             * Date
+             * @description local day (YYYY-MM-DD); a timestamp is converted to your timezone; default today
+             */
+            date?: string | null;
+            /** Steps */
+            steps?: number | null;
+            /** Active Kcal */
+            active_kcal?: number | null;
+            /** Basal Kcal */
+            basal_kcal?: number | null;
+            /** Distance M */
+            distance_m?: number | null;
+            /**
+             * Distance Km
+             * @description alternative to distance_m (Health reports km in metric locales)
+             */
+            distance_km?: number | null;
+            /** Floors */
+            floors?: number | null;
+            /** Resting Hr */
+            resting_hr?: number | null;
+            /** Hrv Ms */
+            hrv_ms?: number | null;
+            /**
+             * Source
+             * @default shortcut
+             * @enum {string}
+             */
+            source: "shortcut" | "manual" | "apple_health" | "import";
+        };
+        /** HealthDayOut */
+        HealthDayOut: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /**
+             * Steps
+             * @default 0
+             */
+            steps: number;
+            /**
+             * Target Steps
+             * @default 0
+             */
+            target_steps: number;
+            /** Distance M */
+            distance_m?: number | null;
+            /** Active Kcal */
+            active_kcal?: number | null;
+            /** Floors */
+            floors?: number | null;
+            /** Resting Hr */
+            resting_hr?: number | null;
+            /** Hrv Ms */
+            hrv_ms?: number | null;
+            /**
+             * Steps Kcal
+             * @description active energy from Health, else an estimate from steps — never food budget
+             */
+            steps_kcal?: number | null;
+            /**
+             * Steps Kcal Estimated
+             * @default false
+             */
+            steps_kcal_estimated: boolean;
+            /** Source */
+            source?: ("shortcut" | "manual" | "apple_health" | "import") | null;
+            /** Updated At */
+            updated_at?: string | null;
+        };
         /** HealthOut */
         HealthOut: {
             /**
@@ -1900,6 +2178,19 @@ export interface components {
                 [key: string]: unknown;
             } | null;
         };
+        /** HealthTodayOut */
+        HealthTodayOut: {
+            day: components["schemas"]["HealthDayOut"];
+            weight?: components["schemas"]["WeightOut"] | null;
+            /** Weight Change 7D Kg */
+            weight_change_7d_kg?: number | null;
+            sleep?: components["schemas"]["SleepOut"] | null;
+            /**
+             * Last Sync At
+             * @description last Shortcut/Health ingest
+             */
+            last_sync_at?: string | null;
+        };
         /** I18nMessageOut */
         I18nMessageOut: {
             /** Code */
@@ -1908,6 +2199,12 @@ export interface components {
             ru: string;
             /** En */
             en: string;
+        };
+        /** IngestResultOut */
+        IngestResultOut: {
+            day: components["schemas"]["HealthDayOut"];
+            /** Created */
+            created: boolean;
         };
         /** MacrosOut */
         MacrosOut: {
@@ -2783,6 +3080,103 @@ export interface components {
             } | null;
         };
         /**
+         * SleepIn
+         * @description ``bed_time``/``wake_time`` are local wall-clock times; bed before midnight is the previous day.
+         */
+        SleepIn: {
+            /**
+             * Bed Time
+             * Format: time
+             */
+            bed_time: string;
+            /**
+             * Wake Time
+             * Format: time
+             */
+            wake_time: string;
+            /** Quality */
+            quality?: number | null;
+            /** Note */
+            note?: string | null;
+        };
+        /** SleepIngestIn */
+        SleepIngestIn: {
+            /**
+             * Bed At
+             * Format: date-time
+             */
+            bed_at: string;
+            /**
+             * Wake At
+             * Format: date-time
+             */
+            wake_at: string;
+            /** Quality */
+            quality?: number | null;
+            /** Awakenings */
+            awakenings?: number | null;
+        };
+        /** SleepOut */
+        SleepOut: {
+            /**
+             * Date
+             * Format: date
+             * @description the day you woke up
+             */
+            date: string;
+            /**
+             * Bed At
+             * Format: date-time
+             */
+            bed_at: string;
+            /**
+             * Wake At
+             * Format: date-time
+             */
+            wake_at: string;
+            /** Duration Min */
+            duration_min: number;
+            /** Quality */
+            quality?: number | null;
+            /** Note */
+            note?: string | null;
+            /** Source */
+            source: string;
+        };
+        /** SleepSeriesOut */
+        SleepSeriesOut: {
+            /**
+             * Items
+             * @description newest first
+             */
+            items: components["schemas"]["SleepOut"][];
+            /** Average Min */
+            average_min?: number | null;
+        };
+        /** StepsIn */
+        StepsIn: {
+            /** Steps */
+            steps: number;
+            /** Distance M */
+            distance_m?: number | null;
+            /** Active Kcal */
+            active_kcal?: number | null;
+        };
+        /** StepsSeriesOut */
+        StepsSeriesOut: {
+            /**
+             * Days
+             * @description oldest first, zero-filled
+             */
+            days: components["schemas"]["HealthDayOut"][];
+            /** Target Steps */
+            target_steps: number;
+            /** Average Steps */
+            average_steps: number;
+            /** Days On Target */
+            days_on_target: number;
+        };
+        /**
          * TargetPreviewIn
          * @description Stateless computation used by the onboarding wizard.
          */
@@ -3260,6 +3654,63 @@ export interface components {
              * @description index = weekday (0 = Monday)
              */
             recurring: (components["schemas"]["RecurringDayOut"] | null)[];
+        };
+        /** WeightIn */
+        WeightIn: {
+            /** Weight Kg */
+            weight_kg: number;
+            /** Body Fat Pct */
+            body_fat_pct?: number | null;
+            /** Waist Cm */
+            waist_cm?: number | null;
+            /** Note */
+            note?: string | null;
+        };
+        /** WeightIngestIn */
+        WeightIngestIn: {
+            /** Date */
+            date?: string | null;
+            /** Weight Kg */
+            weight_kg: number;
+            /** Body Fat Pct */
+            body_fat_pct?: number | null;
+        };
+        /** WeightOut */
+        WeightOut: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Weight Kg */
+            weight_kg?: number | null;
+            /** Body Fat Pct */
+            body_fat_pct?: number | null;
+            /** Waist Cm */
+            waist_cm?: number | null;
+            /** Note */
+            note?: string | null;
+            /** Source */
+            source: string;
+        };
+        /** WeightSeriesOut */
+        WeightSeriesOut: {
+            /**
+             * Items
+             * @description oldest first
+             */
+            items: components["schemas"]["WeightOut"][];
+            latest?: components["schemas"]["WeightOut"] | null;
+            /**
+             * Trend Kg
+             * @description 7-day average of the latest weigh-ins
+             */
+            trend_kg?: number | null;
+            /**
+             * Change 30D Kg
+             * @description latest minus the weigh-in ~30 days earlier
+             */
+            change_30d_kg?: number | null;
         };
         /** WorkoutBriefOut */
         WorkoutBriefOut: {
@@ -5791,6 +6242,418 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WorkoutOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    today_api_v1_health_today_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthTodayOut"];
+                };
+            };
+        };
+    };
+    steps_api_v1_health_steps_get: {
+        parameters: {
+            query?: {
+                days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StepsSeriesOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_steps_api_v1_health_steps__day__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                day: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StepsIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthDayOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    weight_api_v1_health_weight_get: {
+        parameters: {
+            query?: {
+                days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WeightSeriesOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_weight_api_v1_health_weight__day__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                day: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WeightIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WeightOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_weight_api_v1_health_weight__day__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                day: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sleep_api_v1_health_sleep_get: {
+        parameters: {
+            query?: {
+                days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SleepSeriesOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_sleep_api_v1_health_sleep__day__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                day: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SleepIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SleepOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_sleep_api_v1_health_sleep__day__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                day: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ingest_health_api_v1_ingest_health_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HealthDayIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IngestResultOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ingest_health_batch_api_v1_ingest_health_batch_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HealthBatchIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchResultOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ingest_weight_api_v1_ingest_weight_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WeightIngestIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WeightOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ingest_sleep_api_v1_ingest_sleep_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SleepIngestIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SleepOut"];
                 };
             };
             /** @description Validation Error */

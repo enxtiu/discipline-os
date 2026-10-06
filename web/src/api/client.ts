@@ -269,6 +269,12 @@ export const endpoints = {
   deleteSet: (workoutId: string, setId: string) =>
     api.delete<import('./types').Workout>(`/v1/training/workouts/${workoutId}/sets/${setId}`),
 
+  // ---- health (stage 5) — writes go through the offline queue (lib/offlineQueue) --
+  healthToday: () => api.get<import('./types').HealthToday>('/v1/health/today'),
+  stepsSeries: (days = 14) => api.get<import('./types').StepsSeries>('/v1/health/steps', { query: { days } }),
+  weightSeries: (days = 90) => api.get<import('./types').WeightSeries>('/v1/health/weight', { query: { days } }),
+  sleepSeries: (days = 14) => api.get<import('./types').SleepSeries>('/v1/health/sleep', { query: { days } }),
+
   tokens: () => api.get<import('./types').ApiTokenList>('/v1/tokens'),
   createToken: (payload: import('./types').ApiTokenCreate) =>
     api.post<import('./types').ApiTokenIssued>('/v1/tokens', payload),

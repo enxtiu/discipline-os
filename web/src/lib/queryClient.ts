@@ -55,5 +55,11 @@ export const queryKeys = {
   workouts: ['training', 'workouts'] as const,
   records: ['training', 'records'] as const,
   burned: (days: number) => ['training', 'burned', days] as const,
+  // stage 5: health data (steps, weight, sleep) — `health` above is the API probe
+  healthData: ['health-data'] as const,
+  healthToday: ['health-data', 'today'] as const,
+  steps: (days: number) => ['health-data', 'steps', days] as const,
+  weight: (days: number) => ['health-data', 'weight', days] as const,
+  sleep: (days: number) => ['health-data', 'sleep', days] as const,
   // later stages: tasks, stats…
 }

@@ -243,3 +243,17 @@ export type WorkoutQuickIn = Partial<Schemas['WorkoutQuickIn']> & {
   exercise_id: string
   duration_s: number
 }
+
+// --------------------------------------------------------------------------- //
+// Health (stage 5)
+// --------------------------------------------------------------------------- //
+export type HealthDay = Schemas['HealthDayOut']
+export type HealthToday = Schemas['HealthTodayOut']
+export type StepsSeries = Schemas['StepsSeriesOut']
+export type WeightEntry = Schemas['WeightOut']
+export type WeightSeries = Schemas['WeightSeriesOut']
+export type SleepEntry = Schemas['SleepOut']
+export type SleepSeries = Schemas['SleepSeriesOut']
+export type StepsIn = Partial<Schemas['StepsIn']> & { steps: number }
+export type WeightIn = Partial<Schemas['WeightIn']> & { weight_kg: number }
+export type SleepIn = Partial<Schemas['SleepIn']> & { bed_time: string; wake_time: string }
