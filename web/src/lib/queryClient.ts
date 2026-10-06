@@ -45,5 +45,15 @@ export const queryKeys = {
   favorites: ['foods', 'favorites'] as const,
   recents: ['foods', 'recents'] as const,
   recipes: ['recipes'] as const,
-  // later stages: workouts, tasks, stats…
+  // stage 4: training
+  trainingToday: ['training', 'today'] as const,
+  weekPlan: (start: string) => ['training', 'plan', start] as const,
+  templates: ['training', 'templates'] as const,
+  exercises: (q: string, muscle: string) => ['training', 'exercises', q, muscle] as const,
+  exerciseHistory: (id: string) => ['training', 'exercise', id] as const,
+  workout: (id: string) => ['training', 'workout', id] as const,
+  workouts: ['training', 'workouts'] as const,
+  records: ['training', 'records'] as const,
+  burned: (days: number) => ['training', 'burned', days] as const,
+  // later stages: tasks, stats…
 }

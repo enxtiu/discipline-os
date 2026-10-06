@@ -197,3 +197,49 @@ export interface FoodIn {
   default_serving_label?: string
   is_liquid?: boolean
 }
+
+// --------------------------------------------------------------------------- //
+// Training (stage 4)
+// --------------------------------------------------------------------------- //
+export type Exercise = Schemas['ExerciseOut']
+export type ExerciseList = Schemas['ExerciseListOut']
+export type ExerciseHistory = Schemas['ExerciseHistoryOut']
+export type ExerciseSession = Schemas['ExerciseSessionOut']
+export type Bests = Schemas['BestsOut']
+export type PersonalRecord = Schemas['RecordOut']
+export type Template = Schemas['TemplateOut']
+export type TemplateItem = Schemas['TemplateItemOut']
+export type TemplateBrief = Schemas['TemplateBriefOut']
+export type WeekPlan = Schemas['WeekPlanOut']
+export type PlanDay = Schemas['PlanDayOut']
+export type Workout = Schemas['WorkoutOut']
+export type WorkoutBrief = Schemas['WorkoutBriefOut']
+export type WorkoutExercise = Schemas['WorkoutExerciseOut']
+export type WorkoutSet = Schemas['WorkoutSetOut']
+export type PreviousSet = Schemas['PreviousSetOut']
+export type WorkoutList = Schemas['WorkoutListOut']
+export type TrainingToday = Schemas['TrainingTodayOut']
+export type Burned = Schemas['BurnedOut']
+export type MuscleGroup = Exercise['muscle_group']
+export type Equipment = Exercise['equipment']
+export type ExerciseType = Exercise['exercise_type']
+export type LogMode = NonNullable<Exercise['log_mode']>
+export type RecordKind = PersonalRecord['kind']
+
+export type ExerciseIn = Partial<Schemas['ExerciseIn']> & { id: string }
+export type TemplateItemIn = Partial<Schemas['TemplateItemIn']> & { exercise_id: string }
+export type TemplateIn = Omit<Partial<Schemas['TemplateIn']>, 'items'> & {
+  id?: string
+  name: string
+  items: TemplateItemIn[]
+}
+export type PlanDayIn = Partial<Schemas['PlanDayIn']>
+export type WorkoutStartIn = Partial<Schemas['WorkoutStartIn']> & { id: string }
+export type WorkoutSetIn = Partial<Schemas['WorkoutSetIn']> & { exercise_id: string }
+export type WorkoutFinishIn = Partial<Schemas['WorkoutFinishIn']>
+export type WorkoutPatchIn = Partial<Schemas['WorkoutPatchIn']>
+export type WorkoutQuickIn = Partial<Schemas['WorkoutQuickIn']> & {
+  id: string
+  exercise_id: string
+  duration_s: number
+}

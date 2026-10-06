@@ -222,6 +222,51 @@ export const endpoints = {
     return URL.createObjectURL(await response.blob())
   },
 
+  // ---- training (stage 4) ---------------------------------------------------
+  exercises: (query: { q?: string; muscle?: string; equipment?: string; type?: string; limit?: number } = {}) =>
+    api.get<import('./types').ExerciseList>('/v1/training/exercises', { query }),
+  createExercise: (payload: import('./types').ExerciseIn) =>
+    api.post<import('./types').Exercise>('/v1/training/exercises', payload, { clientUuid: payload.id }),
+  exerciseHistory: (id: string) =>
+    api.get<import('./types').ExerciseHistory>(`/v1/training/exercises/${id}/history`),
+  templates: () => api.get<import('./types').Template[]>('/v1/training/templates'),
+  createTemplate: (payload: import('./types').TemplateIn) =>
+    api.post<import('./types').Template>('/v1/training/templates', payload, { clientUuid: payload.id }),
+  replaceTemplate: (id: string, payload: import('./types').TemplateIn) =>
+    api.put<import('./types').Template>(`/v1/training/templates/${id}`, payload),
+  deleteTemplate: (id: string) => api.delete<{ ok: boolean }>(`/v1/training/templates/${id}`),
+  saveAsTemplate: (workoutId: string, templateId: string, name: string) =>
+    api.post<import('./types').Template>(
+      `/v1/training/workouts/${workoutId}/save-as-template/${templateId}`,
+      undefined,
+      { query: { name } },
+    ),
+  weekPlan: (start?: string) => api.get<import('./types').WeekPlan>('/v1/training/plan', { query: { start } }),
+  setWeekdayPlan: (weekday: number, payload: import('./types').PlanDayIn) =>
+    api.put<import('./types').WeekPlan>(`/v1/training/plan/weekdays/${weekday}`, payload),
+  clearWeekdayPlan: (weekday: number) =>
+    api.delete<import('./types').WeekPlan>(`/v1/training/plan/weekdays/${weekday}`),
+  setDatePlan: (day: string, payload: import('./types').PlanDayIn) =>
+    api.put<import('./types').WeekPlan>(`/v1/training/plan/dates/${day}`, payload),
+  clearDatePlan: (day: string) => api.delete<import('./types').WeekPlan>(`/v1/training/plan/dates/${day}`),
+  trainingToday: () => api.get<import('./types').TrainingToday>('/v1/training/today'),
+  burned: (days = 7) => api.get<import('./types').Burned>('/v1/training/burned', { query: { days } }),
+  records: (limit = 10) => api.get<import('./types').PersonalRecord[]>('/v1/training/records', { query: { limit } }),
+  workouts: (query: { before?: string; limit?: number } = {}) =>
+    api.get<import('./types').WorkoutList>('/v1/training/workouts', { query }),
+  workout: (id: string) => api.get<import('./types').Workout>(`/v1/training/workouts/${id}`),
+  startWorkout: (payload: import('./types').WorkoutStartIn) =>
+    api.post<import('./types').Workout>('/v1/training/workouts', payload, { clientUuid: payload.id }),
+  quickWorkout: (payload: import('./types').WorkoutQuickIn) =>
+    api.post<import('./types').Workout>('/v1/training/workouts/quick', payload, { clientUuid: payload.id }),
+  finishWorkout: (id: string, payload: import('./types').WorkoutFinishIn) =>
+    api.post<import('./types').Workout>(`/v1/training/workouts/${id}/finish`, payload),
+  patchWorkout: (id: string, payload: import('./types').WorkoutPatchIn) =>
+    api.patch<import('./types').Workout>(`/v1/training/workouts/${id}`, payload),
+  deleteWorkout: (id: string) => api.delete<{ ok: boolean }>(`/v1/training/workouts/${id}`),
+  deleteSet: (workoutId: string, setId: string) =>
+    api.delete<import('./types').Workout>(`/v1/training/workouts/${workoutId}/sets/${setId}`),
+
   tokens: () => api.get<import('./types').ApiTokenList>('/v1/tokens'),
   createToken: (payload: import('./types').ApiTokenCreate) =>
     api.post<import('./types').ApiTokenIssued>('/v1/tokens', payload),

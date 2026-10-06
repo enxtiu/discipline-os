@@ -660,6 +660,304 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/training/exercises": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search the exercise library and your exercises */
+        get: operations["list_exercises_api_v1_training_exercises_get"];
+        put?: never;
+        /** Create your own exercise */
+        post: operations["create_exercise_api_v1_training_exercises_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/training/exercises/{exercise_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Edit or archive your exercise */
+        patch: operations["patch_exercise_api_v1_training_exercises__exercise_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/training/exercises/{exercise_id}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Bests, records and recent sessions of one exercise */
+        get: operations["exercise_history_api_v1_training_exercises__exercise_id__history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/training/templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Your workout templates */
+        get: operations["list_templates_api_v1_training_templates_get"];
+        put?: never;
+        /** Create a template (idempotent by id) */
+        post: operations["create_template_api_v1_training_templates_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/training/templates/{template_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Replace a template and its exercises */
+        put: operations["replace_template_api_v1_training_templates__template_id__put"];
+        post?: never;
+        /** Archive a template */
+        delete: operations["delete_template_api_v1_training_templates__template_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/training/workouts/{workout_id}/save-as-template/{template_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Save a workout's exercises and top sets as a template */
+        post: operations["save_as_template_api_v1_training_workouts__workout_id__save_as_template__template_id__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/training/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A week of the plan with what was actually done */
+        get: operations["get_plan_api_v1_training_plan_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/training/plan/weekdays/{weekday}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set the recurring plan of a weekday */
+        put: operations["set_weekday_api_v1_training_plan_weekdays__weekday__put"];
+        post?: never;
+        /** Clear the recurring plan of a weekday */
+        delete: operations["clear_weekday_api_v1_training_plan_weekdays__weekday__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/training/plan/dates/{plan_date}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Override the plan for one date */
+        put: operations["set_date_api_v1_training_plan_dates__plan_date__put"];
+        post?: never;
+        /** Remove the override for one date */
+        delete: operations["clear_date_api_v1_training_plan_dates__plan_date__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/training/today": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Today's plan, the workout in progress, burned kcal */
+        get: operations["today_api_v1_training_today_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/training/burned": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Calories burned in workouts per day (not food budget) */
+        get: operations["burned_api_v1_training_burned_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/training/records": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Your latest personal records */
+        get: operations["records_api_v1_training_records_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/training/workouts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Workout history, newest first */
+        get: operations["list_workouts_api_v1_training_workouts_get"];
+        put?: never;
+        /** Start a workout (idempotent by id) */
+        post: operations["start_workout_api_v1_training_workouts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/training/workouts/quick": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Log a finished timed session (run, ride, swim) in one call */
+        post: operations["quick_workout_api_v1_training_workouts_quick_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/training/workouts/{workout_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One workout with sets, targets and bests */
+        get: operations["get_workout_api_v1_training_workouts__workout_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete (or discard) a workout */
+        delete: operations["delete_workout_api_v1_training_workouts__workout_id__delete"];
+        options?: never;
+        head?: never;
+        /** Edit title, notes, rating, duration, kcal */
+        patch: operations["patch_workout_api_v1_training_workouts__workout_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/training/workouts/{workout_id}/sets/{set_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Log or correct a set (idempotent by set id) */
+        put: operations["put_set_api_v1_training_workouts__workout_id__sets__set_id__put"];
+        post?: never;
+        /** Remove a set */
+        delete: operations["delete_set_api_v1_training_workouts__workout_id__sets__set_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/training/workouts/{workout_id}/finish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Finish: duration, burned kcal (MET), personal records */
+        post: operations["finish_workout_api_v1_training_workouts__workout_id__finish_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -911,6 +1209,27 @@ export interface components {
              */
             units: "metric";
         };
+        /**
+         * BestsOut
+         * @description All-time bests over completed workouts (warm-up sets excluded).
+         */
+        BestsOut: {
+            /** Weight Kg */
+            weight_kg?: number | null;
+            /** Est 1Rm Kg */
+            est_1rm_kg?: number | null;
+            /** Reps */
+            reps?: number | null;
+            /**
+             * Volume Kg
+             * @description best single-workout volume for this exercise
+             */
+            volume_kg?: number | null;
+            /** Duration S */
+            duration_s?: number | null;
+            /** Distance M */
+            distance_m?: number | null;
+        };
         /** BodyParamsOut */
         BodyParamsOut: {
             /** Sex */
@@ -948,6 +1267,30 @@ export interface components {
             thumbnail?: string | null;
             /** Meal Type */
             meal_type?: ("breakfast" | "lunch" | "dinner" | "snack" | "other") | null;
+        };
+        /** BurnedDayOut */
+        BurnedDayOut: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Kcal */
+            kcal: number;
+            /** Workouts */
+            workouts: number;
+        };
+        /**
+         * BurnedOut
+         * @description Calories burned in workouts. Shown on their own — never added to the food budget.
+         */
+        BurnedOut: {
+            /** Days */
+            days: components["schemas"]["BurnedDayOut"][];
+            /** Total Kcal */
+            total_kcal: number;
+            /** Average Kcal */
+            average_kcal: number;
         };
         /** CopiedMealOut */
         CopiedMealOut: {
@@ -1071,6 +1414,193 @@ export interface components {
             name?: string | null;
             /** Push Enabled */
             push_enabled?: boolean | null;
+        };
+        /** ExerciseHistoryOut */
+        ExerciseHistoryOut: {
+            exercise: components["schemas"]["ExerciseOut"];
+            bests: components["schemas"]["BestsOut"];
+            /** Records */
+            records: components["schemas"]["RecordOut"][];
+            /**
+             * Sessions
+             * @description newest first
+             */
+            sessions: components["schemas"]["ExerciseSessionOut"][];
+        };
+        /**
+         * ExerciseIn
+         * @description A custom ("my") exercise.
+         */
+        ExerciseIn: {
+            /** Id */
+            id?: string | null;
+            /** Name Ru */
+            name_ru?: string | null;
+            /** Name En */
+            name_en?: string | null;
+            /** Aliases */
+            aliases?: string[];
+            /**
+             * Muscle Group
+             * @default other
+             * @enum {string}
+             */
+            muscle_group: "chest" | "back" | "lats" | "traps" | "shoulders" | "biceps" | "triceps" | "forearms" | "abs" | "obliques" | "lower_back" | "glutes" | "quads" | "hamstrings" | "calves" | "full_body" | "cardio" | "other";
+            /**
+             * Equipment
+             * @default other
+             * @enum {string}
+             */
+            equipment: "barbell" | "dumbbell" | "kettlebell" | "machine" | "cable" | "bodyweight" | "bands" | "cardio_machine" | "other";
+            /**
+             * Exercise Type
+             * @default strength
+             * @enum {string}
+             */
+            exercise_type: "strength" | "cardio" | "mobility" | "sport" | "other";
+            /**
+             * Is Timed
+             * @default false
+             */
+            is_timed: boolean;
+            /**
+             * Is Unilateral
+             * @default false
+             */
+            is_unilateral: boolean;
+            /**
+             * Met
+             * @description default by type when omitted
+             */
+            met?: number | null;
+        };
+        /** ExerciseListOut */
+        ExerciseListOut: {
+            /** Query */
+            query: string;
+            /** Items */
+            items: components["schemas"]["ExerciseOut"][];
+            /**
+             * Recent Ids
+             * @description your most recently used, newest first
+             */
+            recent_ids?: string[];
+        };
+        /** ExerciseOut */
+        ExerciseOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name Ru */
+            name_ru?: string | null;
+            /** Name En */
+            name_en?: string | null;
+            /** Aliases */
+            aliases?: string[];
+            /**
+             * Muscle Group
+             * @enum {string}
+             */
+            muscle_group: "chest" | "back" | "lats" | "traps" | "shoulders" | "biceps" | "triceps" | "forearms" | "abs" | "obliques" | "lower_back" | "glutes" | "quads" | "hamstrings" | "calves" | "full_body" | "cardio" | "other";
+            /** Secondary Muscles */
+            secondary_muscles?: string[];
+            /**
+             * Equipment
+             * @enum {string}
+             */
+            equipment: "barbell" | "dumbbell" | "kettlebell" | "machine" | "cable" | "bodyweight" | "bands" | "cardio_machine" | "other";
+            /**
+             * Exercise Type
+             * @enum {string}
+             */
+            exercise_type: "strength" | "cardio" | "mobility" | "sport" | "other";
+            /** Met */
+            met: number;
+            /**
+             * Is Unilateral
+             * @default false
+             */
+            is_unilateral: boolean;
+            /**
+             * Is Timed
+             * @default false
+             */
+            is_timed: boolean;
+            /** Difficulty */
+            difficulty?: number | null;
+            /** Instructions Md */
+            instructions_md?: string | null;
+            /**
+             * Is Custom
+             * @default false
+             */
+            is_custom: boolean;
+            /**
+             * Log Mode
+             * @default weight_reps
+             * @enum {string}
+             */
+            log_mode: "weight_reps" | "reps" | "duration" | "cardio";
+        };
+        /** ExercisePatchIn */
+        ExercisePatchIn: {
+            /** Name Ru */
+            name_ru?: string | null;
+            /** Name En */
+            name_en?: string | null;
+            /** Aliases */
+            aliases?: string[] | null;
+            /** Muscle Group */
+            muscle_group?: ("chest" | "back" | "lats" | "traps" | "shoulders" | "biceps" | "triceps" | "forearms" | "abs" | "obliques" | "lower_back" | "glutes" | "quads" | "hamstrings" | "calves" | "full_body" | "cardio" | "other") | null;
+            /** Equipment */
+            equipment?: ("barbell" | "dumbbell" | "kettlebell" | "machine" | "cable" | "bodyweight" | "bands" | "cardio_machine" | "other") | null;
+            /** Exercise Type */
+            exercise_type?: ("strength" | "cardio" | "mobility" | "sport" | "other") | null;
+            /** Is Timed */
+            is_timed?: boolean | null;
+            /** Is Unilateral */
+            is_unilateral?: boolean | null;
+            /** Met */
+            met?: number | null;
+            /** Is Archived */
+            is_archived?: boolean | null;
+        };
+        /** ExerciseSessionOut */
+        ExerciseSessionOut: {
+            /**
+             * Workout Id
+             * Format: uuid
+             */
+            workout_id: string;
+            /**
+             * Local Day
+             * Format: date
+             */
+            local_day: string;
+            /** Sets */
+            sets: number;
+            /** Top Weight Kg */
+            top_weight_kg?: number | null;
+            /** Top Reps */
+            top_reps?: number | null;
+            /** Est 1Rm Kg */
+            est_1rm_kg?: number | null;
+            /**
+             * Volume Kg
+             * @default 0
+             */
+            volume_kg: number;
+            /**
+             * Reps
+             * @default 0
+             */
+            reps: number;
+            /** Duration S */
+            duration_s?: number | null;
+            /** Distance M */
+            distance_m?: number | null;
         };
         /** FavoriteIn */
         FavoriteIn: {
@@ -1810,6 +2340,71 @@ export interface components {
              */
             reused_device: boolean;
         };
+        /** PlanDayIn */
+        PlanDayIn: {
+            /** Template Id */
+            template_id?: string | null;
+            /**
+             * Is Rest Day
+             * @default false
+             */
+            is_rest_day: boolean;
+            /** Title */
+            title?: string | null;
+            /** Planned Time */
+            planned_time?: string | null;
+        };
+        /** PlanDayOut */
+        PlanDayOut: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /**
+             * Weekday
+             * @description 0 = Monday … 6 = Sunday
+             */
+            weekday: number;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "weekday" | "date" | "none";
+            template?: components["schemas"]["TemplateBriefOut"] | null;
+            /**
+             * Is Rest Day
+             * @default false
+             */
+            is_rest_day: boolean;
+            /** Title */
+            title?: string | null;
+            /** Planned Time */
+            planned_time?: string | null;
+            /**
+             * Is Today
+             * @default false
+             */
+            is_today: boolean;
+            /** Workouts */
+            workouts?: components["schemas"]["WorkoutBriefOut"][];
+        };
+        /** PreviousSetOut */
+        PreviousSetOut: {
+            /** Reps */
+            reps?: number | null;
+            /** Weight Kg */
+            weight_kg?: number | null;
+            /** Duration S */
+            duration_s?: number | null;
+            /** Distance M */
+            distance_m?: number | null;
+            /**
+             * Is Warmup
+             * @default false
+             */
+            is_warmup: boolean;
+        };
         /** RecentListOut */
         RecentListOut: {
             /** Items */
@@ -2019,6 +2614,60 @@ export interface components {
             items?: components["schemas"]["RecipeItemIn"][] | null;
             /** Is Pinned */
             is_pinned?: boolean | null;
+        };
+        /** RecordOut */
+        RecordOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Exercise Id
+             * Format: uuid
+             */
+            exercise_id: string;
+            /** Exercise Name Ru */
+            exercise_name_ru?: string | null;
+            /** Exercise Name En */
+            exercise_name_en?: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "weight" | "est_1rm" | "reps" | "volume" | "duration" | "distance";
+            /** Value */
+            value: number;
+            /** Previous Value */
+            previous_value?: number | null;
+            /** Unit */
+            unit: string;
+            /** Reps */
+            reps?: number | null;
+            /**
+             * Achieved At
+             * Format: date-time
+             */
+            achieved_at: string;
+            /** Workout Id */
+            workout_id?: string | null;
+            /** Set Id */
+            set_id?: string | null;
+        };
+        /** RecurringDayOut */
+        RecurringDayOut: {
+            /** Weekday */
+            weekday: number;
+            template?: components["schemas"]["TemplateBriefOut"] | null;
+            /**
+             * Is Rest Day
+             * @default false
+             */
+            is_rest_day: boolean;
+            /** Title */
+            title?: string | null;
+            /** Planned Time */
+            planned_time?: string | null;
         };
         /** ScopeOut */
         ScopeOut: {
@@ -2253,6 +2902,163 @@ export interface components {
              */
             is_manual: boolean;
         };
+        /** TemplateBriefOut */
+        TemplateBriefOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "strength" | "cardio" | "mobility" | "sport" | "other";
+            /** Exercise Count */
+            exercise_count: number;
+            /** Estimated Minutes */
+            estimated_minutes?: number | null;
+            /** Color */
+            color?: string | null;
+        };
+        /** TemplateIn */
+        TemplateIn: {
+            /** Id */
+            id?: string | null;
+            /** Name */
+            name: string;
+            /** Description */
+            description?: string | null;
+            /**
+             * Kind
+             * @default strength
+             * @enum {string}
+             */
+            kind: "strength" | "cardio" | "mobility" | "sport" | "other";
+            /** Estimated Minutes */
+            estimated_minutes?: number | null;
+            /** Color */
+            color?: string | null;
+            /** Items */
+            items?: components["schemas"]["TemplateItemIn"][];
+        };
+        /** TemplateItemIn */
+        TemplateItemIn: {
+            /**
+             * Exercise Id
+             * Format: uuid
+             */
+            exercise_id: string;
+            /**
+             * Target Sets
+             * @default 3
+             */
+            target_sets: number;
+            /** Target Reps */
+            target_reps?: number | null;
+            /** Target Reps Min */
+            target_reps_min?: number | null;
+            /** Target Reps Max */
+            target_reps_max?: number | null;
+            /** Target Weight Kg */
+            target_weight_kg?: number | null;
+            /** Target Duration S */
+            target_duration_s?: number | null;
+            /** Target Distance M */
+            target_distance_m?: number | null;
+            /**
+             * Rest Seconds
+             * @default 90
+             */
+            rest_seconds: number;
+            /** Superset Group */
+            superset_group?: number | null;
+            /** Notes */
+            notes?: string | null;
+        };
+        /** TemplateItemOut */
+        TemplateItemOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            exercise: components["schemas"]["ExerciseOut"];
+            /** Sort Order */
+            sort_order: number;
+            /** Target Sets */
+            target_sets: number;
+            /** Target Reps */
+            target_reps?: number | null;
+            /** Target Reps Min */
+            target_reps_min?: number | null;
+            /** Target Reps Max */
+            target_reps_max?: number | null;
+            /** Target Weight Kg */
+            target_weight_kg?: number | null;
+            /** Target Duration S */
+            target_duration_s?: number | null;
+            /** Target Distance M */
+            target_distance_m?: number | null;
+            /** Rest Seconds */
+            rest_seconds: number;
+            /** Superset Group */
+            superset_group?: number | null;
+            /** Notes */
+            notes?: string | null;
+        };
+        /** TemplateOut */
+        TemplateOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description?: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "strength" | "cardio" | "mobility" | "sport" | "other";
+            /** Estimated Minutes */
+            estimated_minutes?: number | null;
+            /** Color */
+            color?: string | null;
+            /**
+             * Use Count
+             * @default 0
+             */
+            use_count: number;
+            /** Items */
+            items: components["schemas"]["TemplateItemOut"][];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** TrainingTodayOut */
+        TrainingTodayOut: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            plan: components["schemas"]["PlanDayOut"];
+            active?: components["schemas"]["WorkoutBriefOut"] | null;
+            /** Done */
+            done?: components["schemas"]["WorkoutBriefOut"][];
+            /**
+             * Burned Kcal
+             * @default 0
+             */
+            burned_kcal: number;
+        };
         /** UserSettingsOut */
         UserSettingsOut: {
             /**
@@ -2433,6 +3239,360 @@ export interface components {
              * @default manual
              */
             source: string;
+        };
+        /** WeekPlanOut */
+        WeekPlanOut: {
+            /**
+             * Start
+             * Format: date
+             */
+            start: string;
+            /** Days */
+            days: components["schemas"]["PlanDayOut"][];
+            /**
+             * Recurring
+             * @description index = weekday (0 = Monday)
+             */
+            recurring: (components["schemas"]["RecurringDayOut"] | null)[];
+        };
+        /** WorkoutBriefOut */
+        WorkoutBriefOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Title */
+            title?: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "strength" | "cardio" | "mobility" | "sport" | "other";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "planned" | "in_progress" | "completed" | "skipped";
+            /** Template Id */
+            template_id?: string | null;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /** Ended At */
+            ended_at?: string | null;
+            /**
+             * Local Day
+             * Format: date
+             */
+            local_day: string;
+            /** Duration S */
+            duration_s?: number | null;
+            /**
+             * Total Sets
+             * @default 0
+             */
+            total_sets: number;
+            /**
+             * Total Reps
+             * @default 0
+             */
+            total_reps: number;
+            /**
+             * Total Volume Kg
+             * @default 0
+             */
+            total_volume_kg: number;
+            /** Kcal Burned */
+            kcal_burned?: number | null;
+            /**
+             * Kcal Method
+             * @default none
+             * @enum {string}
+             */
+            kcal_method: "met" | "steps" | "manual" | "none";
+            /**
+             * Pr Count
+             * @default 0
+             */
+            pr_count: number;
+            /**
+             * Exercise Names
+             * @description first few, in order
+             */
+            exercise_names?: string[];
+        };
+        /** WorkoutExerciseOut */
+        WorkoutExerciseOut: {
+            exercise: components["schemas"]["ExerciseOut"];
+            target?: components["schemas"]["TemplateItemOut"] | null;
+            /** Sets */
+            sets: components["schemas"]["WorkoutSetOut"][];
+            /**
+             * Previous
+             * @description sets of the last workout with it
+             */
+            previous?: components["schemas"]["PreviousSetOut"][];
+            /** Previous Day */
+            previous_day?: string | null;
+            /** @description bests before this workout — beat one and it is a PR */
+            bests: components["schemas"]["BestsOut"];
+        };
+        /** WorkoutFinishIn */
+        WorkoutFinishIn: {
+            /** Ended At */
+            ended_at?: string | null;
+            /**
+             * Duration S
+             * @description overrides ended_at - started_at
+             */
+            duration_s?: number | null;
+            /** Rating */
+            rating?: number | null;
+            /** Notes Md */
+            notes_md?: string | null;
+        };
+        /** WorkoutListOut */
+        WorkoutListOut: {
+            /** Items */
+            items: components["schemas"]["WorkoutBriefOut"][];
+            /**
+             * Has More
+             * @default false
+             */
+            has_more: boolean;
+        };
+        /** WorkoutOut */
+        WorkoutOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Title */
+            title?: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "strength" | "cardio" | "mobility" | "sport" | "other";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "planned" | "in_progress" | "completed" | "skipped";
+            /** Template Id */
+            template_id?: string | null;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /** Ended At */
+            ended_at?: string | null;
+            /**
+             * Local Day
+             * Format: date
+             */
+            local_day: string;
+            /** Duration S */
+            duration_s?: number | null;
+            /**
+             * Total Sets
+             * @default 0
+             */
+            total_sets: number;
+            /**
+             * Total Reps
+             * @default 0
+             */
+            total_reps: number;
+            /**
+             * Total Volume Kg
+             * @default 0
+             */
+            total_volume_kg: number;
+            /** Kcal Burned */
+            kcal_burned?: number | null;
+            /**
+             * Kcal Method
+             * @default none
+             * @enum {string}
+             */
+            kcal_method: "met" | "steps" | "manual" | "none";
+            /**
+             * Pr Count
+             * @default 0
+             */
+            pr_count: number;
+            /**
+             * Exercise Names
+             * @description first few, in order
+             */
+            exercise_names?: string[];
+            /** Notes Md */
+            notes_md?: string | null;
+            /** Rating */
+            rating?: number | null;
+            /** Template Name */
+            template_name?: string | null;
+            /** Exercises */
+            exercises: components["schemas"]["WorkoutExerciseOut"][];
+            /**
+             * Records
+             * @description PRs set in this workout
+             */
+            records?: components["schemas"]["RecordOut"][];
+            /**
+             * Body Weight Kg
+             * @description the weight the kcal estimate used
+             */
+            body_weight_kg?: number | null;
+        };
+        /** WorkoutPatchIn */
+        WorkoutPatchIn: {
+            /** Title */
+            title?: string | null;
+            /** Notes Md */
+            notes_md?: string | null;
+            /** Rating */
+            rating?: number | null;
+            /** Duration S */
+            duration_s?: number | null;
+            /**
+             * Kcal Burned
+             * @description manual value; see kcal_auto
+             */
+            kcal_burned?: number | null;
+            /**
+             * Kcal Auto
+             * @description true → back to the MET estimate
+             */
+            kcal_auto?: boolean | null;
+        };
+        /**
+         * WorkoutQuickIn
+         * @description A finished cardio (or any timed) session in one call — a run, a ride, a swim.
+         */
+        WorkoutQuickIn: {
+            /**
+             * Id
+             * Format: uuid
+             * @description UUID (UUIDv7 recommended — generated by the client)
+             */
+            id: string;
+            /**
+             * Exercise Id
+             * Format: uuid
+             */
+            exercise_id: string;
+            /** Duration S */
+            duration_s: number;
+            /** Distance M */
+            distance_m?: number | null;
+            /** Started At */
+            started_at?: string | null;
+            /** Notes Md */
+            notes_md?: string | null;
+        };
+        /** WorkoutSetIn */
+        WorkoutSetIn: {
+            /**
+             * Exercise Id
+             * Format: uuid
+             */
+            exercise_id: string;
+            /**
+             * Sort Order
+             * @default 0
+             */
+            sort_order: number;
+            /**
+             * Set Index
+             * @default 1
+             */
+            set_index: number;
+            /**
+             * Is Warmup
+             * @default false
+             */
+            is_warmup: boolean;
+            /** Reps */
+            reps?: number | null;
+            /** Weight Kg */
+            weight_kg?: number | null;
+            /** Rpe */
+            rpe?: number | null;
+            /** Duration S */
+            duration_s?: number | null;
+            /** Distance M */
+            distance_m?: number | null;
+            /** Rest S */
+            rest_s?: number | null;
+            /** Note */
+            note?: string | null;
+        };
+        /** WorkoutSetOut */
+        WorkoutSetOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Exercise Id
+             * Format: uuid
+             */
+            exercise_id: string;
+            /** Sort Order */
+            sort_order: number;
+            /** Set Index */
+            set_index: number;
+            /**
+             * Is Warmup
+             * @default false
+             */
+            is_warmup: boolean;
+            /** Reps */
+            reps?: number | null;
+            /** Weight Kg */
+            weight_kg?: number | null;
+            /** Rpe */
+            rpe?: number | null;
+            /** Duration S */
+            duration_s?: number | null;
+            /** Distance M */
+            distance_m?: number | null;
+            /** Rest S */
+            rest_s?: number | null;
+            /** Note */
+            note?: string | null;
+            /** Est 1Rm Kg */
+            est_1rm_kg?: number | null;
+            /**
+             * Is Pr
+             * @default false
+             */
+            is_pr: boolean;
+        };
+        /** WorkoutStartIn */
+        WorkoutStartIn: {
+            /**
+             * Id
+             * Format: uuid
+             * @description client UUID: replaying the start returns the same workout
+             */
+            id: string;
+            /** Template Id */
+            template_id?: string | null;
+            /** Title */
+            title?: string | null;
+            /** Kind */
+            kind?: ("strength" | "cardio" | "mobility" | "sport" | "other") | null;
+            /** Started At */
+            started_at?: string | null;
         };
     };
     responses: never;
@@ -3798,6 +4958,842 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AiUsageOut"];
+                };
+            };
+        };
+    };
+    list_exercises_api_v1_training_exercises_get: {
+        parameters: {
+            query?: {
+                q?: string;
+                muscle?: ("chest" | "back" | "lats" | "traps" | "shoulders" | "biceps" | "triceps" | "forearms" | "abs" | "obliques" | "lower_back" | "glutes" | "quads" | "hamstrings" | "calves" | "full_body" | "cardio" | "other") | null;
+                equipment?: ("barbell" | "dumbbell" | "kettlebell" | "machine" | "cable" | "bodyweight" | "bands" | "cardio_machine" | "other") | null;
+                type?: ("strength" | "cardio" | "mobility" | "sport" | "other") | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExerciseListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_exercise_api_v1_training_exercises_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExerciseIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExerciseOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_exercise_api_v1_training_exercises__exercise_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                exercise_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExercisePatchIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExerciseOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    exercise_history_api_v1_training_exercises__exercise_id__history_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                exercise_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExerciseHistoryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_templates_api_v1_training_templates_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplateOut"][];
+                };
+            };
+        };
+    };
+    create_template_api_v1_training_templates_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TemplateIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplateOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    replace_template_api_v1_training_templates__template_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TemplateIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplateOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_template_api_v1_training_templates__template_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_as_template_api_v1_training_workouts__workout_id__save_as_template__template_id__post: {
+        parameters: {
+            query: {
+                name: string;
+            };
+            header?: never;
+            path: {
+                workout_id: string;
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplateOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_plan_api_v1_training_plan_get: {
+        parameters: {
+            query?: {
+                /** @description any day of the wanted week; default: this week */
+                start?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WeekPlanOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_weekday_api_v1_training_plan_weekdays__weekday__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 0 = Monday … 6 = Sunday */
+                weekday: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlanDayIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WeekPlanOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    clear_weekday_api_v1_training_plan_weekdays__weekday__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 0 = Monday … 6 = Sunday */
+                weekday: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WeekPlanOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_date_api_v1_training_plan_dates__plan_date__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_date: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlanDayIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WeekPlanOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    clear_date_api_v1_training_plan_dates__plan_date__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_date: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WeekPlanOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    today_api_v1_training_today_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrainingTodayOut"];
+                };
+            };
+        };
+    };
+    burned_api_v1_training_burned_get: {
+        parameters: {
+            query?: {
+                days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BurnedOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    records_api_v1_training_records_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecordOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_workouts_api_v1_training_workouts_get: {
+        parameters: {
+            query?: {
+                /** @description cursor: started_at of the last item seen */
+                before?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkoutListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_workout_api_v1_training_workouts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkoutStartIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkoutOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    quick_workout_api_v1_training_workouts_quick_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkoutQuickIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkoutOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_workout_api_v1_training_workouts__workout_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workout_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkoutOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_workout_api_v1_training_workouts__workout_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workout_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_workout_api_v1_training_workouts__workout_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workout_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkoutPatchIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkoutOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_set_api_v1_training_workouts__workout_id__sets__set_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workout_id: string;
+                set_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkoutSetIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkoutOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_set_api_v1_training_workouts__workout_id__sets__set_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workout_id: string;
+                set_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkoutOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    finish_workout_api_v1_training_workouts__workout_id__finish_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workout_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkoutFinishIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkoutOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
