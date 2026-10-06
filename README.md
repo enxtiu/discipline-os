@@ -65,7 +65,8 @@ default, one-handed, every frequent action within two taps.
 | AI meal logging: photo or text (ru/en) → local-library matching → review screen (editable grams, swap/remove/add) → explicit save, never auto-saved; provider abstraction (OpenAI / Anthropic / Google / OpenRouter / fake), versioned prompts, soft daily budget; optional 400 px thumbnail, original photo never stored | ✅ stage 3 |
 | Camera barcode scanner (`@zxing/browser`, works in iOS Safari) with typed-digits fallback | ✅ stage 3 |
 | Training: exercise library (ru/en search, your own exercises), templates, weekly plan, live workout logger with rest timer (sets work offline), personal records, quick cardio, burned calories on their own card/chart — never food budget | ✅ stage 4 |
-| Health ingest, planner, push, gamification | stages 5–8 |
+| Health: iOS Shortcut ingest (scoped token, idempotent per day, lenient numbers, 62-day backfill), steps on Today with a manual fallback, weight (profile + targets follow) and sleep entries, a /health page with 14-day steps, 90-day weight and a sleep timeline | ✅ stage 5 |
+| Planner, push, gamification | stages 6–8 |
 
 ---
 
@@ -378,7 +379,9 @@ node scripts/check-i18n.mjs
 # settings (language / theme / timezone), every route, the built PWA manifest,
 # food logging, recipes, AI text/photo review → save, offline AI message, the
 # camera barcode scanner, and training (template, plan, live sets incl. offline,
-# finish, records, cardio, burned kcal apart from food) (FAKE_CAMERA plays an EAN-13 video:
+# finish, records, cardio, burned kcal apart from food), and health (Shortcut token + ingest,
+# manual steps incl. offline, weight → profile, sleep, /health; cleans up after itself)
+# (FAKE_CAMERA plays an EAN-13 video:
 # python3 scripts/make-barcode-y4m.py 460700123456 /tmp/barcode.y4m).
 # Needs a running api (AI_PROVIDER=fake) + web and a fresh single-use code:
 npm i -D playwright && npx playwright install chromium   # once per machine
@@ -522,59 +525,61 @@ recorder.
 
 ## iOS Shortcut recipe (steps and active energy)
 
-Goal: get iPhone step count and active energy into DisciplineOS twice a day,
-without installing anything on the phone.
+Goal: get iPhone step count, active energy and distance into DisciplineOS twice
+a day, without installing anything on the phone.
 
-The endpoint lands in **stage 5** (`POST /api/v1/ingest/health`). The scoped token
-it needs already exists in stage 1 — create it in *Settings → Access tokens*
-(scope `ingest:health`) or on the server with
-`python -m app.cli api-token --name "Shortcut steps" --scopes ingest:health`.
+The app walks you through it: **Settings → Команда iOS** creates a token that
+can only send health data, shows the exact URL and header with copy buttons,
+the six steps below and when the Shortcut last sent data. A token can also be
+made on the server: `python -m app.cli api-token --name "Shortcut" --scopes ingest:health`.
 
-**Request it will send** (idempotent, upserted by date):
+**The request** (idempotent: the same day is updated, never duplicated):
 
 ```http
 POST https://<DOMAIN>/api/v1/ingest/health
 Authorization: Bearer dsos_pat_…
 Content-Type: application/json
 
-{
-  "date": "2026-10-01",
-  "steps": 8342,
-  "active_kcal": 512,
-  "distance_m": 6210,
-  "source": "shortcut"
-}
+{ "steps": 8342, "active_kcal": 512.5, "distance_km": 6.2 }
 ```
 
-**Creating the Shortcut (iOS 17/18):**
+- `date` is optional — without it the server uses *your* today (timezone from
+  Settings). A full timestamp is converted to your timezone.
+- Numbers may arrive as Health formats them: `"8 342"`, `"512,5"`, `"8,342"`
+  (en grouping) and `""` (an empty sum) all work. `distance_m` works too.
+- Fields you do not send keep their value for that day; a second run at 22:00
+  just raises the numbers. Typing steps by hand in the app replaces the day
+  until the next run (and does not count as a sync).
+- Backfill: `POST /api/v1/ingest/health/batch` with `{"days": [{…}, …]}` (up to 62).
+- The token gets 403 everywhere else and is limited to 60 requests a minute.
 
-1. Shortcuts app → **+** → name it `DSOS health`.
-2. Add action **Find Health Samples** → Type *Steps* → Filter: *Start Date is
-   today* → Sort by *Start Date*, order *Latest first*… then **Calculate
-   Statistics** → *Sum*. (Alternatively use *Get Health Sample* for a single
-   cumulative value.)
-3. Repeat for **Active Energy** (type *Active Energy Burned*, same day, Sum) and,
-   if you want distance, **Walking + Running Distance** (Sum).
-4. Add **Text** and build the JSON body with the three values (use the
-   `Provided Input` variables from the statistic actions). Keep `date` without a
-   time — the API treats the *user's* timezone as the day boundary.
-5. Add **Get Contents of URL**:
-   - URL: `https://<DOMAIN>/api/v1/ingest/health`
-   - Method: **POST**
-   - Headers: `Authorization: Bearer dsos_pat_…` and `Content-Type: application/json`
-   - Request Body: **JSON** → paste the same keys (`date`, `steps`,
-     `active_kcal`, `distance_m`, `source`).
-6. Run it once manually and check Settings → Access tokens: *last used* and the
-   request counter move. On the server: `python -m app.cli stats`, then the
-   stage-5 Today card.
-7. **Automate** (optional): Shortcuts → Automation → Time of Day → 13:00 →
-   Repeat daily → run `DSOS health`; add a second automation at 22:00. Turn off
-   "Ask Before Running" for a silent sync.
-8. **Manual fallback:** the same numbers can be typed into the app
-   (Today → steps card, stage 5) — nothing depends on the Shortcut working.
+**Building the Shortcut (iOS 17/18):**
 
-Sleep and body weight are deliberately manual entries: Apple Health exposes no
-reliable, permission-light way to read them from a Shortcut.
+1. Settings → Команда iOS → **Создать токен**, copy it.
+2. Shortcuts → **+** → **Find Health Samples**: type *Steps*, start date *today*;
+   then **Calculate Statistics** → *Sum*.
+3. Repeat for **Active Energy** and **Walking + Running Distance** (km).
+4. **Get Contents of URL**: the URL above, method **POST**, header
+   `Authorization: Bearer <token>`, request body **JSON** with `steps`,
+   `active_kcal`, `distance_km` set to the three statistics.
+5. Run it once: the Settings screen says "только что", Today shows the steps.
+6. **Automation** → Time of Day → 13:00, and another at 22:00 → *Run Immediately*.
+
+**Manual fallback:** Today → steps → «Ввести шаги» (also from the + button).
+Nothing depends on the Shortcut working.
+
+**Weight and sleep** are entered in the app (Today → «Вес и сон»). If you want a
+smart scale or a sleep app to push them through Health, give the token
+`ingest:weight` / `ingest:sleep` («Также разрешить вес и сон») and call
+`POST /api/v1/ingest/weight` with `{"weight_kg": 80.4}` or
+`POST /api/v1/ingest/sleep` with `{"bed_at": "…", "wake_at": "…"}` (ISO
+timestamps; the night is stored on the wake-up day). A pushed weigh-in keeps the
+waist and note typed in the app.
+
+**Calories:** Health's active energy (or, without it, an estimate from steps,
+height and weight) is shown on its own tile next to workouts — never added to
+the food budget. Active energy from Health already contains workouts recorded
+by a watch, so the two numbers are not meant to be added up.
 
 ---
 
@@ -662,5 +667,7 @@ the migrate/test equivalents).
 Stage 2 (food importers, ranked search, logging, recipes, the daily nutrition
 dashboard) is delivered — see `docs/stage-2.md` — and stage 2b closed its gaps
 (320-food seed, USDA + RU names, OFF fallback, recipe yield/portions, the search
-budget) — see `docs/stage-2b.md`. Stage 3 (AI photo/text logging with the review
-flow, barcode scanning) starts next.
+budget) — see `docs/stage-2b.md`. Stage 3 (AI photo/text logging, barcode
+scanning, `docs/stage-3.md`), stage 4 (training, `docs/stage-4.md`) and stage 5
+(health ingest: the iOS Shortcut, steps, weight, sleep — `docs/stage-5.md`) are
+delivered; stage 6 (the planner) is next.
