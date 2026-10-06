@@ -12,7 +12,17 @@ from datetime import date, timedelta
 from fastapi import APIRouter, Depends, Query
 
 from app.api.deps import CurrentPrincipal, DbSession, require_device
-from app.api.v1.presenters import health_day_out, sleep_out, weight_out
+from app.api.v1.presenters import (
+    health_day_out,
+    health_today_out,
+    sleep_out,
+    sleep_series_out,
+    steps_series_out,
+    weight_out,
+    weight_series_out,
+)
+from app.core.errors import RateLimited
+from app.core.rate_limit import limiter
 from app.core.tz import today_in
 from app.schemas.common import OkOut
 from app.schemas.health import (
@@ -31,6 +41,18 @@ from app.services import health
 
 router = APIRouter(prefix="/health", tags=["health"], dependencies=[Depends(require_device)])
 
+# manual entries per user and minute: a person types a few a day; this only stops a runaway client
+WRITES_PER_MINUTE = 60
+
+
+async def _write_limit(principal: CurrentPrincipal) -> None:
+    allowed, retry_after = await limiter.hit(f"health:{principal.user_id}", WRITES_PER_MINUTE)
+    if not allowed:
+        raise RateLimited(retry_after, "Too many health changes, please slow down")
+
+
+Write = [Depends(_write_limit)]
+
 
 def _tz(principal: CurrentPrincipal) -> str | None:
     return principal.settings_row.timezone if principal.settings_row else None
@@ -41,46 +63,37 @@ async def today(principal: CurrentPrincipal, db: DbSession) -> HealthTodayOut:
     day = today_in(_tz(principal))
     view = (await health.day_views(db, user_id=principal.user_id, start=day, end=day))[0]
     latest = await health.latest_weight(db, principal.user_id)
-    change = None
-    if latest is not None:
-        earlier = await health.weight_before(db, principal.user_id, latest.measured_on - timedelta(days=7))
-        # a weigh-in from 7–14 days back; anything older is not a "week" change
-        if earlier is not None and earlier.measured_on >= latest.measured_on - timedelta(days=14):
-            change = round(float(latest.weight_kg) - float(earlier.weight_kg), 2)
+    change = await health.weight_change(db, principal.user_id, latest, days=7, max_days=14)
     sleep = await health.sleep_series(db, user_id=principal.user_id, start=day - timedelta(days=1), end=day)
-    return HealthTodayOut(
-        day=health_day_out(view),
-        weight=weight_out(latest) if latest is not None else None,
-        weight_change_7d_kg=change,
-        sleep=sleep_out(sleep[0]) if sleep else None,
-        last_sync_at=await health.last_sync_at(db, principal.user_id),
-    )
+    last_sync = await health.last_sync_at(db, principal.user_id)
+    return health_today_out(view, latest, change, sleep[0] if sleep else None, last_sync)
 
 
 @router.get("/steps", response_model=StepsSeriesOut, summary="Steps per day (zero-filled), target and average")
 async def steps(
-    principal: CurrentPrincipal, db: DbSession, days: int = Query(default=14, ge=1, le=90)
+    principal: CurrentPrincipal,
+    db: DbSession,
+    days: int = Query(default=14, ge=1, le=90),
+    end: date | None = Query(default=None, description="last day of the window (default: today)"),
 ) -> StepsSeriesOut:
-    end = today_in(_tz(principal))
+    if end is None:
+        end = today_in(_tz(principal))
+    else:
+        health.check_day(end, _tz(principal))
     views = await health.day_views(db, user_id=principal.user_id, start=end - timedelta(days=days - 1), end=end)
-    rows = [health_day_out(view) for view in views]
-    target = views[0].target_steps if views else 0
-    return StepsSeriesOut(
-        days=rows,
-        target_steps=target,
-        average_steps=round(sum(row.steps for row in rows) / len(rows)) if rows else 0,
-        days_on_target=sum(1 for row in rows if target and row.steps >= target),
-    )
+    return steps_series_out(views)
 
 
-@router.put("/steps/{day}", response_model=HealthDayOut, summary="Type in a day's steps (manual fallback)")
+@router.put(
+    "/steps/{day}", response_model=HealthDayOut, summary="Type in a day's steps (manual fallback)", dependencies=Write
+)
 async def put_steps(day: date, payload: StepsIn, principal: CurrentPrincipal, db: DbSession) -> HealthDayOut:
     await health.set_manual_steps(db, user_id=principal.user_id, tz=_tz(principal), day=day, payload=payload)
     view = (await health.day_views(db, user_id=principal.user_id, start=day, end=day))[0]
     return health_day_out(view)
 
 
-@router.delete("/steps/{day}", response_model=OkOut, summary="Clear a day's steps and activity")
+@router.delete("/steps/{day}", response_model=OkOut, summary="Clear a day's steps and activity", dependencies=Write)
 async def delete_steps(day: date, principal: CurrentPrincipal, db: DbSession) -> OkOut:
     await health.delete_day(db, user_id=principal.user_id, day=day)
     return OkOut()
@@ -92,21 +105,13 @@ async def weight(
 ) -> WeightSeriesOut:
     end = today_in(_tz(principal))
     rows = await health.weight_series(db, user_id=principal.user_id, start=end - timedelta(days=days - 1), end=end)
-    latest = rows[-1] if rows else None
-    change = None
-    if latest is not None:
-        earlier = await health.weight_before(db, principal.user_id, latest.measured_on - timedelta(days=30))
-        if earlier is not None:
-            change = round(float(latest.weight_kg) - float(earlier.weight_kg), 2)
-    return WeightSeriesOut(
-        items=[weight_out(row) for row in rows],
-        latest=weight_out(latest) if latest is not None else None,
-        trend_kg=health.trend(rows),
-        change_30d_kg=change,
-    )
+    change = await health.weight_change(db, principal.user_id, rows[-1] if rows else None, days=30, max_days=45)
+    return weight_series_out(rows, change)
 
 
-@router.put("/weight/{day}", response_model=WeightOut, summary="Log the weigh-in of a day (one per day)")
+@router.put(
+    "/weight/{day}", response_model=WeightOut, summary="Log the weigh-in of a day (one per day)", dependencies=Write
+)
 async def put_weight(day: date, payload: WeightIn, principal: CurrentPrincipal, db: DbSession) -> WeightOut:
     row = await health.set_weight(
         db,
@@ -121,7 +126,9 @@ async def put_weight(day: date, payload: WeightIn, principal: CurrentPrincipal, 
     return weight_out(row)
 
 
-@router.delete("/weight/{day}", response_model=OkOut, summary="Remove a weigh-in")
+@router.delete(
+    "/weight/{day}", response_model=OkOut, summary="Remove a weigh-in (not the only one)", dependencies=Write
+)
 async def delete_weight(day: date, principal: CurrentPrincipal, db: DbSession) -> OkOut:
     await health.delete_weight(db, user_id=principal.user_id, day=day)
     return OkOut()
@@ -133,19 +140,16 @@ async def sleep(
 ) -> SleepSeriesOut:
     end = today_in(_tz(principal))
     rows = await health.sleep_series(db, user_id=principal.user_id, start=end - timedelta(days=days - 1), end=end)
-    return SleepSeriesOut(
-        items=[sleep_out(row) for row in rows],
-        average_min=round(sum(row.duration_min for row in rows) / len(rows)) if rows else None,
-    )
+    return sleep_series_out(rows)
 
 
-@router.put("/sleep/{day}", response_model=SleepOut, summary="Log the night that ended on this day")
+@router.put("/sleep/{day}", response_model=SleepOut, summary="Log the night that ended on this day", dependencies=Write)
 async def put_sleep(day: date, payload: SleepIn, principal: CurrentPrincipal, db: DbSession) -> SleepOut:
     row = await health.set_sleep(db, user_id=principal.user_id, tz=_tz(principal), day=day, payload=payload)
     return sleep_out(row)
 
 
-@router.delete("/sleep/{day}", response_model=OkOut, summary="Remove a sleep entry")
+@router.delete("/sleep/{day}", response_model=OkOut, summary="Remove a sleep entry", dependencies=Write)
 async def delete_sleep(day: date, principal: CurrentPrincipal, db: DbSession) -> OkOut:
     await health.delete_sleep(db, user_id=principal.user_id, day=day)
     return OkOut()

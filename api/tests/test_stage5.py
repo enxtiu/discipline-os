@@ -119,6 +119,10 @@ async def test_manual_steps_estimate_and_series(authed: httpx.AsyncClient) -> No
     # stride 180 cm × 0.415 = 0.747 m → 7.47 km × 0.5 kcal/kg/km × 80 kg ≈ 299
     assert (body["source"], body["steps_kcal"], body["steps_kcal_estimated"]) == ("manual", 299, True)
     await authed.put(f"/api/v1/health/steps/{(today() - timedelta(days=2)).isoformat()}", json={"steps": 4000})
+    window = (await authed.get("/api/v1/health/steps", params={"days": 1, "end": day})).json()
+    assert [row["steps"] for row in window["days"]] == [10_000]
+    far = await authed.get("/api/v1/health/steps", params={"days": 1, "end": "2001-01-01"})
+    assert far.status_code == 422
     series = (await authed.get("/api/v1/health/steps", params={"days": 7})).json()
     assert len(series["days"]) == 7 and series["days"][-1]["steps"] == 10_000 and series["days"][0]["steps"] == 0
     assert (series["target_steps"], series["days_on_target"], series["average_steps"]) == (8000, 1, 2000)
@@ -190,3 +194,103 @@ async def test_sleep_manual_and_ingest(authed: httpx.AsyncClient) -> None:
     assert scale.status_code == 200 and scale.json()["weight_kg"] == 79.9 and scale.json()["source"] == "shortcut"
     assert (await authed.delete(f"/api/v1/health/sleep/{d0.isoformat()}")).status_code == 200
     assert (await authed.delete(f"/api/v1/health/sleep/{d0.isoformat()}")).status_code == 404
+
+
+async def test_ingest_edge_cases(authed: httpx.AsyncClient) -> None:
+    token = await _token(authed, "ingest:health")
+    headers = {"Authorization": f"Bearer {token}"}
+    day = today().isoformat()
+
+    async def push(body: Any) -> httpx.Response:
+        return await authed.post("/api/v1/ingest/health", json=body, headers=headers)
+
+    # en-US grouping, an empty Health sum, and an empty active energy on an iPhone without a Watch
+    grouped = await push({"date": day, "steps": "8,342", "active_kcal": "", "distance_km": " "})
+    assert grouped.status_code == 200, grouped.text
+    assert (grouped.json()["day"]["steps"], grouped.json()["day"]["active_kcal"]) == (8342, None)
+    # active energy 0 with steps is an empty sum: the steps estimate is used instead (profile below)
+    await authed.patch("/api/v1/settings", json={"weight_kg": 80, "height_cm": 180})
+    zero = await push({"date": day, "steps": 10_000, "active_kcal": 0})
+    assert (zero.json()["day"]["steps_kcal"], zero.json()["day"]["steps_kcal_estimated"]) == (299, True)
+    assert zero.json()["day"]["on_target"] is True  # default target 8000
+
+    assert (await push({"steps": 1, "source": "manual"})).status_code == 422  # only the app is "manual"
+    assert (await push({"date": "9999-12-31T23:59:59+00:00", "steps": 1})).status_code == 422  # no overflow 500
+    nan = await authed.post(
+        "/api/v1/ingest/health", content=b'{"steps": NaN}', headers={**headers, "Content-Type": "application/json"}
+    )
+    assert nan.status_code == 422
+    sleep_only = await _token(authed, "ingest:sleep")
+    refused = await authed.post(
+        "/api/v1/ingest/health", json={"steps": 1}, headers={"Authorization": f"Bearer {sleep_only}"}
+    )
+    assert refused.status_code == 403
+
+
+async def test_weight_edges_and_partial_ingest(authed: httpx.AsyncClient) -> None:
+    d0 = today()
+    first = await authed.put(
+        f"/api/v1/health/weight/{d0.isoformat()}", json={"weight_kg": 82, "waist_cm": 90, "note": "утро"}
+    )
+    assert first.status_code == 200
+    only = await authed.delete(f"/api/v1/health/weight/{d0.isoformat()}")
+    assert only.status_code == 409 and only.json()["error"]["code"] == "weight_last_entry"
+    assert (await authed.put(f"/api/v1/health/weight/{d0.isoformat()}", json={"weight_kg": 20.004})).status_code == 422
+
+    # a scale pushes weight only: what was typed in the app stays
+    token = await _token(authed, "ingest:weight")
+    scale = await authed.post(
+        "/api/v1/ingest/weight", json={"weight_kg": 81.6}, headers={"Authorization": f"Bearer {token}"}
+    )
+    assert scale.status_code == 200
+    assert (scale.json()["weight_kg"], scale.json()["waist_cm"], scale.json()["note"]) == (81.6, 90.0, "утро")
+
+    # a "30-day change" never compares with a weigh-in from half a year ago
+    await authed.put(f"/api/v1/health/weight/{(d0 - timedelta(days=200)).isoformat()}", json={"weight_kg": 90})
+    series = (await authed.get("/api/v1/health/weight", params={"days": 400})).json()
+    assert len(series["items"]) == 2 and series["change_30d_kg"] is None
+
+
+async def test_health_is_scoped_to_the_user(authed: httpx.AsyncClient) -> None:
+    from app.db import SessionLocal
+    from app.models import User
+    from app.models.training import BodyMetric, HealthDaily, HealthSource, SleepLog
+
+    d0 = today()
+    now = datetime.now(ZoneInfo("UTC"))
+    async with SessionLocal() as session:
+        other = User(display_name="Other")
+        session.add(other)
+        await session.flush()
+        session.add_all(
+            [
+                HealthDaily(
+                    user_id=other.id, local_day=d0, steps=12_345, source=HealthSource.SHORTCUT, ingested_at=now
+                ),
+                BodyMetric(user_id=other.id, measured_on=d0, measured_at=now, weight_kg=99, source="manual"),
+                SleepLog(
+                    user_id=other.id,
+                    local_day=d0,
+                    bed_at=now - timedelta(hours=8),
+                    wake_at=now,
+                    duration_min=480,
+                    source="manual",
+                ),
+            ]
+        )
+        await session.commit()
+        other_id = other.id
+
+    view = (await authed.get("/api/v1/health/today")).json()
+    assert view["day"]["steps"] == 0 and view["weight"] is None and view["sleep"] is None
+    assert view["last_sync_at"] is None
+    assert (await authed.delete(f"/api/v1/health/steps/{d0.isoformat()}")).status_code == 404
+    assert (await authed.delete(f"/api/v1/health/weight/{d0.isoformat()}")).status_code == 404
+    assert (await authed.delete(f"/api/v1/health/sleep/{d0.isoformat()}")).status_code == 404
+    async with SessionLocal() as session:
+        from sqlalchemy import func, select
+
+        left = await session.scalar(
+            select(func.count()).select_from(HealthDaily).where(HealthDaily.user_id == other_id)
+        )
+        assert left == 1  # untouched

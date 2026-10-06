@@ -24,7 +24,7 @@ from sqlalchemy import delete, func, literal_column, not_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import NotFound, Unprocessable
+from app.core.errors import Conflict, NotFound, Unprocessable
 from app.core.logging import get_logger
 from app.core.tz import ensure_utc, get_zone, local_day, today_in, utcnow
 from app.models import UserSettings
@@ -154,8 +154,9 @@ async def delete_day(db: AsyncSession, *, user_id: uuid.UUID, day: date) -> None
         raise NotFound("No steps for this day", code="health_day_not_found")
 
 
-async def _settings(db: AsyncSession, user_id: uuid.UUID) -> UserSettings | None:
-    return await db.scalar(select(UserSettings).where(UserSettings.user_id == user_id))
+async def _settings(db: AsyncSession, user_id: uuid.UUID, *, lock: bool = False) -> UserSettings | None:
+    query = select(UserSettings).where(UserSettings.user_id == user_id)
+    return await db.scalar(query.with_for_update() if lock else query)
 
 
 async def weight_on(db: AsyncSession, user_id: uuid.UUID, day: date) -> float | None:
@@ -175,7 +176,8 @@ def steps_kcal(row: HealthDaily | None, weight_kg: float | None, height_cm: floa
     """(kcal, estimated). Health's active energy wins; otherwise a net walking estimate."""
     if row is None:
         return None, False
-    if row.active_kcal is not None:
+    # Health's active energy wins — unless it is an empty sum (0) on a day with steps
+    if row.active_kcal is not None and (row.active_kcal > 0 or not row.steps):
         return float(row.active_kcal), False
     if not row.steps or not weight_kg:
         return None, False
@@ -203,6 +205,26 @@ async def day_views(db: AsyncSession, *, user_id: uuid.UUID, start: date, end: d
         views.append(DayView(day=cursor, row=row, target_steps=target, steps_kcal=kcal, estimated=estimated))
         cursor += timedelta(days=1)
     return views
+
+
+def on_target(view: DayView) -> bool:
+    return bool(view.target_steps) and view.row is not None and view.row.steps >= view.target_steps
+
+
+@dataclass(slots=True)
+class StepsSummary:
+    target_steps: int
+    average_steps: int
+    days_on_target: int
+
+
+def steps_summary(views: list[DayView]) -> StepsSummary:
+    steps = [view.row.steps if view.row else 0 for view in views]
+    return StepsSummary(
+        target_steps=views[0].target_steps if views else 0,
+        average_steps=round(sum(steps) / len(steps)) if steps else 0,
+        days_on_target=sum(1 for view in views if on_target(view)),
+    )
 
 
 async def last_sync_at(db: AsyncSession, user_id: uuid.UUID) -> datetime | None:
@@ -240,10 +262,13 @@ async def set_weight(
         "measured_at": now,
         "updated_at": now,
     }
+    # The app's form shows every field, so a manual save replaces the day; a scale
+    # or Shortcut only sends weight (and maybe body fat) and must not wipe the rest.
+    update = values if source == "manual" else {key: value for key, value in values.items() if value is not None}
     stmt = (
         pg_insert(BodyMetric)
         .values(id=uuid.uuid4(), client_uuid=uuid.uuid4(), user_id=user_id, measured_on=day, created_at=now, **values)
-        .on_conflict_do_update(constraint="uq_body_metrics_user_day", set_=values)
+        .on_conflict_do_update(constraint="uq_body_metrics_user_day", set_=update)
         .returning(BodyMetric.id)
     )
     row_id = (await db.execute(stmt)).scalar_one()
@@ -254,15 +279,25 @@ async def set_weight(
 
 
 async def delete_weight(db: AsyncSession, *, user_id: uuid.UUID, day: date) -> None:
-    result = await db.execute(delete(BodyMetric).where(BodyMetric.user_id == user_id, BodyMetric.measured_on == day))
-    if not result.rowcount:
+    await _settings(db, user_id, lock=True)  # serialise with other weigh-ins of this user
+    weighed = select(BodyMetric.measured_on).where(BodyMetric.user_id == user_id, BodyMetric.weight_kg.is_not(None))
+    days = set((await db.scalars(weighed)).all())
+    if day not in days:
         raise NotFound("No weigh-in on this day", code="weight_not_found")
+    if days == {day}:
+        # the profile always needs a weight: the last weigh-in can be corrected, not removed
+        raise Conflict("This is the only weigh-in; change it instead", code="weight_last_entry")
+    await db.execute(delete(BodyMetric).where(BodyMetric.user_id == user_id, BodyMetric.measured_on == day))
     await _sync_profile(db, user_id)
 
 
 async def _sync_profile(db: AsyncSession, user_id: uuid.UUID) -> None:
-    """The newest weigh-in is the profile weight; targets follow (stage-1 rules)."""
-    settings = await _settings(db, user_id)
+    """The newest weigh-in is the profile weight; targets follow (stage-1 rules).
+
+    The settings row is locked so two concurrent weigh-ins cannot leave an older
+    weight in the profile.
+    """
+    settings = await _settings(db, user_id, lock=True)
     if settings is not None:
         await db.flush()
         await sync_profile_weight(db, settings, None)
@@ -298,6 +333,18 @@ async def weight_before(db: AsyncSession, user_id: uuid.UUID, day: date) -> Body
         .order_by(BodyMetric.measured_on.desc())
         .limit(1)
     )
+
+
+async def weight_change(
+    db: AsyncSession, user_id: uuid.UUID, latest: BodyMetric | None, *, days: int, max_days: int
+) -> float | None:
+    """Latest minus the newest weigh-in that is ``days``–``max_days`` older (else None)."""
+    if latest is None:
+        return None
+    earlier = await weight_before(db, user_id, latest.measured_on - timedelta(days=days))
+    if earlier is None or earlier.measured_on < latest.measured_on - timedelta(days=max_days):
+        return None
+    return round(float(latest.weight_kg) - float(earlier.weight_kg), 2)
 
 
 def trend(rows: list[BodyMetric]) -> float | None:
@@ -338,10 +385,12 @@ async def _upsert_sleep(
         "source": source,
         "updated_at": now,
     }
+    # a Shortcut push keeps the quality/note typed in the app
+    update = values if source == "manual" else {key: value for key, value in values.items() if value is not None}
     stmt = (
         pg_insert(SleepLog)
         .values(id=uuid.uuid4(), client_uuid=uuid.uuid4(), user_id=user_id, local_day=day, created_at=now, **values)
-        .on_conflict_do_update(constraint="uq_sleep_logs_user_day", set_=values)
+        .on_conflict_do_update(constraint="uq_sleep_logs_user_day", set_=update)
         .returning(SleepLog.id)
     )
     row_id = (await db.execute(stmt)).scalar_one()
@@ -392,6 +441,10 @@ async def delete_sleep(db: AsyncSession, *, user_id: uuid.UUID, day: date) -> No
     result = await db.execute(delete(SleepLog).where(SleepLog.user_id == user_id, SleepLog.local_day == day))
     if not result.rowcount:
         raise NotFound("No sleep entry for this day", code="sleep_not_found")
+
+
+def sleep_average(rows: list[SleepLog]) -> int | None:
+    return round(sum(row.duration_min for row in rows) / len(rows)) if rows else None
 
 
 async def sleep_series(db: AsyncSession, *, user_id: uuid.UUID, start: date, end: date) -> list[SleepLog]:

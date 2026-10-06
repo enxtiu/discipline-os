@@ -42,8 +42,10 @@ def _tz(principal: CurrentPrincipal) -> str | None:
     return principal.settings_row.timezone if principal.settings_row else None
 
 
-async def _view(db, principal: CurrentPrincipal, day):
-    return health_day_out((await health.day_views(db, user_id=principal.user_id, start=day, end=day))[0])
+async def _views(db, principal: CurrentPrincipal, days: set) -> list:
+    """Day views for the given days with one range query (a batch spans at most 62 days)."""
+    views = await health.day_views(db, user_id=principal.user_id, start=min(days), end=max(days))
+    return [health_day_out(view) for view in views if view.day in days]
 
 
 @router.post(
@@ -54,7 +56,7 @@ async def _view(db, principal: CurrentPrincipal, day):
 )
 async def ingest_health(payload: HealthDayIn, principal: CurrentPrincipal, db: DbSession) -> IngestResultOut:
     row, created = await health.ingest_day(db, user_id=principal.user_id, tz=_tz(principal), payload=payload)
-    return IngestResultOut(day=await _view(db, principal, row.local_day), created=created)
+    return IngestResultOut(day=(await _views(db, principal, {row.local_day}))[0], created=created)
 
 
 @router.post(
@@ -70,7 +72,7 @@ async def ingest_health_batch(payload: HealthBatchIn, principal: CurrentPrincipa
         row, was_created = await health.ingest_day(db, user_id=principal.user_id, tz=_tz(principal), payload=item)
         created += int(was_created)
         days.append(row.local_day)
-    views = [await _view(db, principal, day) for day in sorted(set(days))]
+    views = await _views(db, principal, set(days))
     return BatchResultOut(days=views, created=created, updated=len(payload.days) - created)
 
 

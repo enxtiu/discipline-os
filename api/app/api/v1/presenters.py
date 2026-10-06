@@ -36,7 +36,15 @@ from app.schemas.food import (
     RecipeOut,
     WaterLogOut,
 )
-from app.schemas.health import HealthDayOut, SleepOut, WeightOut
+from app.schemas.health import (
+    HealthDayOut,
+    HealthTodayOut,
+    SleepOut,
+    SleepSeriesOut,
+    StepsSeriesOut,
+    WeightOut,
+    WeightSeriesOut,
+)
 from app.schemas.training import (
     BestsOut,
     BurnedDayOut,
@@ -512,6 +520,7 @@ def health_day_out(view: health_service.DayView) -> HealthDayOut:
         hrv_ms=row.hrv_ms,
         steps_kcal=view.steps_kcal,
         steps_kcal_estimated=view.estimated,
+        on_target=health_service.on_target(view),
         source=row.source.value,
         updated_at=row.ingested_at,
     )
@@ -537,4 +546,39 @@ def sleep_out(row) -> SleepOut:
         quality=row.quality,
         note=row.note,
         source=row.source,
+    )
+
+
+def steps_series_out(views: list[health_service.DayView]) -> StepsSeriesOut:
+    summary = health_service.steps_summary(views)
+    return StepsSeriesOut(
+        days=[health_day_out(view) for view in views],
+        target_steps=summary.target_steps,
+        average_steps=summary.average_steps,
+        days_on_target=summary.days_on_target,
+    )
+
+
+def weight_series_out(rows: list, change_30d_kg: float | None) -> WeightSeriesOut:
+    return WeightSeriesOut(
+        items=[weight_out(row) for row in rows],
+        latest=weight_out(rows[-1]) if rows else None,
+        trend_kg=health_service.trend(rows),
+        change_30d_kg=change_30d_kg,
+    )
+
+
+def sleep_series_out(rows: list) -> SleepSeriesOut:
+    return SleepSeriesOut(items=[sleep_out(row) for row in rows], average_min=health_service.sleep_average(rows))
+
+
+def health_today_out(
+    view: health_service.DayView, latest, change_7d_kg: float | None, sleep, last_sync_at
+) -> HealthTodayOut:
+    return HealthTodayOut(
+        day=health_day_out(view),
+        weight=weight_out(latest) if latest is not None else None,
+        weight_change_7d_kg=change_7d_kg,
+        sleep=sleep_out(sleep) if sleep is not None else None,
+        last_sync_at=last_sync_at,
     )
