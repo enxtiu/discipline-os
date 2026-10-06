@@ -5,9 +5,10 @@ training, steps, PARA tasks and planner, time tracking, gamification. Built as a
 mobile-first PWA for iPhone (iOS 17+, Safari → Add to Home Screen), dark by
 default, one-handed, every frequent action within two taps.
 
-> **Status: stages 1, 2, 2b and 3 of 9 are complete** — foundation, nutrition
-> core, nutrition backfill and AI logging (photo/text → review → save, camera
-> barcode scanner). The foundation is live: repository,
+> **Status: stages 1, 2, 2b, 3 and 4 of 9 are complete** — foundation, nutrition
+> core, nutrition backfill, AI logging (photo/text → review → save, camera
+> barcode scanner) and training (templates, weekly plan, live logger, records,
+> burned calories kept out of the food budget). The foundation is live: repository,
 > infrastructure, the full database schema for every entity of the whole
 > product, device-token auth with pairing, settings with target calculation, the
 > design system and app shell with bottom navigation, i18n (ru/en), PWA basics
@@ -63,7 +64,8 @@ default, one-handed, every frequent action within two taps.
 | 320-food curated RU library (one-tap confirm), USDA Foundation/SR Legacy with Russian names, live Open Food Facts barcode fallback, recipe yield/portions, pinned recipes on Today, search < 150 ms | ✅ stage 2b |
 | AI meal logging: photo or text (ru/en) → local-library matching → review screen (editable grams, swap/remove/add) → explicit save, never auto-saved; provider abstraction (OpenAI / Anthropic / Google / OpenRouter / fake), versioned prompts, soft daily budget; optional 400 px thumbnail, original photo never stored | ✅ stage 3 |
 | Camera barcode scanner (`@zxing/browser`, works in iOS Safari) with typed-digits fallback | ✅ stage 3 |
-| Training, health ingest, planner, push, gamification | stages 4–8 |
+| Training: exercise library (ru/en search, your own exercises), templates, weekly plan, live workout logger with rest timer (sets work offline), personal records, quick cardio, burned calories on their own card/chart — never food budget | ✅ stage 4 |
+| Health ingest, planner, push, gamification | stages 5–8 |
 
 ---
 
@@ -101,7 +103,7 @@ discipline-os/
 ├── api/                     FastAPI service
 │   ├── app/
 │   │   ├── ai/              provider adapters, strict schema, runner, prompts/*.vN.md (stage 3)
-│   │   ├── api/             routers (v1: auth, devices, tokens, settings, meta, foods, nutrition, ai)
+│   │   ├── api/             routers (v1: auth, devices, tokens, settings, meta, foods, nutrition, ai, training)
 │   │   ├── core/            config, logging, errors, security, rate limit, tz, ids
 │   │   ├── models/          SQLAlchemy 2 models — every entity, every stage
 │   │   ├── schemas/         pydantic v2 request/response models
@@ -110,11 +112,11 @@ discipline-os/
 │   │   └── cli.py           server-side admin commands
 │   ├── alembic/versions/    migrations (0001 = the whole schema)
 │   ├── importers/           seed (320 foods RU/EN), Open Food Facts, USDA FDC (+ RU names)
-│   └── tests/               pytest suite (157 tests)
+│   └── tests/               pytest suite (174 tests)
 ├── web/                     React 18 + TS + Vite PWA
 │   ├── src/api/             fetch client, types, generated OpenAPI types
 │   ├── src/components/      design system (ui/) + shell (layout/)
-│   ├── src/features/        auth, today, food (stage 2), ai (stage 3), settings, placeholders
+│   ├── src/features/        auth, today, food (stage 2), ai (stage 3), train (stage 4), settings, placeholders
 │   ├── src/i18n/            ru.json / en.json (all strings live here)
 │   ├── src/lib/             device, offline queue, formatting, errors, targets
 │   └── public/              icons, offline.html, sw-push.js (stage 7)
@@ -122,7 +124,7 @@ discipline-os/
 ├── deploy/                  install.sh, update.sh, healthcheck.sh, backup/
 ├── scripts/                 dev-api.sh, smoke.sh, check-i18n.mjs, ui-check.mjs
 ├── .github/workflows/       ci.yml, deploy.yml, backup.yml
-├── docs/                    roadmap.md, stage-1/2/2b/3.md, screenshots/
+├── docs/                    roadmap.md, stage-1/2/2b/3/4.md, screenshots/
 ├── docker-compose.yml       postgres + api + caddy (production)
 ├── docker-compose.dev.yml   overlay: published postgres, api with reload
 └── Makefile                 every developer shortcut
@@ -349,10 +351,11 @@ place. New library rows are **unverified** until the owner taps *Подтвер�
 ## Testing
 
 ```bash
-# backend: 157 tests — calorie math, food search & ranking (incl. the 150 ms
+# backend: 174 tests — calorie math, food search & ranking (incl. the 150 ms
 # budget on a 50k-row library), importers (seed/USDA/OFF), live barcode fallback
 # (mocked), meal logging, recipes, day boundaries, recurrence, tokens/devices,
-# AI logging (fake provider + every adapter behind httpx.MockTransport)
+# AI logging (fake provider + every adapter behind httpx.MockTransport), training
+# (search, templates, plan, idempotent sets, records, burned kcal, bounds)
 cd api
 TEST_DATABASE_URL=postgresql+psycopg://postgres:postgres@127.0.0.1:5432/dsos_test \
   SECRET_KEY=test-secret-key-please-change-0123456789 .venv/bin/pytest -q
@@ -361,19 +364,21 @@ TEST_DATABASE_URL=postgresql+psycopg://postgres:postgres@127.0.0.1:5432/dsos_tes
 # frontend: types + production build (also verifies the PWA generation)
 cd web && npm run typecheck && npm run build
 
-# end-to-end against a running API (19 checks: pairing, scopes, targets, search
-# budget, barcode, recipes, AI parse without auto-save, 413 upload guard, revoke)
+# end-to-end against a running API (20 checks: pairing, scopes, targets, search
+# budget, barcode, recipes, AI parse without auto-save, 413 upload guard, a workout
+# end to end with food totals untouched, revoke)
 API_BASE=http://127.0.0.1:8000/api ./scripts/smoke.sh <PAIRING-CODE>
 
 # i18n gate (also runs in the CI web job): every key the UI uses exists in both
 # locales, the locales do not drift, dynamic prefixes resolve
 node scripts/check-i18n.mjs
 
-# browser acceptance: 90 checks in a real Chromium — pairing gate, code entry,
+# browser acceptance: 112 checks in a real Chromium — pairing gate, code entry,
 # the 4-step onboarding with the live target preview, Today, quick add,
 # settings (language / theme / timezone), every route, the built PWA manifest,
-# food logging, recipes, AI text/photo review → save, offline AI message, and
-# the camera barcode scanner (FAKE_CAMERA plays an EAN-13 video:
+# food logging, recipes, AI text/photo review → save, offline AI message, the
+# camera barcode scanner, and training (template, plan, live sets incl. offline,
+# finish, records, cardio, burned kcal apart from food) (FAKE_CAMERA plays an EAN-13 video:
 # python3 scripts/make-barcode-y4m.py 460700123456 /tmp/barcode.y4m).
 # Needs a running api (AI_PROVIDER=fake) + web and a fresh single-use code:
 npm i -D playwright && npx playwright install chromium   # once per machine
