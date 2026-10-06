@@ -9,6 +9,7 @@ import { Card, Row, Rows } from '@/components/ui'
 import {
   IconBell,
   IconChevronRight,
+  IconFootprints,
   IconGlobe,
   IconKey,
   IconPalette,
@@ -26,6 +27,7 @@ export function SettingsPage() {
     { to: '/settings/appearance', icon: <IconPalette size={18} />, label: t('settings.sections.appearance') },
     { to: '/settings/notifications', icon: <IconBell size={18} />, label: t('settings.sections.notifications') },
     { to: '/settings/devices', icon: <IconPhone size={18} />, label: t('settings.sections.devices') },
+    { to: '/settings/shortcut', icon: <IconFootprints size={18} />, label: t('settings.sections.shortcut'), hint: t('settings.shortcut_hint') },
     { to: '/settings/tokens', icon: <IconKey size={18} />, label: t('settings.sections.tokens') },
     { to: '/settings/data', icon: <IconGlobe size={18} />, label: t('settings.sections.data') },
   ]
