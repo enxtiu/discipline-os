@@ -9,13 +9,14 @@ import { Button, Callout, Field, Input, SegmentedControl, Sheet } from '@/compon
 import { IconTrash } from '@/components/ui/icons'
 import { useToast } from '@/components/ui/Toast'
 import { useAuth } from '@/features/auth/AuthProvider'
-import { addDays, dayLabel, number, timeShort, today } from '@/lib/format'
+import { addDays, dayLabel, number, timeShort } from '@/lib/format'
 import { errorMessage } from '@/lib/errors'
 import { decimal, kg, previewMinutes, signedKg, sleepDuration, wholeNumber } from './format'
 import {
   useDeleteSleep,
   useDeleteSteps,
   useDeleteWeight,
+  useHealthToday,
   useSaveSleep,
   useSaveSteps,
   useSaveWeight,
@@ -26,15 +27,21 @@ import {
 
 type WhichDay = 'today' | 'yesterday'
 
+/**
+ * Which local day a sheet writes to. "Today" is the server's day in the user's
+ * timezone (from /health/today), never the phone clock; until it has loaded the
+ * sheet cannot save.
+ */
 function useDayChoice(open: boolean) {
   const { session } = useAuth()
   const tz = session?.settings.timezone
+  const serverToday = useHealthToday().data?.day.date
   const [which, setWhich] = useState<WhichDay>('today')
   useEffect(() => {
     if (open) setWhich('today')
   }, [open])
-  const day = which === 'today' ? today(tz) : addDays(today(tz), -1)
-  return { which, setWhich, day, tz }
+  const day = serverToday ? (which === 'today' ? serverToday : addDays(serverToday, -1)) : ''
+  return { which, setWhich, day, ready: !!serverToday, tz }
 }
 
 function DayToggle({ value, onChange }: { value: WhichDay; onChange: (next: WhichDay) => void }) {
@@ -57,7 +64,7 @@ function DayToggle({ value, onChange }: { value: WhichDay; onChange: (next: Whic
 export function StepsSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { t } = useTranslation()
   const toast = useToast()
-  const { which, setWhich, day, tz } = useDayChoice(open)
+  const { which, setWhich, day, ready, tz } = useDayChoice(open)
   const series = useStepsSeries(7)
   const save = useSaveSteps()
   const remove = useDeleteSteps()
@@ -70,7 +77,7 @@ export function StepsSheet({ open, onClose }: { open: boolean; onClose: () => vo
   }, [open, day, existingSteps])
 
   const steps = wholeNumber(value)
-  const valid = steps !== null && steps >= 0 && steps <= 200_000
+  const valid = ready && steps !== null && steps >= 0 && steps <= 200_000
 
   const submit = () => {
     if (!valid || steps === null) return
@@ -97,7 +104,7 @@ export function StepsSheet({ open, onClose }: { open: boolean; onClose: () => vo
             enterKeyHint="done"
             autoComplete="off"
             className="tnum text-lg"
-            placeholder="8 000"
+            placeholder={number(8000)}
             value={value}
             onChange={(event) => setValue(event.target.value)}
             onKeyDown={(event) => event.key === 'Enter' && submit()}
@@ -141,7 +148,7 @@ export function StepsSheet({ open, onClose }: { open: boolean; onClose: () => vo
 export function WeightSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { t } = useTranslation()
   const toast = useToast()
-  const { which, setWhich, day } = useDayChoice(open)
+  const { which, setWhich, day, ready } = useDayChoice(open)
   const series = useWeightSeries(90)
   const save = useSaveWeight()
   const remove = useDeleteWeight()
@@ -161,7 +168,7 @@ export function WeightSheet({ open, onClose }: { open: boolean; onClose: () => v
 
   const kgValue = decimal(weight)
   const fatValue = decimal(fat)
-  const valid = kgValue !== null && kgValue > 20 && kgValue < 400 && (fat.trim() === '' || (fatValue !== null && fatValue > 2 && fatValue < 70))
+  const valid = ready && kgValue !== null && kgValue > 20 && kgValue < 400 && (fat.trim() === '' || (fatValue !== null && fatValue > 2 && fatValue < 70))
 
   const submit = () => {
     if (!valid || kgValue === null) return
@@ -191,7 +198,7 @@ export function WeightSheet({ open, onClose }: { open: boolean; onClose: () => v
               enterKeyHint="done"
               autoComplete="off"
               className="tnum text-lg"
-              placeholder={latest?.weight_kg != null ? number(latest.weight_kg, 1) : '75,0'}
+              placeholder={number(latest?.weight_kg ?? 75, 1)}
               value={weight}
               onChange={(event) => setWeight(event.target.value)}
               onKeyDown={(event) => event.key === 'Enter' && submit()}
@@ -259,7 +266,7 @@ const QUALITY = ['1', '2', '3', '4', '5'] as const
 export function SleepSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { t } = useTranslation()
   const toast = useToast()
-  const { which, setWhich, day, tz } = useDayChoice(open)
+  const { which, setWhich, day, ready, tz } = useDayChoice(open)
   const series = useSleepSeries(14)
   const save = useSaveSleep()
   const remove = useDeleteSleep()
@@ -285,7 +292,7 @@ export function SleepSheet({ open, onClose }: { open: boolean; onClose: () => vo
   }, [open, day, bedAt, wakeAt, existingQuality, tz])
 
   const minutes = useMemo(() => previewMinutes(bed, wake), [bed, wake])
-  const valid = minutes !== null && minutes <= 20 * 60
+  const valid = ready && minutes !== null && minutes <= 20 * 60
 
   const submit = () => {
     if (!valid) return
@@ -305,7 +312,7 @@ export function SleepSheet({ open, onClose }: { open: boolean; onClose: () => vo
     <Sheet open={open} onClose={onClose} title={t('health.sleep_title')}>
       <div className="space-y-4 pb-2">
         <DayToggle value={which} onChange={setWhich} />
-        <p className="text-xs muted">{t('health.sleep_day_hint', { day: dayLabel(day, 'long') })}</p>
+        {day && <p className="text-xs muted">{t('health.sleep_day_hint', { day: dayLabel(day, 'long') })}</p>}
         <div className="grid grid-cols-2 gap-3">
           <Field label={t('health.bed_time')} htmlFor="bed-input">
             <Input id="bed-input" type="time" className="tnum text-lg" value={bed} onChange={(e) => setBed(e.target.value)} />

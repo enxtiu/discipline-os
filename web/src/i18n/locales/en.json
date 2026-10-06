@@ -147,7 +147,9 @@
     "pinned_recipes": "Pinned recipes",
     "pinned_kcal": "{{kcal}} kcal · {{grams}} g",
     "burned_workouts": "Workouts",
-    "burned_steps": "Steps"
+    "burned_steps": "Steps",
+    "burned_activity": "Activity (Health)",
+    "burned_overlap": "Active energy from Apple Health already includes workouts recorded by the watch — don’t add the two numbers up."
   },
   "food": {
     "title": "Food",
@@ -623,7 +625,8 @@
     "weight_not_found": "No weigh-in on that day.",
     "sleep_not_found": "No sleep entry on that day.",
     "sleep_duration_invalid": "Sleep must last between 1 minute and 20 hours.",
-    "health_day_not_found": "No steps on that day."
+    "health_day_not_found": "No steps on that day.",
+    "weight_last_entry": "This is your only weigh-in — correct it instead of deleting it: the profile needs a weight."
   },
   "ai": {
     "capture_row": "Add by photo, text or barcode",
@@ -737,7 +740,9 @@
     "sleep_empty": "No sleep entries yet",
     "sleep_night": "{{day}}: {{bed}} to {{wake}}, {{duration}}",
     "steps_delete": "Clear the day",
-    "steps_deleted": "Steps for the day deleted"
+    "steps_deleted": "Steps for the day deleted",
+    "kcal_estimated": "≈{{kcal}}",
+    "range": "{{from}} – {{to}}"
   },
   "shortcut": {
     "title": "iOS Shortcut",
@@ -769,6 +774,7 @@
     "extra_sleep": "Sleep: bed_at and wake_at (date and time)",
     "extra_hint": "Same token and header. Weight and sleep can also be entered by hand on Today.",
     "manual": "If the Shortcut fails, steps can be typed in on Today — nothing depends on the Shortcut.",
-    "copy_failed": "Could not copy — select the text by hand"
+    "copy_failed": "Could not copy — select the text by hand",
+    "copy_label": "Copy: {{label}}"
   }
 }

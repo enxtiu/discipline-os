@@ -270,6 +270,12 @@ export const endpoints = {
     api.delete<import('./types').Workout>(`/v1/training/workouts/${workoutId}/sets/${setId}`),
 
   // ---- health (stage 5) — writes go through the offline queue (lib/offlineQueue) --
+  /** Paths of the manual health writes; they go through the offline queue (`mutate`), not `api`. */
+  healthPaths: {
+    steps: (day: string) => `/v1/health/steps/${day}`,
+    weight: (day: string) => `/v1/health/weight/${day}`,
+    sleep: (day: string) => `/v1/health/sleep/${day}`,
+  },
   healthToday: () => api.get<import('./types').HealthToday>('/v1/health/today'),
   stepsSeries: (days = 14) => api.get<import('./types').StepsSeries>('/v1/health/steps', { query: { days } }),
   weightSeries: (days = 90) => api.get<import('./types').WeightSeries>('/v1/health/weight', { query: { days } }),

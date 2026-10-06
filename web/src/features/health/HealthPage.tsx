@@ -111,7 +111,7 @@ function StepsChart({ data, loading, onEnter }: { data?: StepsSeries; loading: b
       {loading && !data ? (
         <Skeleton className="h-32" />
       ) : (
-        <div className="relative">
+        <div className="relative -mx-2">
           {targetTop !== null && (
             <div
               className="pointer-events-none absolute inset-x-0 border-t border-dashed border-[rgb(var(--text-muted))]/50"
@@ -124,37 +124,38 @@ function StepsChart({ data, loading, onEnter }: { data?: StepsSeries; loading: b
               const height = day.steps > 0 ? Math.max(3, Math.round((day.steps / max) * BAR_HEIGHT)) : 0
               const labelled = day.date === active || (active === null && day.date === todayDate)
               return (
-                <button
-                  key={day.date}
-                  type="button"
-                  role="listitem"
-                  onClick={() => setActive(active === day.date ? null : day.date)}
-                  aria-label={t('health.steps_day', { day: dayLabel(day.date, 'long'), steps: number(day.steps) })}
-                  className="relative flex min-h-tap flex-col items-center justify-end gap-1"
-                >
-                  <span
-                    className={clsx(
-                      'tnum absolute top-0 whitespace-nowrap text-[11px] leading-none',
-                      labelled && day.steps > 0 ? 'muted' : 'invisible',
-                      day.date === todayDate && 'right-0',
-                    )}
+                <div key={day.date} role="listitem">
+                  <button
+                    type="button"
+                    onClick={() => setActive(active === day.date ? null : day.date)}
+                    aria-label={t('health.steps_day', { day: dayLabel(day.date, 'long'), steps: number(day.steps) })}
+                    aria-pressed={active === day.date}
+                    className="relative flex min-h-tap w-full flex-col items-center justify-end gap-1"
                   >
-                    {number(day.steps)}
-                  </span>
-                  <span className="mt-4 flex w-full justify-center" style={{ height: BAR_HEIGHT }} aria-hidden="true">
                     <span
                       className={clsx(
-                        'mt-auto w-3/5 max-w-[14px] rounded-t-[3px] chart-steps',
-                        target > 0 && day.steps < target && 'opacity-60',
+                        'tnum absolute top-0 whitespace-nowrap text-[11px] leading-none',
+                        labelled && day.steps > 0 ? 'muted' : 'invisible',
+                        day.date === todayDate && 'right-0',
                       )}
-                      style={{ height }}
-                    />
-                  </span>
-                  <span className="h-px w-full bg-[rgb(var(--border))]" aria-hidden="true" />
-                  <span className={clsx('tnum text-[10px] leading-none', day.date === todayDate ? 'font-semibold' : 'muted')}>
-                    {Number(day.date.slice(8))}
-                  </span>
-                </button>
+                    >
+                      {number(day.steps)}
+                    </span>
+                    <span className="mt-4 flex w-full justify-center" style={{ height: BAR_HEIGHT }} aria-hidden="true">
+                      <span
+                        className={clsx(
+                          'mt-auto w-3/5 max-w-[14px] rounded-t-[3px] chart-steps',
+                          !day.on_target && 'opacity-60',
+                        )}
+                        style={{ height }}
+                      />
+                    </span>
+                    <span className="h-px w-full bg-[rgb(var(--border))]" aria-hidden="true" />
+                    <span className={clsx('tnum text-[10px] leading-none', day.date === todayDate ? 'font-semibold' : 'muted')}>
+                      {Number(day.date.slice(8))}
+                    </span>
+                  </button>
+                </div>
               )
             })}
           </div>
@@ -162,7 +163,7 @@ function StepsChart({ data, loading, onEnter }: { data?: StepsSeries; loading: b
       )}
       <div className="flex items-center justify-between gap-3">
         <p className="text-xs muted">{t('health.steps_legend', { target: number(target) })}</p>
-        <Button size="sm" variant="secondary" onClick={onEnter}>
+        <Button size="sm" variant="secondary" className="min-h-tap" onClick={onEnter}>
           {t('health.steps_enter')}
         </Button>
       </div>
@@ -253,12 +254,12 @@ function WeightChart({ data, loading, onEnter }: { data?: WeightSeries; loading:
       <div className="flex items-center justify-between gap-3">
         <p className="text-xs muted">
           {items.length > 1
-            ? `${dayLabel(items[0].date)} – ${dayLabel(items[items.length - 1].date)}`
+            ? t('health.range', { from: dayLabel(items[0].date), to: dayLabel(items[items.length - 1].date) })
             : items.length === 1
               ? dayLabel(items[0].date)
               : ''}
         </p>
-        <Button size="sm" variant="secondary" onClick={onEnter}>
+        <Button size="sm" variant="secondary" className="min-h-tap" onClick={onEnter}>
           {t('health.weight_enter')}
         </Button>
       </div>
@@ -281,10 +282,19 @@ function shortDay(day: string): string {
   }).format(new Date(`${day}T12:00:00Z`))
 }
 
+/** Minutes from 20:00 on the timeline: 12:00–19:59 bedtimes are negative (before the window). */
 function offset(clock: string): number {
   const [hh, mm] = clock.split(':').map(Number)
   const minutes = (hh * 60 + mm - WINDOW_START + 24 * 60) % (24 * 60)
-  return minutes > WINDOW + 4 * 60 ? 0 : Math.min(minutes, WINDOW) // 16:00–20:00 bedtimes start at the left edge
+  return minutes >= WINDOW ? minutes - 24 * 60 : minutes
+}
+
+/** The visible part of a night on the 20:00 → 12:00 window, at least a sliver wide. */
+function span(bed: string, duration: number): { left: number; width: number } {
+  const start = offset(bed)
+  const left = Math.min(Math.max(0, start), WINDOW - 4)
+  const right = Math.min(WINDOW, start + duration)
+  return { left, width: Math.max(4, right - left) }
 }
 
 function SleepChart({
@@ -334,8 +344,7 @@ function SleepChart({
           {nights.map((night) => {
             const bed = timeShort(night.bed_at, tz)
             const wake = timeShort(night.wake_at, tz)
-            const start = offset(bed)
-            const width = Math.max(2, Math.min(WINDOW - start, night.duration_min))
+            const { left, width } = span(bed, night.duration_min)
             return (
               <div
                 key={night.date}
@@ -352,7 +361,7 @@ function SleepChart({
                 <span className="relative h-3 flex-1 rounded-full bg-[rgb(var(--bg-sunken))]" aria-hidden="true">
                   <span
                     className="absolute inset-y-0 rounded-full chart-sleep"
-                    style={{ left: `${(start / WINDOW) * 100}%`, width: `${(width / WINDOW) * 100}%` }}
+                    style={{ left: `${(left / WINDOW) * 100}%`, width: `${(Math.min(width, WINDOW - left) / WINDOW) * 100}%` }}
                   />
                 </span>
                 <span className="tnum w-10 shrink-0 text-right">{sleepClock(night.duration_min)}</span>
@@ -362,7 +371,7 @@ function SleepChart({
         </div>
       )}
       <div className="flex justify-end">
-        <Button size="sm" variant="secondary" onClick={onEnter}>
+        <Button size="sm" variant="secondary" className="min-h-tap" onClick={onEnter}>
           {t('health.sleep_enter')}
         </Button>
       </div>

@@ -1003,7 +1003,8 @@ export interface paths {
         /** Type in a day's steps (manual fallback) */
         put: operations["put_steps_api_v1_health_steps__day__put"];
         post?: never;
-        delete?: never;
+        /** Clear a day's steps and activity */
+        delete: operations["delete_steps_api_v1_health_steps__day__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1037,7 +1038,7 @@ export interface paths {
         /** Log the weigh-in of a day (one per day) */
         put: operations["put_weight_api_v1_health_weight__day__put"];
         post?: never;
-        /** Remove a weigh-in */
+        /** Remove a weigh-in (not the only one) */
         delete: operations["delete_weight_api_v1_health_weight__day__delete"];
         options?: never;
         head?: never;
@@ -2109,7 +2110,7 @@ export interface components {
              * @default shortcut
              * @enum {string}
              */
-            source: "shortcut" | "manual" | "apple_health" | "import";
+            source: "shortcut" | "apple_health" | "import";
         };
         /** HealthDayOut */
         HealthDayOut: {
@@ -2148,6 +2149,12 @@ export interface components {
              * @default false
              */
             steps_kcal_estimated: boolean;
+            /**
+             * On Target
+             * @description steps reached the target that day
+             * @default false
+             */
+            on_target: boolean;
             /** Source */
             source?: ("shortcut" | "manual" | "apple_health" | "import") | null;
             /** Updated At */
@@ -6328,6 +6335,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthDayOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_steps_api_v1_health_steps__day__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                day: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkOut"];
                 };
             };
             /** @description Validation Error */

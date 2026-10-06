@@ -48,7 +48,7 @@ function CopyLine({ label, value, display, testId }: { label: string; value: str
         <button
           type="button"
           className="flex h-12 w-12 shrink-0 items-center justify-center text-[rgb(var(--accent))]"
-          aria-label={`${t('app.copy')}: ${label}`}
+          aria-label={t('shortcut.copy_label', { label })}
           onClick={() => {
             void navigator.clipboard?.writeText(value).then(
               () => toast.success(t('app.copied')),
@@ -70,6 +70,7 @@ export function ShortcutSection() {
   const health = useHealthToday()
   const [withBody, setWithBody] = useState(false)
   const [token, setToken] = useState<string | null>(null)
+  const [issuedScopes, setIssuedScopes] = useState<string[]>([])
 
   const create = useMutation({
     mutationFn: () =>
@@ -79,6 +80,7 @@ export function ShortcutSection() {
       }),
     onSuccess: async (result) => {
       setToken(result.token)
+      setIssuedScopes(result.api_token.scopes)
       await queryClient.invalidateQueries({ queryKey: queryKeys.tokens })
     },
     onError: (error) => toast.error(errorMessage(error)),
@@ -110,7 +112,8 @@ export function ShortcutSection() {
           <input
             type="checkbox"
             className="h-5 w-5 accent-aqua-400"
-            checked={withBody}
+            checked={token ? issuedScopes.includes('ingest:weight') : withBody}
+            disabled={!!token}
             onChange={(event) => setWithBody(event.target.checked)}
           />
           {t('shortcut.with_body')}
@@ -160,7 +163,7 @@ export function ShortcutSection() {
         </ol>
       </Card>
 
-      {withBody && (
+      {(token ? issuedScopes.includes('ingest:weight') : withBody) && (
         <Card className="space-y-3">
           <p className="text-sm font-semibold">{t('shortcut.extra_title')}</p>
           <CopyLine label={t('shortcut.extra_weight')} value={absolute('/v1/ingest/weight')} />

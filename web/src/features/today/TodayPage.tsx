@@ -60,6 +60,8 @@ export function TodayPage() {
   const steps = health.data?.day.steps ?? 0
   const targetSteps = health.data?.day.target_steps ?? 0
   const stepsKcal = health.data?.day.steps_kcal
+  const stepsEstimated = !!health.data?.day.steps_kcal_estimated
+  const fromHealth = stepsKcal != null && !stepsEstimated
   const [healthSheet, setHealthSheet] = useState<'steps' | 'weight' | 'sleep' | null>(null)
   const [params, setParams] = useSearchParams()
   const action = params.get('action')
@@ -186,7 +188,7 @@ export function TodayPage() {
                 </span>
               </div>
               <ProgressBar value={steps} max={targetSteps || 1} tone="violet" />
-              <Button size="sm" variant="secondary" onClick={() => setHealthSheet('steps')}>
+              <Button size="sm" variant="secondary" className="min-h-tap" onClick={() => setHealthSheet('steps')}>
                 {t('health.steps_enter')}
               </Button>
             </div>
@@ -212,16 +214,21 @@ export function TodayPage() {
             onClick={() => setHealthSheet('steps')}
             className="surface-sunken min-h-tap rounded-2xl px-3 py-2.5 text-left"
           >
-            <p className="text-xs muted">{t('today.burned_steps')}</p>
+            <p className="text-xs muted">{fromHealth ? t('today.burned_activity') : t('today.burned_steps')}</p>
             <p className="tnum text-lg font-semibold leading-tight">
               <span data-testid="burned-steps">
-                {stepsKcal != null ? `${health.data?.day.steps_kcal_estimated ? '≈' : ''}${number(stepsKcal)}` : '—'}
+                {stepsKcal == null
+                  ? '—'
+                  : stepsEstimated
+                    ? t('health.kcal_estimated', { kcal: number(stepsKcal) })
+                    : number(stepsKcal)}
               </span>
               <span className="ml-1 text-xs font-normal muted">{t('common.kcal')}</span>
             </p>
           </button>
         </div>
         <p className="text-xs muted">{t('today.burned_hint')}</p>
+        {fromHealth && <p className="text-xs muted">{t('today.burned_overlap')}</p>}
       </Card>
 
       <HealthTodayCard

@@ -2,9 +2,10 @@
 import i18n from '@/i18n'
 import { number } from '@/lib/format'
 
-/** "80,4" / "80.4" / " 80 " → 80.4; empty or junk → null. */
+/** "80,4" / "80.4" / " 80 " → 80.4; "10,000" (en grouping) → 10000; empty or junk → null. */
 export function decimal(value: string): number | null {
-  const cleaned = value.replace(/[\s  ]/g, '').replace(',', '.')
+  const compact = value.replace(/[\s\u00a0\u202f]/g, '')
+  const cleaned = /^-?\d{1,3}(,\d{3})+(\.\d+)?$/.test(compact) ? compact.replace(/,/g, '') : compact.replace(',', '.')
   if (cleaned === '') return null
   const parsed = Number(cleaned)
   return Number.isFinite(parsed) ? parsed : null

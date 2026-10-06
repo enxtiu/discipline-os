@@ -15,7 +15,12 @@ import { mutate, onQueueChange } from '@/lib/offlineQueue'
 import { queryKeys } from '@/lib/queryClient'
 
 export function useHealthToday() {
-  return useQuery({ queryKey: queryKeys.healthToday, queryFn: () => endpoints.healthToday() })
+  // back from the Shortcuts app: show its numbers without a reload
+  return useQuery({
+    queryKey: queryKeys.healthToday,
+    queryFn: () => endpoints.healthToday(),
+    refetchOnWindowFocus: true,
+  })
 }
 
 export function useStepsSeries(days = 14) {
@@ -78,35 +83,35 @@ function useHealthWrite<TVars, TData>(
 
 export function useSaveSteps() {
   return useHealthWrite<{ day: string; body: StepsIn }, HealthDay>(({ day, body }) => ({
-    path: `/v1/health/steps/${day}`,
+    path: endpoints.healthPaths.steps(day),
     method: 'PUT',
     body,
   }))
 }
 
 export function useDeleteSteps() {
-  return useHealthWrite<string, unknown>((day) => ({ path: `/v1/health/steps/${day}`, method: 'DELETE' }))
+  return useHealthWrite<string, unknown>((day) => ({ path: endpoints.healthPaths.steps(day), method: 'DELETE' }))
 }
 
 export function useSaveWeight() {
   return useHealthWrite<{ day: string; body: WeightIn }, WeightEntry>(
-    ({ day, body }) => ({ path: `/v1/health/weight/${day}`, method: 'PUT', body }),
+    ({ day, body }) => ({ path: endpoints.healthPaths.weight(day), method: 'PUT', body }),
     true,
   )
 }
 
 export function useDeleteWeight() {
-  return useHealthWrite<string, unknown>((day) => ({ path: `/v1/health/weight/${day}`, method: 'DELETE' }), true)
+  return useHealthWrite<string, unknown>((day) => ({ path: endpoints.healthPaths.weight(day), method: 'DELETE' }), true)
 }
 
 export function useSaveSleep() {
   return useHealthWrite<{ day: string; body: SleepIn }, SleepEntry>(({ day, body }) => ({
-    path: `/v1/health/sleep/${day}`,
+    path: endpoints.healthPaths.sleep(day),
     method: 'PUT',
     body,
   }))
 }
 
 export function useDeleteSleep() {
-  return useHealthWrite<string, unknown>((day) => ({ path: `/v1/health/sleep/${day}`, method: 'DELETE' }))
+  return useHealthWrite<string, unknown>((day) => ({ path: endpoints.healthPaths.sleep(day), method: 'DELETE' }))
 }
