@@ -622,6 +622,8 @@ try {
   await page.locator('[data-testid="plan-sheet"] button').filter({ hasText: `UI Грудь ${tag}` }).click()
   await page.waitForTimeout(900)
   check(await hasText(`UI Грудь ${tag}`) && (await hasText('Начать по плану')), 'planned for today → «Начать по плану»')
+  await page.waitForTimeout(3400) // toasts gone
+  await page.evaluate(() => window.scrollTo(0, 0))
   await shot('20-train-page')
 
   // live workout
@@ -714,6 +716,14 @@ try {
   await page.getByRole('button', { name: 'Записать кардио' }).click()
   await page.waitForTimeout(1200)
   check(await hasText('Кардио записано'), 'quick cardio logged from quick add (2 taps to the form)')
+  await page.goto(`${WEB_URL}/train`, { waitUntil: 'networkidle' })
+  await page.waitForTimeout(800)
+  const bars = await page.locator('[data-testid="burned-chart"] .chart-burn').evaluateAll((els) =>
+    els.filter((el) => el.getBoundingClientRect().height > 0).length,
+  )
+  check(bars >= 1, 'burned chart draws today’s bar', `${bars} bar(s)`)
+  await page.locator('[data-testid="burned-chart"]').scrollIntoViewIfNeeded()
+  await shot('25-train-burned-chart')
 
   // Today: the training card and the burned ring (never food budget)
   const dayBefore = (await apiFetch('/v1/nutrition/day')).body
