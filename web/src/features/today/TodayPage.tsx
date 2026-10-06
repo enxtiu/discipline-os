@@ -4,12 +4,12 @@
  * All numbers come from `GET /v1/nutrition/day`, which the server aggregates in
  * the user's timezone: calorie ring vs target, macro rings, water, the meal
  * list grouped by type, and the "burned is not budget" card (workouts since
- * stage 4, from `GET /v1/training/today`). Steps arrive in stage 5,
- * gamification in stage 8.
+ * stage 4, from `GET /v1/training/today`), steps, weight and sleep since
+ * stage 5 (`GET /v1/health/today`), gamification in stage 8.
  */
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 
 import { Badge, Button, Callout, Card, EmptyState, ProgressBar, Skeleton } from '@/components/ui'
@@ -36,6 +36,9 @@ import { PhotoTrigger, useAiCapture } from '@/features/ai/AiCapture'
 import { MealPhoto } from '@/features/ai/MealPhoto'
 import { TrainingTodayCard } from '@/features/train/TrainingTodayCard'
 import { useTrainingToday } from '@/features/train/useTraining'
+import { HealthTodayCard } from '@/features/health/HealthTodayCard'
+import { SleepSheet, StepsSheet, WeightSheet } from '@/features/health/sheets'
+import { useHealthQueueRefresh, useHealthToday } from '@/features/health/useHealth'
 
 const MEAL_ORDER: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack', 'other']
 
@@ -52,6 +55,20 @@ export function TodayPage() {
   const recipes = useRecipes()
   const training = useTrainingToday()
   const burnedKcal = Math.round(training.data?.burned_kcal ?? 0)
+  const health = useHealthToday()
+  useHealthQueueRefresh()
+  const steps = health.data?.day.steps ?? 0
+  const targetSteps = health.data?.day.target_steps ?? 0
+  const stepsKcal = health.data?.day.steps_kcal
+  const [healthSheet, setHealthSheet] = useState<'steps' | 'weight' | 'sleep' | null>(null)
+  const [params, setParams] = useSearchParams()
+  const action = params.get('action')
+  useEffect(() => {
+    if (action === 'steps' || action === 'weight' || action === 'sleep') {
+      setHealthSheet(action)
+      setParams({}, { replace: true })
+    }
+  }, [action, setParams])
   const [logRecipe, setLogRecipe] = useState<Recipe | null>(null)
   const pinned = (recipes.data?.items ?? []).filter((recipe) => recipe.is_pinned)
 
@@ -164,33 +181,56 @@ export function TodayPage() {
                   </span>
                   {t('today.steps')}
                 </span>
-                <span className="tnum muted">0 / {number(targets?.target_steps ?? 0)}</span>
+                <span className="tnum shrink-0 text-right leading-tight muted" data-testid="steps-today">
+                  {number(steps)} / {number(targetSteps)}
+                </span>
               </div>
-              <ProgressBar value={0} max={targets?.target_steps ?? 1} tone="violet" />
-              <p className="text-[11px] muted">{t('today.coming_soon', { stage: 5 })}</p>
+              <ProgressBar value={steps} max={targetSteps || 1} tone="violet" />
+              <Button size="sm" variant="secondary" onClick={() => setHealthSheet('steps')}>
+                {t('health.steps_enter')}
+              </Button>
             </div>
           </div>
         </Card>
       )}
 
-      <Card className="flex items-center gap-4">
-        <ProgressRing
-          size={64}
-          thickness={7}
-          value={burnedKcal > 0 ? 1 : 0}
-          max={1}
-          tone="warn"
-          glow={false}
-          label={<span className="tnum text-base" data-testid="burned-today">{number(burnedKcal)}</span>}
-        />
-        <div className="min-w-0 flex-1">
-          <p className="flex items-center gap-2 text-sm font-semibold">
-            <IconFlame size={16} className="text-amber-400" />
-            {t('today.burned_card')}
-          </p>
-          <p className="mt-0.5 text-xs muted">{t('today.burned_hint')}</p>
+      <Card className="space-y-3">
+        <p className="flex items-center gap-2 text-sm font-semibold">
+          <IconFlame size={16} className="text-amber-400" />
+          {t('today.burned_card')}
+        </p>
+        <div className="grid grid-cols-2 gap-2">
+          <div className="surface-sunken rounded-2xl px-3 py-2.5">
+            <p className="text-xs muted">{t('today.burned_workouts')}</p>
+            <p className="tnum text-lg font-semibold leading-tight">
+              <span data-testid="burned-today">{number(burnedKcal)}</span>
+              <span className="ml-1 text-xs font-normal muted">{t('common.kcal')}</span>
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setHealthSheet('steps')}
+            className="surface-sunken min-h-tap rounded-2xl px-3 py-2.5 text-left"
+          >
+            <p className="text-xs muted">{t('today.burned_steps')}</p>
+            <p className="tnum text-lg font-semibold leading-tight">
+              <span data-testid="burned-steps">
+                {stepsKcal != null ? `${health.data?.day.steps_kcal_estimated ? '≈' : ''}${number(stepsKcal)}` : '—'}
+              </span>
+              <span className="ml-1 text-xs font-normal muted">{t('common.kcal')}</span>
+            </p>
+          </button>
         </div>
+        <p className="text-xs muted">{t('today.burned_hint')}</p>
       </Card>
+
+      <HealthTodayCard
+        data={health.data}
+        loading={health.isLoading}
+        tz={session?.settings.timezone}
+        onWeight={() => setHealthSheet('weight')}
+        onSleep={() => setHealthSheet('sleep')}
+      />
 
       {pinned.length > 0 && (
         <section className="space-y-2" aria-label={t('today.pinned_recipes')}>
@@ -308,6 +348,9 @@ export function TodayPage() {
         target={logRecipe ? { kind: 'recipe', recipe: logRecipe } : null}
         onClose={() => setLogRecipe(null)}
       />
+      <StepsSheet open={healthSheet === 'steps'} onClose={() => setHealthSheet(null)} />
+      <WeightSheet open={healthSheet === 'weight'} onClose={() => setHealthSheet(null)} />
+      <SleepSheet open={healthSheet === 'sleep'} onClose={() => setHealthSheet(null)} />
     </div>
   )
 }

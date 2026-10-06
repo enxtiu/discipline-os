@@ -24,11 +24,13 @@ import { AppearanceSection } from '@/features/settings/AppearanceSection'
 import { NotificationsSection } from '@/features/settings/NotificationsSection'
 import { DevicesSection } from '@/features/settings/DevicesSection'
 import { TokensSection } from '@/features/settings/TokensSection'
+import { ShortcutSection } from '@/features/settings/ShortcutSection'
 import { DataSection } from '@/features/settings/DataSection'
 import { PlanPage, StatsPage } from '@/features/shared/Placeholders'
 // stage 4: the training screens load on first visit (Today stays light)
 const TrainPage = lazy(() => import('@/features/train/TrainPage').then((m) => ({ default: m.TrainPage })))
 const WorkoutPage = lazy(() => import('@/features/train/WorkoutPage').then((m) => ({ default: m.WorkoutPage })))
+const HealthPage = lazy(() => import('@/features/health/HealthPage').then((m) => ({ default: m.HealthPage })))
 import { FoodPage } from '@/features/food/FoodPage'
 import { SettingsHeader } from '@/features/settings/SettingsHeader'
 
@@ -54,6 +56,7 @@ function Shell() {
         <Route path="/food" element={<FoodPage />} />
         <Route path="/train" element={<Lazy><TrainPage /></Lazy>} />
         <Route path="/train/workout/:id" element={<Lazy><WorkoutPage /></Lazy>} />
+        <Route path="/health" element={<Lazy><HealthPage /></Lazy>} />
         <Route path="/plan" element={<PlanPage />} />
         <Route path="/stats" element={<StatsPage />} />
 
@@ -64,6 +67,7 @@ function Shell() {
           <Route path="notifications" element={<NotificationsSection />} />
           <Route path="devices" element={<DevicesSection />} />
           <Route path="tokens" element={<TokensSection />} />
+          <Route path="shortcut" element={<ShortcutSection />} />
           <Route path="data" element={<DataSection />} />
         </Route>
 

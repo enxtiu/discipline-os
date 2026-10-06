@@ -20,6 +20,7 @@
     --accent-2: 139 92 246;      /* #8B5CF6 */
     --warn: 251 191 36;          /* #FBBF24 */
     --chart-burn: 201 122 6;     /* #C97A06 — burned-kcal bars (validated for dark) */
+    --chart-sleep: 96 165 250;   /* #60A5FA — sleep bars, 6.9:1 on cards */
   }
 
   :root[data-theme='light'] {
@@ -33,6 +34,7 @@
     --accent-2: 124 58 237;
     --warn: 217 119 6;
     --chart-burn: 217 119 6;     /* #D97706 */
+    --chart-sleep: 37 99 235;    /* #2563EB, 5.2:1 on white */
   }
 
   * {
@@ -252,6 +254,13 @@
   /* stage 4: burned-kcal bars; the rest timer floats just above the tab bar */
   .chart-burn {
     background-color: rgb(var(--chart-burn));
+  }
+  /* stage 5: steps bars (violet, as the steps progress bar) and sleep bars */
+  .chart-steps {
+    background-color: rgb(var(--accent-2));
+  }
+  .chart-sleep {
+    background-color: rgb(var(--chart-sleep));
   }
   .above-tabbar {
     bottom: calc(4.75rem + env(safe-area-inset-bottom, 0px));
