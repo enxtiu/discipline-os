@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 
 from app.api.deps import Principal
-from app.core.tz import utcnow
+from app.core.tz import local_day, utcnow
 from app.models import (
     ApiToken,
     Device,
@@ -38,6 +38,8 @@ from app.schemas.food import (
 )
 from app.schemas.training import (
     BestsOut,
+    BurnedDayOut,
+    BurnedOut,
     ExerciseOut,
     ExerciseSessionOut,
     PlanDayOut,
@@ -287,7 +289,7 @@ def bests_out(bests: training_service.Bests | None) -> BestsOut:
     )
 
 
-def record_out(record, exercises: dict) -> RecordOut:
+def record_out(record, exercises: dict, *, day: date | None = None, tz: str | None = None) -> RecordOut:
     exercise = exercises.get(record.exercise_id)
     return RecordOut(
         id=record.id,
@@ -300,6 +302,7 @@ def record_out(record, exercises: dict) -> RecordOut:
         unit=record.unit,
         reps=record.reps,
         achieved_at=record.achieved_at,
+        local_day=day or local_day(record.achieved_at, tz),
         workout_id=record.workout_log_id,
         set_id=record.workout_set_id,
     )
@@ -380,7 +383,7 @@ def workout_out(view: training_service.WorkoutView) -> WorkoutOut:
         view.exercises[exercise_id].name_ru or view.exercises[exercise_id].name_en or "" for exercise_id in view.order
     ]
     brief = workout_brief_out(training_service.WorkoutBrief(workout=workout, exercise_names=names[:4]))
-    record_sets = {record.workout_set_id for record in view.records if record.workout_set_id}
+    record_sets = view.record_set_ids
     targets = {}
     if view.template is not None:
         template_exercises = {exercise_id: view.exercises[exercise_id] for exercise_id in view.exercises}
@@ -426,7 +429,7 @@ def workout_out(view: training_service.WorkoutView) -> WorkoutOut:
         rating=workout.rating,
         template_name=view.template.name if view.template is not None else None,
         exercises=exercises,
-        records=[record_out(record, view.exercises) for record in view.records],
+        records=[record_out(record, view.exercises, day=workout.local_day) for record in view.records],
         body_weight_kg=view.body_weight_kg,
     )
 
@@ -476,3 +479,14 @@ def exercise_session_out(workout, sets) -> ExerciseSessionOut:
         duration_s=max((row.duration_s or 0 for row in working), default=0) or None,
         distance_m=max((row.distance_m or 0 for row in working), default=0) or None,
     )
+
+
+def burned_out(start: date, days: int, per_day: dict) -> BurnedOut:
+    """Zero-filled days, rounded kcal; the average is over the whole window."""
+    rows = []
+    for offset in range(days):
+        day = start + timedelta(days=offset)
+        kcal, count = per_day.get(day, (0.0, 0))
+        rows.append(BurnedDayOut(date=day, kcal=round(kcal), workouts=count))
+    total = sum(row.kcal for row in rows)
+    return BurnedOut(days=rows, total_kcal=total, average_kcal=round(total / days) if days else 0)

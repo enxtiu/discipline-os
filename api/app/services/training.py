@@ -29,6 +29,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from sqlalchemy import and_, case, cast, delete, func, or_, select, tuple_
 from sqlalchemy.dialects.postgresql import REGCONFIG, distinct_on
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import Conflict, NotFound, Unprocessable
@@ -68,6 +69,15 @@ DEFAULT_MET = {
     ExerciseType.OTHER: 4.0,
 }
 CARDIO_TYPES = (ExerciseType.CARDIO, ExerciseType.SPORT)
+# quotas: generous for one person, a wall for a runaway client
+MAX_SETS_PER_WORKOUT = 300
+MAX_CUSTOM_EXERCISES = 500
+MAX_TEMPLATES = 200
+MAX_KCAL_PER_WORKOUT = 20_000
+# a workout belongs to the last year or (clock skew) the next day
+PAST_LIMIT = timedelta(days=400)
+FUTURE_LIMIT = timedelta(days=1)
+MAX_WORKOUT_SECONDS = 24 * 3600
 ACTIVE = (WorkoutStatus.IN_PROGRESS, WorkoutStatus.COMPLETED)
 
 
@@ -105,11 +115,38 @@ def week_start_for(day: date, week_start: int) -> date:
 
 
 def _aware(value: datetime | None, tz: str | None) -> datetime:
+    """An instant from the app: naive values are the user's wall clock, everywhere."""
     if value is None:
         return utcnow()
-    if value.tzinfo is None:  # a local wall clock from the app
-        return value.replace(tzinfo=get_zone(tz))
+    if value.tzinfo is None:
+        return ensure_utc(value.replace(tzinfo=get_zone(tz)))
     return ensure_utc(value)
+
+
+def _start_time(value: datetime | None, tz: str | None) -> datetime:
+    started = _aware(value, tz)
+    now = utcnow()
+    if started < now - PAST_LIMIT or started > now + FUTURE_LIMIT:
+        raise Unprocessable("A workout must start within the last year", code="workout_time_out_of_range")
+    return started
+
+
+def _lock_key(user_id: uuid.UUID) -> int:
+    return int.from_bytes(user_id.bytes[:8], "big", signed=True)
+
+
+async def _insert_once(db: AsyncSession, row, model, user_id: uuid.UUID):
+    """Insert a row keyed by a client id; a concurrent replay returns the winner."""
+    try:
+        async with db.begin_nested():
+            db.add(row)
+            await db.flush()
+    except IntegrityError:
+        existing = await db.get(model, row.id, populate_existing=True)
+        if existing is None or existing.user_id != user_id:
+            raise Conflict("This id is already used", code="id_conflict") from None
+        return existing
+    return row
 
 
 @dataclass(slots=True)
@@ -134,6 +171,9 @@ class WorkoutView:
     bests: dict[uuid.UUID, Bests]
     records: list[PersonalRecord]
     body_weight_kg: float | None
+    # sets marked as records: the record events of a finished workout, or — while
+    # it is running — sets that already beat the bests (same rules as at finish)
+    record_set_ids: set[uuid.UUID] = field(default_factory=set)
 
 
 @dataclass(slots=True)
@@ -270,6 +310,9 @@ async def create_exercise(db: AsyncSession, *, user_id: uuid.UUID, payload) -> E
             if existing.user_id != user_id:
                 raise Conflict("This id is already used", code="id_conflict")
             return existing
+    own = await db.scalar(select(func.count()).select_from(Exercise).where(Exercise.user_id == user_id))
+    if (own or 0) >= MAX_CUSTOM_EXERCISES:
+        raise Unprocessable("Too many custom exercises", code="too_many_exercises")
     kind = ExerciseType(payload.exercise_type)
     exercise = Exercise(
         id=payload.id or uuid.uuid4(),
@@ -286,8 +329,7 @@ async def create_exercise(db: AsyncSession, *, user_id: uuid.UUID, payload) -> E
         met=payload.met or DEFAULT_MET[kind],
         source="user",
     )
-    db.add(exercise)
-    await db.flush()
+    exercise = await _insert_once(db, exercise, Exercise, user_id)
     await db.refresh(exercise)
     return exercise
 
@@ -461,7 +503,11 @@ BEST_FIELD = {
 
 async def _detect_records(db: AsyncSession, view_exercises: dict[uuid.UUID, Exercise], workout: WorkoutLog) -> int:
     """Replace this workout's record events with what it beats now."""
-    await db.execute(delete(PersonalRecord).where(PersonalRecord.workout_log_id == workout.id))
+    await db.execute(
+        delete(PersonalRecord).where(
+            PersonalRecord.workout_log_id == workout.id, PersonalRecord.user_id == workout.user_id
+        )
+    )
     by_exercise: dict[uuid.UUID, list[WorkoutSet]] = defaultdict(list)
     for row in workout.sets:
         by_exercise[row.exercise_id].append(row)
@@ -531,8 +577,9 @@ def estimate_kcal(workout: WorkoutLog, exercises: dict[uuid.UUID, Exercise], wei
         if exercise is None:
             continue
         if row.duration_s and (exercise.is_timed or exercise.exercise_type in CARDIO_TYPES):
-            kcal += net(exercise.met) * weight_kg * row.duration_s / 3600
-            timed_seconds += row.duration_s
+            seconds = min(row.duration_s, workout.duration_s or MAX_WORKOUT_SECONDS)
+            kcal += net(exercise.met) * weight_kg * seconds / 3600
+            timed_seconds += seconds
         else:
             strength_mets.append(exercise.met)
     if strength_mets:
@@ -544,7 +591,7 @@ def estimate_kcal(workout: WorkoutLog, exercises: dict[uuid.UUID, Exercise], wei
         kcal += net(DEFAULT_MET[workout.kind]) * weight_kg * workout.duration_s / 3600
     if kcal <= 0:
         return None
-    return Decimal(str(round(kcal)))
+    return Decimal(str(round(min(kcal, MAX_KCAL_PER_WORKOUT))))
 
 
 # --------------------------------------------------------------------------- #
@@ -587,7 +634,12 @@ async def start_workout(db: AsyncSession, *, user_id: uuid.UUID, tz: str | None,
     if existing is not None:
         if existing.user_id != user_id:
             raise Conflict("This id is already used", code="id_conflict")
+        if existing.is_deleted:
+            raise NotFound("Workout not found", code="workout_not_found")
         return existing  # replayed start
+    started_at = _start_time(payload.started_at, tz)
+    # two starts at once (two taps, two workers) must not both pass the check below
+    await db.execute(select(func.pg_advisory_xact_lock(_lock_key(user_id))))
     active = await db.scalar(
         select(WorkoutLog.id).where(
             WorkoutLog.user_id == user_id,
@@ -605,7 +657,6 @@ async def start_workout(db: AsyncSession, *, user_id: uuid.UUID, tz: str | None,
     if payload.template_id is not None:
         template = await _own_template(db, user_id, payload.template_id)
         template.use_count += 1
-    started_at = _aware(payload.started_at, tz)
     kind = payload.kind or (template.kind.value if template else "strength")
     stmt = (
         pg_insert(WorkoutLog)
@@ -637,6 +688,9 @@ async def upsert_set(
 ) -> WorkoutLog:
     workout = await _own_workout(db, user_id, workout_id)
     await get_exercise(db, user_id, payload.exercise_id)
+    count = await db.scalar(select(func.count()).select_from(WorkoutSet).where(WorkoutSet.workout_log_id == workout.id))
+    if (count or 0) >= MAX_SETS_PER_WORKOUT and await db.get(WorkoutSet, set_id) is None:
+        raise Unprocessable("This workout already has the maximum number of sets", code="too_many_sets")
     values = {
         "exercise_id": payload.exercise_id,
         "sort_order": payload.sort_order,
@@ -679,7 +733,9 @@ async def delete_set(db: AsyncSession, *, user_id: uuid.UUID, workout_id: uuid.U
     return workout
 
 
-async def finish_workout(db: AsyncSession, *, user_id: uuid.UUID, workout_id: uuid.UUID, payload) -> WorkoutLog:
+async def finish_workout(
+    db: AsyncSession, *, user_id: uuid.UUID, workout_id: uuid.UUID, payload, tz: str | None = None
+) -> WorkoutLog:
     workout = await _own_workout(db, user_id, workout_id)
     if workout.status == WorkoutStatus.COMPLETED:
         return workout  # replayed finish
@@ -690,11 +746,17 @@ async def finish_workout(db: AsyncSession, *, user_id: uuid.UUID, workout_id: uu
         workout.duration_s = payload.duration_s
         workout.ended_at = workout.started_at + timedelta(seconds=payload.duration_s)
     else:
-        ended = ensure_utc(payload.ended_at) if payload.ended_at else utcnow()
+        ended = _aware(payload.ended_at, tz) if payload.ended_at else utcnow()
         if ended < workout.started_at:
             raise Unprocessable("A workout cannot end before it started", code="workout_end_before_start")
+        seconds = int((ended - workout.started_at).total_seconds())
+        if seconds > MAX_WORKOUT_SECONDS:
+            if payload.ended_at:
+                raise Unprocessable("A workout lasts at most 24 hours", code="workout_too_long")
+            seconds = MAX_WORKOUT_SECONDS  # left running for days: cap it, the user can correct it
+            ended = workout.started_at + timedelta(seconds=seconds)
         workout.ended_at = ended
-        workout.duration_s = max(60, int((ended - workout.started_at).total_seconds()))
+        workout.duration_s = max(60, seconds)
     if payload.rating is not None:
         workout.rating = payload.rating
     if payload.notes_md is not None:
@@ -733,7 +795,9 @@ async def patch_workout(db: AsyncSession, *, user_id: uuid.UUID, workout_id: uui
 async def delete_workout(db: AsyncSession, *, user_id: uuid.UUID, workout_id: uuid.UUID) -> None:
     workout = await _own_workout(db, user_id, workout_id)
     workout.is_deleted = True
-    await db.execute(delete(PersonalRecord).where(PersonalRecord.workout_log_id == workout.id))
+    await db.execute(
+        delete(PersonalRecord).where(PersonalRecord.workout_log_id == workout.id, PersonalRecord.user_id == user_id)
+    )
     await db.flush()
 
 
@@ -743,11 +807,14 @@ async def quick_workout(db: AsyncSession, *, user_id: uuid.UUID, tz: str | None,
     if existing is not None:
         if existing.user_id != user_id:
             raise Conflict("This id is already used", code="id_conflict")
+        if existing.is_deleted:
+            raise NotFound("Workout not found", code="workout_not_found")
         return existing
     exercise = await get_exercise(db, user_id, payload.exercise_id)
-    started_at = (
-        _aware(payload.started_at, tz) if payload.started_at else utcnow() - timedelta(seconds=payload.duration_s)
-    )
+    if payload.started_at is not None:
+        started_at = _start_time(payload.started_at, tz)
+    else:
+        started_at = utcnow() - timedelta(seconds=payload.duration_s)
     workout = WorkoutLog(
         id=payload.id,
         client_uuid=payload.id,
@@ -764,8 +831,9 @@ async def quick_workout(db: AsyncSession, *, user_id: uuid.UUID, tz: str | None,
         kcal_method=KcalMethod.NONE,
         source="app",
     )
-    db.add(workout)
-    await db.flush()
+    inserted = await _insert_once(db, workout, WorkoutLog, user_id)
+    if inserted is not workout:
+        return inserted  # a concurrent replay won
     db.add(
         WorkoutSet(
             id=uuid.uuid4(),
@@ -793,7 +861,7 @@ async def workout_view(db: AsyncSession, workout: WorkoutLog) -> WorkoutView:
     order: list[uuid.UUID] = []
     # an in-progress workout shows the whole plan; a finished one only what was done
     if template is not None and workout.status == WorkoutStatus.IN_PROGRESS:
-        order.extend(item.exercise_id for item in template.items)
+        order.extend(dict.fromkeys(item.exercise_id for item in template.items))
     for row in sorted(workout.sets, key=lambda r: (r.sort_order, r.set_index, r.created_at)):
         if row.exercise_id not in order:
             order.append(row.exercise_id)
@@ -809,16 +877,56 @@ async def workout_view(db: AsyncSession, workout: WorkoutLog) -> WorkoutView:
             .order_by(PersonalRecord.kind)
         )
     ).all()
+    bests = await bests_for(db, user_id, order, exclude_workout=workout.id)
+    if workout.status == WorkoutStatus.COMPLETED:
+        record_sets = {record.workout_set_id for record in records if record.workout_set_id}
+    else:
+        record_sets = live_record_sets(workout.sets, exercises, bests)
     return WorkoutView(
         workout=workout,
         exercises=exercises,
         order=order,
         template=template,
         previous=await previous_sets(db, user_id, order, exclude_workout=workout.id),
-        bests=await bests_for(db, user_id, order, exclude_workout=workout.id),
+        bests=bests,
         records=list(records),
         body_weight_kg=await body_weight_on(db, user_id, workout.local_day),
+        record_set_ids=record_sets,
     )
+
+
+def live_record_sets(sets, exercises: dict[uuid.UUID, Exercise], bests: dict[uuid.UUID, Bests]) -> set[uuid.UUID]:
+    """Sets of a running workout that already beat a best (first time = baseline, no record)."""
+    found: set[uuid.UUID] = set()
+    for row in sets:
+        exercise, best = exercises.get(row.exercise_id), bests.get(row.exercise_id)
+        if row.is_warmup or exercise is None or best is None:
+            continue
+        mode = log_mode(exercise)
+        if mode == "weight_reps":
+            heavier = (
+                best.weight_kg is not None
+                and row.weight_kg is not None
+                and (row.reps or 0) >= 1
+                and float(row.weight_kg) > best.weight_kg + 1e-9
+            )
+            stronger = (
+                best.est_1rm_kg is not None
+                and row.est_1rm_kg is not None
+                and float(row.est_1rm_kg) > best.est_1rm_kg + 1e-9
+            )
+            beats = heavier or stronger
+        elif mode == "reps":
+            beats = best.reps is not None and (row.reps or 0) > best.reps
+        elif mode == "duration":
+            beats = best.duration_s is not None and (row.duration_s or 0) > best.duration_s
+        else:
+            beats = (best.distance_m is not None and (row.distance_m or 0) > best.distance_m) or (
+                best.duration_s is not None and (row.duration_s or 0) > best.duration_s
+            )
+        if beats:
+            found.add(row.id)
+    return found
 
 
 async def workout_briefs(db: AsyncSession, user_id: uuid.UUID, workouts: list[WorkoutLog]) -> list[WorkoutBrief]:
@@ -838,7 +946,9 @@ async def workout_briefs(db: AsyncSession, user_id: uuid.UUID, workouts: list[Wo
     exercise_ids = {exercise_id for items in per_workout.values() for exercise_id in items}
     if exercise_ids:
         for row in await db.execute(
-            select(Exercise.id, Exercise.name_ru, Exercise.name_en).where(Exercise.id.in_(exercise_ids))
+            select(Exercise.id, Exercise.name_ru, Exercise.name_en).where(
+                Exercise.id.in_(exercise_ids), _visible(user_id)
+            )
         ):
             names[row.id] = row.name_ru or row.name_en or ""
     return [
@@ -924,7 +1034,10 @@ async def create_template(db: AsyncSession, *, user_id: uuid.UUID, payload) -> W
         if existing is not None:
             if existing.user_id != user_id:
                 raise Conflict("This id is already used", code="id_conflict")
+            if existing.is_archived:
+                raise NotFound("Template not found", code="template_not_found")
             return existing
+    await _check_template_quota(db, user_id)
     await _visible_exercise_map(db, user_id, [item.exercise_id for item in payload.items])
     template = WorkoutTemplate(
         id=payload.id or uuid.uuid4(),
@@ -937,10 +1050,19 @@ async def create_template(db: AsyncSession, *, user_id: uuid.UUID, payload) -> W
         items=[],
     )
     _apply_items(template, user_id, payload.items)
-    db.add(template)
-    await db.flush()
+    template = await _insert_once(db, template, WorkoutTemplate, user_id)
     await db.refresh(template)
     return template
+
+
+async def _check_template_quota(db: AsyncSession, user_id: uuid.UUID) -> None:
+    count = await db.scalar(
+        select(func.count())
+        .select_from(WorkoutTemplate)
+        .where(WorkoutTemplate.user_id == user_id, WorkoutTemplate.is_archived.is_(False))
+    )
+    if (count or 0) >= MAX_TEMPLATES:
+        raise Unprocessable("Too many templates", code="too_many_templates")
 
 
 async def replace_template(db: AsyncSession, *, user_id: uuid.UUID, template_id: uuid.UUID, payload) -> WorkoutTemplate:
@@ -972,7 +1094,10 @@ async def template_from_workout(
     if existing is not None:
         if existing.user_id != user_id:
             raise Conflict("This id is already used", code="id_conflict")
+        if existing.is_archived:
+            raise NotFound("Template not found", code="template_not_found")
         return existing
+    await _check_template_quota(db, user_id)
     workout = await _own_workout(db, user_id, workout_id)
     await db.refresh(workout, attribute_names=["sets"])
     grouped: dict[uuid.UUID, list[WorkoutSet]] = defaultdict(list)
@@ -1001,8 +1126,7 @@ async def template_from_workout(
         )
     if workout.duration_s:
         template.estimated_minutes = max(1, round(workout.duration_s / 60))
-    db.add(template)
-    await db.flush()
+    template = await _insert_once(db, template, WorkoutTemplate, user_id)
     await db.refresh(template)
     return template
 
@@ -1174,7 +1298,9 @@ async def exercise_history(
     if workout_ids:
         workouts = (
             await db.scalars(
-                select(WorkoutLog).where(WorkoutLog.id.in_(workout_ids)).order_by(WorkoutLog.started_at.desc())
+                select(WorkoutLog)
+                .where(WorkoutLog.id.in_(workout_ids), WorkoutLog.user_id == user_id)
+                .order_by(WorkoutLog.started_at.desc())
             )
         ).all()
         sets = (
@@ -1204,9 +1330,9 @@ async def recent_records(db: AsyncSession, *, user_id: uuid.UUID, limit: int) ->
     return list(rows.all())
 
 
-async def exercise_names(db: AsyncSession, ids) -> dict[uuid.UUID, Exercise]:
+async def exercise_names(db: AsyncSession, user_id: uuid.UUID, ids) -> dict[uuid.UUID, Exercise]:
     wanted = set(ids)
     if not wanted:
         return {}
-    rows = (await db.scalars(select(Exercise).where(Exercise.id.in_(wanted)))).all()
+    rows = (await db.scalars(select(Exercise).where(Exercise.id.in_(wanted), _visible(user_id)))).all()
     return {row.id: row for row in rows}

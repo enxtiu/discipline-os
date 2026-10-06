@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, Path, Query
 from app.api.deps import CurrentPrincipal, DbSession, require_device
 from app.api.v1.presenters import (
     bests_out,
+    burned_out,
     exercise_out,
     exercise_session_out,
     plan_day_out,
@@ -24,10 +25,11 @@ from app.api.v1.presenters import (
     workout_brief_out,
     workout_out,
 )
+from app.core.errors import RateLimited, Unprocessable
+from app.core.rate_limit import limiter
 from app.core.tz import today_in
 from app.schemas.common import OkOut
 from app.schemas.training import (
-    BurnedDayOut,
     BurnedOut,
     EquipmentLiteral,
     ExerciseHistoryOut,
@@ -54,6 +56,19 @@ from app.schemas.training import (
 from app.services import training
 
 router = APIRouter(prefix="/training", tags=["training"], dependencies=[Depends(require_device)])
+
+# writes per user and minute: a gym session logs a set every ~30 s; this only stops a runaway client
+WRITES_PER_MINUTE = 240
+PLAN_HORIZON = timedelta(days=730)
+
+
+async def _write_limit(principal: CurrentPrincipal) -> None:
+    allowed, retry_after = await limiter.hit(f"training:{principal.user_id}", WRITES_PER_MINUTE)
+    if not allowed:
+        raise RateLimited(retry_after, "Too many training changes, please slow down")
+
+
+Write = [Depends(_write_limit)]
 
 Weekday = Annotated[int, Path(ge=0, le=6, description="0 = Monday … 6 = Sunday")]
 
@@ -99,12 +114,16 @@ async def list_exercises(
     )
 
 
-@router.post("/exercises", response_model=ExerciseOut, status_code=201, summary="Create your own exercise")
+@router.post(
+    "/exercises", response_model=ExerciseOut, status_code=201, summary="Create your own exercise", dependencies=Write
+)
 async def create_exercise(payload: ExerciseIn, principal: CurrentPrincipal, db: DbSession) -> ExerciseOut:
     return exercise_out(await training.create_exercise(db, user_id=principal.user_id, payload=payload))
 
 
-@router.patch("/exercises/{exercise_id}", response_model=ExerciseOut, summary="Edit or archive your exercise")
+@router.patch(
+    "/exercises/{exercise_id}", response_model=ExerciseOut, summary="Edit or archive your exercise", dependencies=Write
+)
 async def patch_exercise(
     exercise_id: uuid.UUID, payload: ExercisePatchIn, principal: CurrentPrincipal, db: DbSession
 ) -> ExerciseOut:
@@ -129,7 +148,7 @@ async def exercise_history(
     return ExerciseHistoryOut(
         exercise=exercise_out(exercise),
         bests=bests_out(bests),
-        records=[record_out(record, {exercise.id: exercise}) for record in records],
+        records=[record_out(record, {exercise.id: exercise}, tz=_tz(principal)) for record in records],
         sessions=[exercise_session_out(workout, sets) for workout, sets in sessions],
     )
 
@@ -144,13 +163,24 @@ async def list_templates(principal: CurrentPrincipal, db: DbSession) -> list[Tem
     return [template_out(template, exercises) for template in templates]
 
 
-@router.post("/templates", response_model=TemplateOut, status_code=201, summary="Create a template (idempotent by id)")
+@router.post(
+    "/templates",
+    response_model=TemplateOut,
+    status_code=201,
+    summary="Create a template (idempotent by id)",
+    dependencies=Write,
+)
 async def create_template(payload: TemplateIn, principal: CurrentPrincipal, db: DbSession) -> TemplateOut:
     template = await training.create_template(db, user_id=principal.user_id, payload=payload)
     return template_out(template, await training.template_exercises(db, principal.user_id, [template]))
 
 
-@router.put("/templates/{template_id}", response_model=TemplateOut, summary="Replace a template and its exercises")
+@router.put(
+    "/templates/{template_id}",
+    response_model=TemplateOut,
+    summary="Replace a template and its exercises",
+    dependencies=Write,
+)
 async def replace_template(
     template_id: uuid.UUID, payload: TemplateIn, principal: CurrentPrincipal, db: DbSession
 ) -> TemplateOut:
@@ -158,7 +188,7 @@ async def replace_template(
     return template_out(template, await training.template_exercises(db, principal.user_id, [template]))
 
 
-@router.delete("/templates/{template_id}", response_model=OkOut, summary="Archive a template")
+@router.delete("/templates/{template_id}", response_model=OkOut, summary="Archive a template", dependencies=Write)
 async def delete_template(template_id: uuid.UUID, principal: CurrentPrincipal, db: DbSession) -> OkOut:
     await training.archive_template(db, user_id=principal.user_id, template_id=template_id)
     return OkOut()
@@ -169,6 +199,7 @@ async def delete_template(template_id: uuid.UUID, principal: CurrentPrincipal, d
     response_model=TemplateOut,
     status_code=201,
     summary="Save a workout's exercises and top sets as a template",
+    dependencies=Write,
 )
 async def save_as_template(
     workout_id: uuid.UUID,
@@ -177,6 +208,8 @@ async def save_as_template(
     db: DbSession,
     name: str = Query(min_length=1, max_length=160),
 ) -> TemplateOut:
+    if not name.strip():
+        raise Unprocessable("A template needs a name", code="template_name_required")
     template = await training.template_from_workout(
         db, user_id=principal.user_id, workout_id=workout_id, template_id=template_id, name=name.strip()
     )
@@ -186,8 +219,16 @@ async def save_as_template(
 # --------------------------------------------------------------------------- #
 # Weekly plan
 # --------------------------------------------------------------------------- #
+def _check_plan_date(principal: CurrentPrincipal, plan_date: date) -> None:
+    today = today_in(_tz(principal))
+    if abs(plan_date - today) > PLAN_HORIZON:
+        raise Unprocessable("Plan dates must be within two years", code="plan_date_out_of_range")
+
+
 async def _week(db, principal: CurrentPrincipal, start: date | None) -> WeekPlanOut:
     today = today_in(_tz(principal))
+    if start is not None and abs(start - today) > PLAN_HORIZON:
+        raise Unprocessable("Plan dates must be within two years", code="plan_date_out_of_range")
     first = training.week_start_for(start or today, _week_start(principal))
     days, recurring, templates = await training.week_plan(db, user_id=principal.user_id, start=first, today=today)
     return WeekPlanOut(
@@ -206,26 +247,45 @@ async def get_plan(
     return await _week(db, principal, start)
 
 
-@router.put("/plan/weekdays/{weekday}", response_model=WeekPlanOut, summary="Set the recurring plan of a weekday")
+@router.put(
+    "/plan/weekdays/{weekday}",
+    response_model=WeekPlanOut,
+    summary="Set the recurring plan of a weekday",
+    dependencies=Write,
+)
 async def set_weekday(weekday: Weekday, payload: PlanDayIn, principal: CurrentPrincipal, db: DbSession) -> WeekPlanOut:
     await training.set_weekday_plan(db, user_id=principal.user_id, weekday=weekday, payload=payload)
     return await _week(db, principal, None)
 
 
-@router.delete("/plan/weekdays/{weekday}", response_model=WeekPlanOut, summary="Clear the recurring plan of a weekday")
+@router.delete(
+    "/plan/weekdays/{weekday}",
+    response_model=WeekPlanOut,
+    summary="Clear the recurring plan of a weekday",
+    dependencies=Write,
+)
 async def clear_weekday(weekday: Weekday, principal: CurrentPrincipal, db: DbSession) -> WeekPlanOut:
     await training.clear_weekday_plan(db, user_id=principal.user_id, weekday=weekday)
     return await _week(db, principal, None)
 
 
-@router.put("/plan/dates/{plan_date}", response_model=WeekPlanOut, summary="Override the plan for one date")
+@router.put(
+    "/plan/dates/{plan_date}", response_model=WeekPlanOut, summary="Override the plan for one date", dependencies=Write
+)
 async def set_date(plan_date: date, payload: PlanDayIn, principal: CurrentPrincipal, db: DbSession) -> WeekPlanOut:
+    _check_plan_date(principal, plan_date)
     await training.set_date_plan(db, user_id=principal.user_id, plan_date=plan_date, payload=payload)
     return await _week(db, principal, plan_date)
 
 
-@router.delete("/plan/dates/{plan_date}", response_model=WeekPlanOut, summary="Remove the override for one date")
+@router.delete(
+    "/plan/dates/{plan_date}",
+    response_model=WeekPlanOut,
+    summary="Remove the override for one date",
+    dependencies=Write,
+)
 async def clear_date(plan_date: date, principal: CurrentPrincipal, db: DbSession) -> WeekPlanOut:
+    _check_plan_date(principal, plan_date)
     await training.clear_date_plan(db, user_id=principal.user_id, plan_date=plan_date)
     return await _week(db, principal, plan_date)
 
@@ -261,12 +321,7 @@ async def burned(
     end = today_in(_tz(principal))
     start = end - timedelta(days=days - 1)
     per_day = await training.burned_by_day(db, user_id=principal.user_id, start=start, end=end)
-    rows = [BurnedDayOut(date=start + timedelta(days=offset), kcal=0.0, workouts=0) for offset in range(days)]
-    for row in rows:
-        kcal, count = per_day.get(row.date, (0.0, 0))
-        row.kcal, row.workouts = round(kcal), count
-    total = sum(row.kcal for row in rows)
-    return BurnedOut(days=rows, total_kcal=total, average_kcal=round(total / days))
+    return burned_out(start, days, per_day)
 
 
 @router.get("/records", response_model=list[RecordOut], summary="Your latest personal records")
@@ -274,8 +329,8 @@ async def records(
     principal: CurrentPrincipal, db: DbSession, limit: int = Query(default=10, ge=1, le=50)
 ) -> list[RecordOut]:
     rows = await training.recent_records(db, user_id=principal.user_id, limit=limit)
-    exercises = await training.exercise_names(db, {row.exercise_id for row in rows})
-    return [record_out(row, exercises) for row in rows]
+    exercises = await training.exercise_names(db, principal.user_id, {row.exercise_id for row in rows})
+    return [record_out(row, exercises, tz=_tz(principal)) for row in rows]
 
 
 # --------------------------------------------------------------------------- #
@@ -292,7 +347,13 @@ async def list_workouts(
     return WorkoutListOut(items=[workout_brief_out(brief) for brief in briefs], has_more=has_more)
 
 
-@router.post("/workouts", response_model=WorkoutOut, status_code=201, summary="Start a workout (idempotent by id)")
+@router.post(
+    "/workouts",
+    response_model=WorkoutOut,
+    status_code=201,
+    summary="Start a workout (idempotent by id)",
+    dependencies=Write,
+)
 async def start_workout(payload: WorkoutStartIn, principal: CurrentPrincipal, db: DbSession) -> WorkoutOut:
     workout = await training.start_workout(db, user_id=principal.user_id, tz=_tz(principal), payload=payload)
     return await _workout_response(db, workout)
@@ -303,6 +364,7 @@ async def start_workout(payload: WorkoutStartIn, principal: CurrentPrincipal, db
     response_model=WorkoutOut,
     status_code=201,
     summary="Log a finished timed session (run, ride, swim) in one call",
+    dependencies=Write,
 )
 async def quick_workout(payload: WorkoutQuickIn, principal: CurrentPrincipal, db: DbSession) -> WorkoutOut:
     workout = await training.quick_workout(db, user_id=principal.user_id, tz=_tz(principal), payload=payload)
@@ -319,6 +381,7 @@ async def get_workout(workout_id: uuid.UUID, principal: CurrentPrincipal, db: Db
     "/workouts/{workout_id}/sets/{set_id}",
     response_model=WorkoutOut,
     summary="Log or correct a set (idempotent by set id)",
+    dependencies=Write,
 )
 async def put_set(
     workout_id: uuid.UUID, set_id: uuid.UUID, payload: WorkoutSetIn, principal: CurrentPrincipal, db: DbSession
@@ -329,7 +392,9 @@ async def put_set(
     return await _workout_response(db, workout)
 
 
-@router.delete("/workouts/{workout_id}/sets/{set_id}", response_model=WorkoutOut, summary="Remove a set")
+@router.delete(
+    "/workouts/{workout_id}/sets/{set_id}", response_model=WorkoutOut, summary="Remove a set", dependencies=Write
+)
 async def delete_set(
     workout_id: uuid.UUID, set_id: uuid.UUID, principal: CurrentPrincipal, db: DbSession
 ) -> WorkoutOut:
@@ -341,15 +406,23 @@ async def delete_set(
     "/workouts/{workout_id}/finish",
     response_model=WorkoutOut,
     summary="Finish: duration, burned kcal (MET), personal records",
+    dependencies=Write,
 )
 async def finish_workout(
     workout_id: uuid.UUID, payload: WorkoutFinishIn, principal: CurrentPrincipal, db: DbSession
 ) -> WorkoutOut:
-    workout = await training.finish_workout(db, user_id=principal.user_id, workout_id=workout_id, payload=payload)
+    workout = await training.finish_workout(
+        db, user_id=principal.user_id, workout_id=workout_id, payload=payload, tz=_tz(principal)
+    )
     return await _workout_response(db, workout)
 
 
-@router.patch("/workouts/{workout_id}", response_model=WorkoutOut, summary="Edit title, notes, rating, duration, kcal")
+@router.patch(
+    "/workouts/{workout_id}",
+    response_model=WorkoutOut,
+    summary="Edit title, notes, rating, duration, kcal",
+    dependencies=Write,
+)
 async def patch_workout(
     workout_id: uuid.UUID, payload: WorkoutPatchIn, principal: CurrentPrincipal, db: DbSession
 ) -> WorkoutOut:
@@ -357,7 +430,9 @@ async def patch_workout(
     return await _workout_response(db, workout)
 
 
-@router.delete("/workouts/{workout_id}", response_model=OkOut, summary="Delete (or discard) a workout")
+@router.delete(
+    "/workouts/{workout_id}", response_model=OkOut, summary="Delete (or discard) a workout", dependencies=Write
+)
 async def delete_workout(workout_id: uuid.UUID, principal: CurrentPrincipal, db: DbSession) -> OkOut:
     await training.delete_workout(db, user_id=principal.user_id, workout_id=workout_id)
     return OkOut()

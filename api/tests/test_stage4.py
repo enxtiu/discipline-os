@@ -440,3 +440,68 @@ async def test_save_workout_as_template_and_today_plan(gym: httpx.AsyncClient) -
     today = (await gym.get(f"{API}/today")).json()
     assert today["plan"]["template"]["name"] == "Верх" and today["plan"]["is_today"] is True
     assert len(today["done"]) == 1 and today["burned_kcal"] > 0
+
+
+# --------------------------------------------------------------------------- #
+# hardening after the stage-4 review
+# --------------------------------------------------------------------------- #
+async def test_time_bounds_and_naive_local_times(gym: httpx.AsyncClient) -> None:
+    from zoneinfo import ZoneInfo
+
+    old = await gym.post(f"{API}/workouts", json={"id": str(uuid.uuid4()), "started_at": "2020-01-01T10:00:00+00:00"})
+    assert old.status_code == 422 and old.json()["error"]["code"] == "workout_time_out_of_range"
+    bench = (await _ex(gym, "Barbell bench press"))["id"]
+    local_start = datetime.now(ZoneInfo("Asia/Bangkok")).replace(tzinfo=None, microsecond=0) - timedelta(hours=2)
+    workout = await _start(gym, started_at=local_start.isoformat())  # naive = the user's wall clock
+    await _set(gym, workout["id"], bench, reps=5, weight_kg=50)
+    ended = (local_start + timedelta(minutes=30)).isoformat()
+    done = await _finish(gym, workout["id"], ended_at=ended)
+    assert done["duration_s"] == 1800  # not 7.5 h: both naive values are local
+    again = await _start(gym)
+    await _set(gym, again["id"], bench, reps=5, weight_kg=50)
+    too_long = await gym.post(
+        f"{API}/workouts/{again['id']}/finish",
+        json={"ended_at": (datetime.now(UTC) + timedelta(days=3)).isoformat()},
+    )
+    assert too_long.status_code == 422 and too_long.json()["error"]["code"] == "workout_too_long"
+    far = (date.today() + timedelta(days=1000)).isoformat()
+    assert (await gym.put(f"{API}/plan/dates/{far}", json={"is_rest_day": True})).status_code == 422
+
+
+async def test_deleted_replay_live_records_and_duplicates(gym: httpx.AsyncClient) -> None:
+    bench = (await _ex(gym, "Barbell bench press"))["id"]
+    first = await _start(gym)
+    await _set(gym, first["id"], bench, reps=5, weight_kg=80)
+    await _finish(gym, first["id"])
+    discarded = await _start(gym)
+    await gym.delete(f"{API}/workouts/{discarded['id']}")
+    replay = await gym.post(f"{API}/workouts", json={"id": discarded["id"]})
+    assert replay.status_code == 404  # a discarded workout is not resurrected by a replay
+
+    # a template listing the same exercise twice still shows it once
+    template = await _template(
+        gym, items=[{"exercise_id": bench, "target_sets": 2}, {"exercise_id": bench, "target_sets": 1}]
+    )
+    live = await _start(gym, template_id=template["id"])
+    assert [entry["exercise"]["id"] for entry in live["exercises"]] == [bench]
+    heavier = (await _set(gym, live["id"], bench, reps=3, weight_kg=85)).json()
+    lighter = (await _set(gym, live["id"], bench, set_index=2, reps=3, weight_kg=60)).json()
+    marks = [s["is_pr"] for s in lighter["exercises"][0]["sets"]]
+    assert heavier["status"] == "in_progress" and marks == [True, False]  # flagged live, server-side
+    done = await _finish(gym, live["id"])
+    assert done["records"][0]["local_day"] == done["local_day"]
+
+
+async def test_input_bounds(gym: httpx.AsyncClient) -> None:
+    bench = (await _ex(gym, "Barbell bench press"))["id"]
+    workout = await _start(gym)
+    nan = await gym.put(
+        f"{API}/workouts/{workout['id']}/sets/{uuid.uuid4()}",
+        content=f'{{"exercise_id": "{bench}", "reps": 5, "weight_kg": NaN}}',
+        headers={"content-type": "application/json"},
+    )
+    assert nan.status_code == 422
+    long_alias = await gym.post(f"{API}/exercises", json={"name_ru": "x", "aliases": ["a" * 65]})
+    assert long_alias.status_code == 422
+    unnamed = await gym.post(f"{API}/workouts/{workout['id']}/save-as-template/{uuid.uuid4()}", params={"name": "  "})
+    assert unnamed.status_code == 422

@@ -9,9 +9,9 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, datetime, time
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import Field, model_validator
+from pydantic import ConfigDict, Field, model_validator
 
 from app.schemas.common import ApiModel, ORMModel, UuidStr
 
@@ -28,6 +28,13 @@ LogModeLiteral = Literal["weight_reps", "reps", "duration", "cardio"]
 WorkoutStatusLiteral = Literal["planned", "in_progress", "completed", "skipped"]
 KcalMethodLiteral = Literal["met", "steps", "manual", "none"]
 RecordKindLiteral = Literal["weight", "est_1rm", "reps", "volume", "duration", "distance"]
+Alias = Annotated[str, Field(max_length=64)]
+
+
+class TrainingIn(ApiModel):
+    """Request models of this module: no NaN/Infinity in any number."""
+
+    model_config = ConfigDict(allow_inf_nan=False)
 
 
 # --------------------------------------------------------------------------- #
@@ -57,13 +64,13 @@ class ExerciseListOut(ApiModel):
     recent_ids: list[uuid.UUID] = Field(default_factory=list, description="your most recently used, newest first")
 
 
-class ExerciseIn(ApiModel):
+class ExerciseIn(TrainingIn):
     """A custom ("my") exercise."""
 
     id: UuidStr | None = None
     name_ru: str | None = Field(default=None, max_length=160)
     name_en: str | None = Field(default=None, max_length=160)
-    aliases: list[str] = Field(default_factory=list, max_length=12)
+    aliases: list[Alias] = Field(default_factory=list, max_length=12)
     muscle_group: MuscleLiteral = "other"
     equipment: EquipmentLiteral = "other"
     exercise_type: ExerciseTypeLiteral = "strength"
@@ -78,10 +85,10 @@ class ExerciseIn(ApiModel):
         return self
 
 
-class ExercisePatchIn(ApiModel):
+class ExercisePatchIn(TrainingIn):
     name_ru: str | None = Field(default=None, max_length=160)
     name_en: str | None = Field(default=None, max_length=160)
-    aliases: list[str] | None = Field(default=None, max_length=12)
+    aliases: list[Alias] | None = Field(default=None, max_length=12)
     muscle_group: MuscleLiteral | None = None
     equipment: EquipmentLiteral | None = None
     exercise_type: ExerciseTypeLiteral | None = None
@@ -113,6 +120,7 @@ class RecordOut(ApiModel):
     unit: str
     reps: int | None = None
     achieved_at: datetime
+    local_day: date = Field(description="the workout's day in your timezone")
     workout_id: uuid.UUID | None = None
     set_id: uuid.UUID | None = None
 
@@ -140,7 +148,7 @@ class ExerciseHistoryOut(ApiModel):
 # --------------------------------------------------------------------------- #
 # Templates
 # --------------------------------------------------------------------------- #
-class TemplateItemIn(ApiModel):
+class TemplateItemIn(TrainingIn):
     exercise_id: uuid.UUID
     target_sets: int = Field(default=3, ge=1, le=20)
     target_reps: int | None = Field(default=None, ge=1, le=200)
@@ -154,7 +162,7 @@ class TemplateItemIn(ApiModel):
     notes: str | None = Field(default=None, max_length=500)
 
 
-class TemplateIn(ApiModel):
+class TemplateIn(TrainingIn):
     id: UuidStr | None = None
     name: str = Field(min_length=1, max_length=160)
     description: str | None = Field(default=None, max_length=2000)
@@ -204,7 +212,7 @@ class TemplateBriefOut(ApiModel):
 # --------------------------------------------------------------------------- #
 # Weekly plan
 # --------------------------------------------------------------------------- #
-class PlanDayIn(ApiModel):
+class PlanDayIn(TrainingIn):
     template_id: uuid.UUID | None = None
     is_rest_day: bool = False
     title: str | None = Field(default=None, max_length=160)
@@ -267,7 +275,7 @@ class WeekPlanOut(ApiModel):
 # --------------------------------------------------------------------------- #
 # Workouts
 # --------------------------------------------------------------------------- #
-class WorkoutStartIn(ApiModel):
+class WorkoutStartIn(TrainingIn):
     id: UuidStr = Field(description="client UUID: replaying the start returns the same workout")
     template_id: uuid.UUID | None = None
     title: str | None = Field(default=None, max_length=160)
@@ -275,7 +283,7 @@ class WorkoutStartIn(ApiModel):
     started_at: datetime | None = None
 
 
-class WorkoutSetIn(ApiModel):
+class WorkoutSetIn(TrainingIn):
     exercise_id: uuid.UUID
     sort_order: int = Field(default=0, ge=0, le=1000)
     set_index: int = Field(default=1, ge=1, le=100)
@@ -295,14 +303,14 @@ class WorkoutSetIn(ApiModel):
         return self
 
 
-class WorkoutFinishIn(ApiModel):
+class WorkoutFinishIn(TrainingIn):
     ended_at: datetime | None = None
     duration_s: int | None = Field(default=None, ge=60, le=86_400, description="overrides ended_at - started_at")
     rating: int | None = Field(default=None, ge=1, le=5)
     notes_md: str | None = Field(default=None, max_length=5000)
 
 
-class WorkoutPatchIn(ApiModel):
+class WorkoutPatchIn(TrainingIn):
     title: str | None = Field(default=None, max_length=160)
     notes_md: str | None = Field(default=None, max_length=5000)
     rating: int | None = Field(default=None, ge=1, le=5)
@@ -311,7 +319,7 @@ class WorkoutPatchIn(ApiModel):
     kcal_auto: bool | None = Field(default=None, description="true → back to the MET estimate")
 
 
-class WorkoutQuickIn(ApiModel):
+class WorkoutQuickIn(TrainingIn):
     """A finished cardio (or any timed) session in one call — a run, a ride, a swim."""
 
     id: UuidStr
