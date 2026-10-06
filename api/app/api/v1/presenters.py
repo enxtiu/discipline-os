@@ -36,6 +36,7 @@ from app.schemas.food import (
     RecipeOut,
     WaterLogOut,
 )
+from app.schemas.health import HealthDayOut, SleepOut, WeightOut
 from app.schemas.training import (
     BestsOut,
     BurnedDayOut,
@@ -54,6 +55,7 @@ from app.schemas.training import (
     WorkoutOut,
     WorkoutSetOut,
 )
+from app.services import health as health_service
 from app.services import training as training_service
 from app.services.ai_meal import AiBudget, MealAnalysis, ResolvedItem, confidence_level
 from app.services.food_search import FoodHit
@@ -490,3 +492,49 @@ def burned_out(start: date, days: int, per_day: dict) -> BurnedOut:
         rows.append(BurnedDayOut(date=day, kcal=round(kcal), workouts=count))
     total = sum(row.kcal for row in rows)
     return BurnedOut(days=rows, total_kcal=total, average_kcal=round(total / days) if days else 0)
+
+
+# --------------------------------------------------------------------------- #
+# Health (stage 5)
+# --------------------------------------------------------------------------- #
+def health_day_out(view: health_service.DayView) -> HealthDayOut:
+    row = view.row
+    if row is None:
+        return HealthDayOut(date=view.day, target_steps=view.target_steps)
+    return HealthDayOut(
+        date=view.day,
+        steps=row.steps,
+        target_steps=view.target_steps,
+        distance_m=row.distance_m,
+        active_kcal=_num(row.active_kcal),
+        floors=row.floors,
+        resting_hr=row.resting_hr,
+        hrv_ms=row.hrv_ms,
+        steps_kcal=view.steps_kcal,
+        steps_kcal_estimated=view.estimated,
+        source=row.source.value,
+        updated_at=row.ingested_at,
+    )
+
+
+def weight_out(row) -> WeightOut:
+    return WeightOut(
+        date=row.measured_on,
+        weight_kg=_num(row.weight_kg),
+        body_fat_pct=_num(row.body_fat_pct),
+        waist_cm=_num(row.waist_cm),
+        note=row.note,
+        source=row.source,
+    )
+
+
+def sleep_out(row) -> SleepOut:
+    return SleepOut(
+        date=row.local_day,
+        bed_at=row.bed_at,
+        wake_at=row.wake_at,
+        duration_min=row.duration_min,
+        quality=row.quality,
+        note=row.note,
+        source=row.source,
+    )
