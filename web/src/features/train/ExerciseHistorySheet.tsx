@@ -1,12 +1,14 @@
 /** One exercise: all-time bests, records and the last sessions. */
 import { useTranslation } from 'react-i18next'
 
-import { Sheet, Skeleton } from '@/components/ui'
+import { Button, Sheet, Skeleton } from '@/components/ui'
+import { useToast } from '@/components/ui/Toast'
+import { errorMessage } from '@/lib/errors'
 import { IconStar } from '@/components/ui/icons'
 import type { Bests, LogMode } from '@/api/types'
 import { dayLabel, number } from '@/lib/format'
 import { clock, exerciseName, km, recordValue, weight } from './format'
-import { useExerciseHistory } from './useTraining'
+import { useArchiveExercise, useExerciseHistory } from './useTraining'
 
 function bestTiles(bests: Bests, mode: LogMode, t: (key: string) => string): { label: string; value: string }[] {
   const kg = t('common.kg')
@@ -33,6 +35,8 @@ function bestTiles(bests: Bests, mode: LogMode, t: (key: string) => string): { l
 export function ExerciseHistorySheet({ exerciseId, onClose }: { exerciseId: string | null; onClose: () => void }) {
   const { t } = useTranslation()
   const history = useExerciseHistory(exerciseId)
+  const toast = useToast()
+  const archive = useArchiveExercise()
   const data = history.data
   const mode = (data?.exercise.log_mode ?? 'weight_reps') as LogMode
 
@@ -67,7 +71,7 @@ export function ExerciseHistorySheet({ exerciseId, onClose }: { exerciseId: stri
                     <span className="truncate">{t(`train.record_kind.${record.kind}`)}</span>
                   </span>
                   <span className="tnum shrink-0">
-                    {recordValue(record)} <span className="text-xs muted">{dayLabel(record.achieved_at.slice(0, 10))}</span>
+                    {recordValue(record)} <span className="text-xs muted">{dayLabel(record.local_day)}</span>
                   </span>
                 </div>
               ))}
@@ -97,6 +101,28 @@ export function ExerciseHistorySheet({ exerciseId, onClose }: { exerciseId: stri
               </div>
             ))}
           </div>
+
+          {data.exercise.is_custom && (
+            <div className="space-y-1 border-t border-[rgb(var(--border))] pt-3">
+              <Button
+                variant="ghost"
+                className="min-h-tap text-rose-400"
+                loading={archive.isPending}
+                onClick={() =>
+                  archive.mutate(data.exercise.id, {
+                    onSuccess: () => {
+                      toast.success(t('train.exercise_archived'))
+                      onClose()
+                    },
+                    onError: (error) => toast.error(errorMessage(error)),
+                  })
+                }
+              >
+                {t('train.archive_exercise')}
+              </Button>
+              <p className="text-xs muted">{t('train.archive_hint')}</p>
+            </div>
+          )}
         </div>
       )}
     </Sheet>

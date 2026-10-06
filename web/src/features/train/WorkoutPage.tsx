@@ -14,7 +14,7 @@ import clsx from 'clsx'
 import { Button, Callout, Card, ErrorState, Field, Input, Sheet, SkeletonCard } from '@/components/ui'
 import { IconCheck, IconChevronLeft, IconClock, IconFlame, IconPlus, IconStar, IconTrash } from '@/components/ui/icons'
 import { useToast } from '@/components/ui/Toast'
-import type { Bests, Exercise, LogMode, Workout, WorkoutExercise, WorkoutSet, WorkoutSetIn } from '@/api/types'
+import type { Exercise, LogMode, Workout, WorkoutExercise, WorkoutSet, WorkoutSetIn } from '@/api/types'
 import { dayLabel, number } from '@/lib/format'
 import i18n from '@/i18n'
 import { errorMessage } from '@/lib/errors'
@@ -24,6 +24,7 @@ import { clock, exerciseName, minutesLabel, recordExerciseName, recordValue, set
 import {
   useDeleteWorkout,
   useFinishWorkout,
+  usePendingSets,
   useSaveAsTemplate,
   useSetWrite,
   useWorkout,
@@ -127,11 +128,16 @@ function rowFromSet(set: WorkoutSet): Row {
   return rowFromValues(set.id, set, 'saved', set.is_warmup ?? false)
 }
 
-function plannedRows(entry: WorkoutExercise, inProgress: boolean): Row[] {
+function rowFromQueued(setId: string, body: WorkoutSetIn): Row {
+  return rowFromValues(setId, body, 'queued', body.is_warmup ?? false)
+}
+
+function plannedRows(entry: WorkoutExercise, inProgress: boolean, queued: WorkoutSetIn[]): Row[] {
   if (!inProgress) return []
   const target = entry.target
-  const working = entry.sets.filter((set) => !set.is_warmup).length
-  const wanted = target ? target.target_sets : entry.sets.length === 0 ? 1 : 0
+  const working =
+    entry.sets.filter((set) => !set.is_warmup).length + queued.filter((body) => !body.is_warmup).length
+  const wanted = target ? target.target_sets : entry.sets.length + queued.length === 0 ? 1 : 0
   const previous = (entry.previous ?? []).filter((set) => !set.is_warmup)
   const rows: Row[] = []
   for (let index = working; index < wanted; index += 1) {
@@ -172,34 +178,9 @@ function toPayload(row: Row, mode: LogMode, exerciseId: string, sortOrder: numbe
   }
 }
 
-function epley(weightKg: number | null, reps: number | null): number | null {
-  if (!weightKg || !reps || reps > 12) return null
-  return reps === 1 ? weightKg : weightKg * (1 + reps / 30)
-}
-
-/** Would this saved set be a record against the bests before this workout? */
-function beatsBests(row: Row, mode: LogMode, bests: Bests): boolean {
-  if (row.warmup) return false
-  const reps = parse(row.reps)
-  const kg = parse(row.weight)
-  if (mode === 'weight_reps') {
-    const e1rm = epley(kg, reps)
-    return (
-      (bests.weight_kg != null && kg != null && reps != null && kg > bests.weight_kg) ||
-      (bests.est_1rm_kg != null && e1rm != null && e1rm > bests.est_1rm_kg + 0.005)
-    )
-  }
-  if (mode === 'reps') return bests.reps != null && reps != null && reps > bests.reps
-  if (mode === 'duration') {
-    const seconds = parse(row.seconds)
-    return bests.duration_s != null && seconds != null && seconds > bests.duration_s
-  }
-  const metres = (parse(row.km) ?? 0) * 1000
-  const seconds = (parse(row.minutes) ?? 0) * 60
-  return (
-    (bests.distance_m != null && metres > bests.distance_m) ||
-    (bests.duration_s != null && seconds > bests.duration_s)
-  )
+/** What a row holds, for "did the user change it while it was saving?" */
+function valuesKey(row: Row): string {
+  return [row.warmup, row.weight, row.reps, row.seconds, row.minutes, row.km].join('|')
 }
 
 // --------------------------------------------------------------------------- //
@@ -207,11 +188,17 @@ function beatsBests(row: Row, mode: LogMode, bests: Bests): boolean {
 // --------------------------------------------------------------------------- //
 export function WorkoutPage() {
   const { id } = useParams()
+  // a new id is a new screen: drafts and row state never leak between workouts
+  return <WorkoutScreen key={id} id={id} />
+}
+
+function WorkoutScreen({ id }: { id: string | undefined }) {
   const navigate = useNavigate()
   const { t } = useTranslation()
   const toast = useToast()
   const workout = useWorkout(id)
   const [draft, setDraft] = useDraft(id)
+  const pending = usePendingSets(id)
   const [picking, setPicking] = useState(false)
   const [finishing, setFinishing] = useState(false)
   const [summary, setSummary] = useState(false)
@@ -236,10 +223,11 @@ export function WorkoutPage() {
         previous_day: null,
         bests: {},
       }))
+    const queuedFor = new Set([...pending.values()].map((body) => body.exercise_id))
     return [...data.exercises, ...(inProgress ? extra : [])].filter(
-      (entry) => entry.sets.length > 0 || !hidden.has(entry.exercise.id),
+      (entry) => entry.sets.length > 0 || queuedFor.has(entry.exercise.id) || !hidden.has(entry.exercise.id),
     )
-  }, [data, draft.extra, draft.hidden, inProgress])
+  }, [data, draft.extra, draft.hidden, inProgress, pending])
 
   if (workout.isLoading) {
     return (
@@ -289,6 +277,7 @@ export function WorkoutPage() {
           entry={entry}
           position={index}
           inProgress={inProgress}
+          queued={pending}
           onRest={startRest}
           onOpenHistory={() => setHistoryOf(entry.exercise.id)}
           onHide={() =>
@@ -343,6 +332,7 @@ export function WorkoutPage() {
       <FinishSheet
         open={finishing}
         workout={data}
+        pendingSets={pending.size}
         onClose={() => setFinishing(false)}
         onFinished={() => {
           clearDraft(data.id)
@@ -402,11 +392,11 @@ function WorkoutHeader({
         </p>
       </div>
       {inProgress ? (
-        <Button size="sm" onClick={onFinish}>
+        <Button size="sm" className="min-h-tap" onClick={onFinish}>
           {t('train.finish')}
         </Button>
       ) : (
-        <Button size="sm" variant="secondary" onClick={onSummary}>
+        <Button size="sm" variant="secondary" className="min-h-tap" onClick={onSummary}>
           {t('train.summary')}
         </Button>
       )}
@@ -422,6 +412,7 @@ function ExerciseCard({
   entry,
   position,
   inProgress,
+  queued,
   onRest,
   onOpenHistory,
   onHide,
@@ -430,22 +421,32 @@ function ExerciseCard({
   entry: WorkoutExercise
   position: number
   inProgress: boolean
+  queued: Map<string, WorkoutSetIn>
   onRest: (seconds: number) => void
   onOpenHistory: () => void
   onHide: () => void
 }) {
   const { t } = useTranslation()
   const toast = useToast()
-  const write = useSetWrite()
+  const write = useSetWrite(workout.id)
   const mode = (entry.exercise.log_mode ?? 'weight_reps') as LogMode
+  const mine = [...queued.entries()].filter(
+    ([setId, body]) => body.exercise_id === entry.exercise.id && !entry.sets.some((set) => set.id === setId),
+  )
   const [rows, setRows] = useState<Row[]>(() => [
     ...entry.sets.map(rowFromSet),
-    ...plannedRows(entry, inProgress),
+    ...mine.map(([setId, body]) => rowFromQueued(setId, body)),
+    ...plannedRows(
+      entry,
+      inProgress,
+      mine.map(([, body]) => body),
+    ),
   ])
   const [menuFor, setMenuFor] = useState<string | null>(null)
 
-  // the server is the truth for saved sets; local planned/edited rows stay
+  // the server is the truth for saved sets; local planned, queued and edited rows stay
   const serverKey = JSON.stringify(entry.sets)
+  const queuedKey = JSON.stringify(mine)
   useEffect(() => {
     setRows((current) => {
       const server = new Map(entry.sets.map((set) => [set.id, set]))
@@ -459,54 +460,61 @@ function ExerciseCard({
       for (const set of entry.sets) {
         if (!next.some((row) => row.id === set.id)) next.push(rowFromSet(set))
       }
+      for (const [setId, body] of mine) {
+        if (!next.some((row) => row.id === setId)) next.push(rowFromQueued(setId, body))
+      }
       return next
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [serverKey])
+  }, [serverKey, queuedKey])
 
-  const prsFinished = new Set(entry.sets.filter((set) => set.is_pr).map((set) => set.id))
+  // records are the server's call (live while running, record events once finished)
+  const recordSets = new Set(entry.sets.filter((set) => set.is_pr).map((set) => set.id))
   const target = entry.target
   const restSeconds = target?.rest_seconds ?? 90
 
   const update = (id: string, patch: Partial<Row>) =>
     setRows((current) => current.map((row) => (row.id === id ? { ...row, ...patch } : row)))
 
-  const save = (row: Row, index: number) => {
+  const save = async (row: Row, index: number) => {
     const body = toPayload(row, mode, entry.exercise.id, position, index + 1)
     if (!body) {
       toast.error(t('train.set_needs_value'))
       return
     }
+    const firstSave = row.state === 'planned'
+    const sent = valuesKey(row)
     update(row.id, { state: 'saving' })
-    write.mutate(
-      { kind: 'put', workoutId: workout.id, setId: row.id, body },
-      {
-        onSuccess: (result) => {
-          update(row.id, { state: result.queued ? 'queued' : 'saved', dirty: false })
-          if (result.queued) toast.info(t('train.set_queued'))
-          if (!row.warmup && row.state !== 'saved') onRest(restSeconds)
-        },
-        onError: (error) => {
-          update(row.id, { state: row.state === 'saved' ? 'saved' : 'planned' })
-          toast.error(errorMessage(error))
-        },
-      },
-    )
+    try {
+      const result = await write.mutateAsync({ kind: 'put', setId: row.id, body })
+      // an edit typed while the request was in flight stays an unsaved edit
+      setRows((current) =>
+        current.map((item) =>
+          item.id === row.id
+            ? { ...item, state: result.queued ? 'queued' : 'saved', dirty: valuesKey(item) !== sent }
+            : item,
+        ),
+      )
+      if (result.queued) toast.info(t('train.set_queued'))
+      if (firstSave && !row.warmup) onRest(restSeconds)
+    } catch (error) {
+      update(row.id, { state: firstSave ? 'planned' : row.state === 'queued' ? 'queued' : 'saved' })
+      toast.error(errorMessage(error))
+    }
   }
 
-  const removeRow = (row: Row) => {
+  const removeRow = async (row: Row) => {
     setMenuFor(null)
     if (row.state === 'planned') {
       setRows((current) => current.filter((item) => item.id !== row.id))
       return
     }
-    write.mutate(
-      { kind: 'delete', workoutId: workout.id, setId: row.id },
-      {
-        onSuccess: () => setRows((current) => current.filter((item) => item.id !== row.id)),
-        onError: (error) => toast.error(errorMessage(error)),
-      },
-    )
+    try {
+      await write.mutateAsync({ kind: 'delete', setId: row.id })
+      setRows((current) => current.filter((item) => item.id !== row.id))
+    } catch (error) {
+      toast.error(errorMessage(error))
+    }
   }
 
   const addRow = () => {
@@ -547,7 +555,7 @@ function ExerciseCard({
             inProgress && <span className="block text-xs muted">{t('train.first_time')}</span>
           )}
         </button>
-        {inProgress && entry.sets.length === 0 && (
+        {inProgress && entry.sets.length === 0 && mine.length === 0 && (
           <button
             type="button"
             onClick={onHide}
@@ -563,7 +571,7 @@ function ExerciseCard({
         {(inProgress ? rows : rows.filter((row) => row.state !== 'planned')).map((row, index) => {
           const label = row.warmup ? t('train.warmup_short') : String((workingIndex += 1))
           const saved = row.state === 'saved' || row.state === 'queued'
-          const isPr = saved && (inProgress ? beatsBests(row, mode, entry.bests) : prsFinished.has(row.id))
+          const isPr = saved && !row.dirty && recordSets.has(row.id)
           return (
             <div key={row.id} className="space-y-1.5">
               <div className={clsx('flex items-center gap-2 rounded-2xl', saved && !row.dirty && 'bg-aqua-400/[.07]')}>
@@ -573,7 +581,7 @@ function ExerciseCard({
                   aria-label={t('train.set_menu', { n: label })}
                   aria-expanded={menuFor === row.id}
                   className={clsx(
-                    'flex h-tap w-9 shrink-0 items-center justify-center rounded-xl text-sm font-semibold tnum',
+                    'flex h-tap w-tap shrink-0 items-center justify-center rounded-xl text-sm font-semibold tnum',
                     row.warmup ? 'text-amber-300' : 'muted',
                   )}
                 >
@@ -592,7 +600,7 @@ function ExerciseCard({
                 )}
                 <button
                   type="button"
-                  onClick={() => save(row, index)}
+                  onClick={() => void save(row, index)}
                   disabled={row.state === 'saving'}
                   aria-label={saved && !row.dirty ? t('train.set_saved', { n: label }) : t('train.save_set', { n: label })}
                   className={clsx(
@@ -607,20 +615,21 @@ function ExerciseCard({
                 </button>
               </div>
               {menuFor === row.id && (
-                <div className="flex gap-2 pl-11">
+                <div className="flex gap-2 pl-14">
                   <Button
                     size="sm"
                     variant="ghost"
+                    className="min-h-tap"
                     onClick={() => {
                       const next = { ...row, warmup: !row.warmup, dirty: row.state !== 'planned' }
                       update(row.id, next)
                       setMenuFor(null)
-                      if (row.state !== 'planned') save(next, index)
+                      if (row.state !== 'planned') void save(next, index)
                     }}
                   >
                     {row.warmup ? t('train.mark_working') : t('train.mark_warmup')}
                   </Button>
-                  <Button size="sm" variant="ghost" className="text-rose-400" onClick={() => removeRow(row)}>
+                  <Button size="sm" variant="ghost" className="min-h-tap text-rose-400" onClick={() => void removeRow(row)}>
                     {t('train.delete_set')}
                   </Button>
                 </div>
@@ -629,7 +638,7 @@ function ExerciseCard({
           )
         })}
       </div>
-      <Button size="sm" variant="ghost" icon={<IconPlus size={16} />} onClick={addRow}>
+      <Button size="sm" variant="ghost" className="min-h-tap" icon={<IconPlus size={16} />} onClick={addRow}>
         {t('train.add_set')}
       </Button>
     </Card>
@@ -732,17 +741,14 @@ function RestBar({
 }) {
   const { t } = useTranslation()
   const [now, setNow] = useState(() => Date.now())
-  const buzzed = useRef(false)
+  const buzzed = useRef(rest.endsAt <= Date.now()) // an old timer after a reload: clear it quietly
   useEffect(() => {
     const handle = window.setInterval(() => setNow(Date.now()), 250)
     return () => window.clearInterval(handle)
   }, [])
   const left = Math.ceil((rest.endsAt - now) / 1000)
   useEffect(() => {
-    if (left > 0) {
-      buzzed.current = false
-      return
-    }
+    if (left > 0) return
     if (!buzzed.current) {
       buzzed.current = true
       try {
@@ -770,13 +776,13 @@ function RestBar({
             />
           </div>
         </div>
-        <Button size="sm" variant="ghost" onClick={() => shift(-15)} aria-label={t('train.rest_minus')}>
+        <Button size="sm" variant="ghost" className="min-h-tap px-2" onClick={() => shift(-15)} aria-label={t('train.rest_minus')}>
           −15
         </Button>
-        <Button size="sm" variant="ghost" onClick={() => shift(15)} aria-label={t('train.rest_plus')}>
+        <Button size="sm" variant="ghost" className="min-h-tap px-2" onClick={() => shift(15)} aria-label={t('train.rest_plus')}>
           +15
         </Button>
-        <Button size="sm" variant="secondary" onClick={() => onChange(null)}>
+        <Button size="sm" variant="secondary" className="min-h-tap" onClick={() => onChange(null)}>
           {t('train.rest_skip')}
         </Button>
       </div>
@@ -790,11 +796,13 @@ function RestBar({
 function FinishSheet({
   open,
   workout,
+  pendingSets,
   onClose,
   onFinished,
 }: {
   open: boolean
   workout: Workout
+  pendingSets: number
   onClose: () => void
   onFinished: () => void
 }) {
@@ -838,7 +846,11 @@ function FinishSheet({
         <p className="tnum text-sm muted">
           {t('train.finish_stats', { sets: workout.total_sets, volume: number(workout.total_volume_kg) })}
         </p>
-        {workout.total_sets === 0 && <Callout tone="warn">{t('train.finish_empty')}</Callout>}
+        {pendingSets > 0 ? (
+          <Callout tone="warn">{t('train.finish_pending', { n: pendingSets })}</Callout>
+        ) : (
+          workout.total_sets === 0 && <Callout tone="warn">{t('train.finish_empty')}</Callout>
+        )}
         <Field
           label={t('train.duration_minutes')}
           htmlFor="finish-minutes"
@@ -875,7 +887,7 @@ function FinishSheet({
           </div>
           <p className="text-xs muted">{t('train.rating_hint')}</p>
         </div>
-        <Button block loading={finish.isPending} disabled={workout.total_sets === 0} onClick={submit}>
+        <Button block loading={finish.isPending} disabled={workout.total_sets === 0 || pendingSets > 0} onClick={submit}>
           {t('train.finish_save')}
         </Button>
       </div>

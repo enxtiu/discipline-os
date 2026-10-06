@@ -227,6 +227,8 @@ export const endpoints = {
     api.get<import('./types').ExerciseList>('/v1/training/exercises', { query }),
   createExercise: (payload: import('./types').ExerciseIn) =>
     api.post<import('./types').Exercise>('/v1/training/exercises', payload, { clientUuid: payload.id }),
+  patchExercise: (id: string, payload: Partial<import('./types').ExerciseIn> & { is_archived?: boolean }) =>
+    api.patch<import('./types').Exercise>(`/v1/training/exercises/${id}`, payload),
   exerciseHistory: (id: string) =>
     api.get<import('./types').ExerciseHistory>(`/v1/training/exercises/${id}/history`),
   templates: () => api.get<import('./types').Template[]>('/v1/training/templates'),

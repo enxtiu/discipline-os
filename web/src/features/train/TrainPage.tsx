@@ -7,10 +7,19 @@ import { useTranslation } from 'react-i18next'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import clsx from 'clsx'
 
-import { Button, Card, EmptyState, Section, Skeleton } from '@/components/ui'
-import { IconCheck, IconChevronRight, IconFlame, IconPlus, IconSearch, IconStar, IconTrain } from '@/components/ui/icons'
+import { Button, Card, EmptyState, IconButton, Section, Skeleton } from '@/components/ui'
+import {
+  IconCheck,
+  IconChevronLeft,
+  IconChevronRight,
+  IconFlame,
+  IconPlus,
+  IconSearch,
+  IconStar,
+  IconTrain,
+} from '@/components/ui/icons'
 import type { PlanDay, Template, WorkoutBrief } from '@/api/types'
-import { dayLabel, number } from '@/lib/format'
+import { addDays, dayLabel, number, today as isoToday } from '@/lib/format'
 import { BurnedChart } from './BurnedChart'
 import { ExerciseHistorySheet } from './ExerciseHistorySheet'
 import { ExercisePicker } from './ExercisePicker'
@@ -32,7 +41,8 @@ export function TrainPage() {
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
   const today = useTrainingToday()
-  const week = useWeekPlan()
+  const [weekShift, setWeekShift] = useState(0)
+  const week = useWeekPlan(weekShift ? addDays(isoToday(), weekShift * 7) : undefined)
   const templates = useTemplates()
   const burned = useBurned(7)
   const records = useRecords()
@@ -46,13 +56,19 @@ export function TrainPage() {
   const [library, setLibrary] = useState(false)
   const [historyOf, setHistoryOf] = useState<string | null>(null)
 
-  // deep link from quick add: /train?action=start
+  // deep link from quick add: /train?action=start — continue the running workout,
+  // start today's planned one, or offer the choice (two taps from anywhere)
   useEffect(() => {
-    if (params.get('action') === 'start') {
-      setStarting(true)
-      setParams({}, { replace: true })
-    }
-  }, [params, setParams])
+    if (params.get('action') !== 'start' || !today.data) return
+    setParams({}, { replace: true })
+    const data = today.data
+    const template = data.plan.template
+    const doneAlready = !!template && (data.done ?? []).some((workout) => workout.template_id === template.id)
+    if (data.active) navigate(`/train/workout/${data.active.id}`)
+    else if (template && !doneAlready) start.run(template.id)
+    else setStarting(true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params, today.data])
 
   const templateList = templates.data ?? []
   const plan = today.data?.plan
@@ -123,7 +139,28 @@ export function TrainPage() {
       )}
 
       {/* the week */}
-      <Section title={t('train.week')}>
+      <Section
+        title={t('train.week')}
+        action={
+          <span className="flex items-center">
+            <IconButton
+              label={t('train.week_prev')}
+              icon={<IconChevronLeft size={18} />}
+              onClick={() => setWeekShift((value) => value - 1)}
+            />
+            {weekShift !== 0 && (
+              <Button size="sm" variant="ghost" className="min-h-tap" onClick={() => setWeekShift(0)}>
+                {t('train.week_current')}
+              </Button>
+            )}
+            <IconButton
+              label={t('train.week_next')}
+              icon={<IconChevronRight size={18} />}
+              onClick={() => setWeekShift((value) => value + 1)}
+            />
+          </span>
+        }
+      >
         <div className="grid grid-cols-7 gap-1" data-testid="week-strip">
           {(week.data?.days ?? []).map((day) => (
             <WeekDay key={day.date} day={day} onClick={() => setPlanDay(day)} />
@@ -164,7 +201,13 @@ export function TrainPage() {
                     {template.use_count ? `, ${t('train.used_times', { n: template.use_count })}` : ''}
                   </span>
                 </button>
-                <Button size="sm" variant="secondary" loading={start.pending} onClick={() => start.run(template.id)}>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="min-h-tap"
+                  loading={start.pending}
+                  onClick={() => start.run(template.id)}
+                >
                   {t('train.start_short')}
                 </Button>
               </div>
@@ -187,7 +230,7 @@ export function TrainPage() {
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-medium">{recordExerciseName(record)}</span>
                   <span className="block text-xs muted">
-                    {t(`train.record_kind.${record.kind}`)}, {dayLabel(record.achieved_at.slice(0, 10))}
+                    {t(`train.record_kind.${record.kind}`)}, {dayLabel(record.local_day)}
                   </span>
                 </span>
                 <span className="tnum shrink-0 text-sm font-semibold">{recordValue(record)}</span>

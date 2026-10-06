@@ -631,7 +631,15 @@ try {
   const workoutId = page.url().split('/').pop()
   const card = page.locator('[data-testid="workout-exercise"]').first()
   const weights = await card.locator('input[inputmode="decimal"]').evaluateAll((els) => els.map((el) => el.value))
-  check(weights.length === 3 && weights.every((value) => value === '60'), 'three planned sets pre-filled from the template (60 kg)', weights.join(','))
+  // rows come from the last workout with this exercise, else from the template target (60 kg)
+  const started = (await apiFetch(`/v1/training/workouts/${workoutId}`)).body
+  const prev = (started?.exercises?.[0]?.previous ?? []).filter((set) => !set.is_warmup)
+  const expected = [0, 1, 2].map((i) => String(prev[i]?.weight_kg ?? prev[prev.length - 1]?.weight_kg ?? 60).replace('.', ','))
+  check(
+    weights.length === 3 && weights.every((value, i) => value === expected[i]),
+    'three planned sets pre-filled (last time, else the template target)',
+    `${weights.join(',')} — ${prev.length ? 'from last time' : 'from the template'}`,
+  )
   await card.locator('[data-testid="save-set"]').nth(0).click()
   await page.waitForTimeout(900)
   check(await page.locator('[data-testid="rest-timer"]').isVisible(), 'logging a set starts the rest timer')

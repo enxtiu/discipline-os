@@ -2649,6 +2649,12 @@ export interface components {
              * Format: date-time
              */
             achieved_at: string;
+            /**
+             * Local Day
+             * Format: date
+             * @description the workout's day in your timezone
+             */
+            local_day: string;
             /** Workout Id */
             workout_id?: string | null;
             /** Set Id */

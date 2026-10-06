@@ -177,8 +177,8 @@ export function TodayPage() {
         <ProgressRing
           size={64}
           thickness={7}
-          value={burnedKcal}
-          max={Math.max(burnedKcal, 400)}
+          value={burnedKcal > 0 ? 1 : 0}
+          max={1}
           tone="warn"
           glow={false}
           label={<span className="tnum text-base" data-testid="burned-today">{number(burnedKcal)}</span>}

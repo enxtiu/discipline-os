@@ -21,6 +21,8 @@ interface Item {
   minutes: string
   km: string
   rest: number
+  /** fields set elsewhere (rep ranges, supersets, notes) survive an edit here */
+  kept: Pick<TemplateItemIn, 'target_reps_min' | 'target_reps_max' | 'superset_group' | 'notes'>
 }
 
 const REST_OPTIONS = [45, 60, 90, 120, 150, 180, 240]
@@ -40,13 +42,19 @@ function fromTemplate(template: Template | null): Item[] {
     minutes: item.target_duration_s ? String(Math.round(item.target_duration_s / 60)) : '',
     km: item.target_distance_m ? String(item.target_distance_m / 1000) : '',
     rest: item.rest_seconds,
+    kept: {
+      target_reps_min: item.target_reps_min ?? undefined,
+      target_reps_max: item.target_reps_max ?? undefined,
+      superset_group: item.superset_group ?? undefined,
+      notes: item.notes ?? undefined,
+    },
   }))
 }
 
 function toPayload(item: Item): TemplateItemIn {
   const mode = (item.exercise.log_mode ?? 'weight_reps') as LogMode
   const sets = Math.min(20, Math.max(1, Math.round(num(item.sets) ?? 3)))
-  const base: TemplateItemIn = { exercise_id: item.exercise.id, target_sets: sets, rest_seconds: item.rest }
+  const base: TemplateItemIn = { ...item.kept, exercise_id: item.exercise.id, target_sets: sets, rest_seconds: item.rest }
   if (mode === 'weight_reps') return { ...base, target_reps: num(item.reps), target_weight_kg: num(item.weight) }
   if (mode === 'reps') return { ...base, target_reps: num(item.reps) }
   if (mode === 'duration') return { ...base, target_duration_s: num(item.seconds) }
@@ -191,6 +199,7 @@ export function TemplateSheet({
               minutes: exercise.log_mode === 'cardio' ? '30' : '',
               km: '',
               rest: 90,
+              kept: {},
             },
           ])
           setPicking(false)
@@ -230,7 +239,7 @@ function TemplateItemRow({
           onClick={onUp}
           disabled={first}
           aria-label={t('train.move_up', { name })}
-          className="flex h-tap w-10 items-center justify-center muted disabled:opacity-30"
+          className="flex h-tap w-tap items-center justify-center muted disabled:opacity-30"
         >
           <IconChevronLeft size={18} className="rotate-90" />
         </button>
@@ -239,7 +248,7 @@ function TemplateItemRow({
           onClick={onDown}
           disabled={last}
           aria-label={t('train.move_down', { name })}
-          className="flex h-tap w-10 items-center justify-center muted disabled:opacity-30"
+          className="flex h-tap w-tap items-center justify-center muted disabled:opacity-30"
         >
           <IconChevronLeft size={18} className="-rotate-90" />
         </button>

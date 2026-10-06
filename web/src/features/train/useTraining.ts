@@ -5,6 +5,7 @@
  * here, the server upserts by it, so a set logged with no signal in the gym is
  * replayed later without duplicates. Everything else needs the network.
  */
+import { useEffect, useState } from 'react'
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { endpoints } from '@/api/client'
@@ -20,7 +21,7 @@ import type {
   WorkoutStartIn,
 } from '@/api/types'
 import { queryKeys } from '@/lib/queryClient'
-import { mutate } from '@/lib/offlineQueue'
+import { mutate, onQueueChange, pendingFor } from '@/lib/offlineQueue'
 
 export function useTrainingToday() {
   return useQuery({ queryKey: queryKeys.trainingToday, queryFn: () => endpoints.trainingToday() })
@@ -113,24 +114,71 @@ export function useQuickWorkout() {
 }
 
 export type SetWrite =
-  | { kind: 'put'; workoutId: string; setId: string; body: WorkoutSetIn }
-  | { kind: 'delete'; workoutId: string; setId: string }
+  | { kind: 'put'; setId: string; body: WorkoutSetIn }
+  | { kind: 'delete'; setId: string }
 
-/** Log, correct or remove a set — queued when offline, idempotent by set id. */
-export function useSetWrite() {
-  const store = useStoreWorkout()
+/**
+ * Log, correct or remove a set — queued when offline, idempotent by set id.
+ * Callers use `mutateAsync` (one observer, many rows). Responses can arrive out
+ * of order, so none of them is written to the cache: when the last write of a
+ * burst settles, the workout (and what it moves: today, records, burned) is
+ * refetched once.
+ */
+export function useSetWrite(workoutId: string) {
+  const queryClient = useQueryClient()
+  const key = ['set-write', workoutId]
   return useMutation({
+    mutationKey: key,
     networkMode: 'always',
     mutationFn: async (write: SetWrite) => {
-      const path = `/v1/training/workouts/${write.workoutId}/sets/${write.setId}`
+      const path = `/v1/training/workouts/${workoutId}/sets/${write.setId}`
       return write.kind === 'put'
         ? mutate<Workout>(path, { method: 'PUT', body: write.body, kind: 'workout', clientUuid: write.setId })
         : mutate<Workout>(path, { method: 'DELETE', kind: 'workout', clientUuid: crypto.randomUUID() })
     },
-    onSuccess: (result) => {
-      if (!result.queued) store(result.data)
+    onSettled: (result) => {
+      if (result?.queued) return
+      if (queryClient.isMutating({ mutationKey: key }) <= 1) {
+        void queryClient.invalidateQueries({ queryKey: ['training'] })
+      }
     },
   })
+}
+
+/**
+ * Set writes of this workout still waiting in the offline queue, by set id.
+ * When the queue shrinks (it was flushed), the training views are refetched.
+ */
+export function usePendingSets(workoutId: string | undefined): Map<string, WorkoutSetIn> {
+  const queryClient = useQueryClient()
+  const [pending, setPending] = useState<Map<string, WorkoutSetIn>>(() => new Map())
+  useEffect(() => {
+    if (!workoutId) return
+    const prefix = `/v1/training/workouts/${workoutId}/sets/`
+    let alive = true
+    let last = -1
+    const read = async () => {
+      const entries = await pendingFor(prefix)
+      if (!alive) return
+      const next = new Map<string, WorkoutSetIn>()
+      for (const entry of entries) {
+        const setId = entry.path.slice(prefix.length)
+        if (entry.method === 'PUT') next.set(setId, entry.body as WorkoutSetIn)
+        else next.delete(setId)
+      }
+      setPending(next)
+    }
+    const stop = onQueueChange((count) => {
+      if (last > count) void queryClient.invalidateQueries({ queryKey: ['training'] })
+      last = count
+      void read()
+    })
+    return () => {
+      alive = false
+      stop()
+    }
+  }, [workoutId, queryClient])
+  return pending
 }
 
 export function useFinishWorkout() {
@@ -207,6 +255,14 @@ export function useSetPlan() {
       return write.payload ? endpoints.setDatePlan(write.date, write.payload) : endpoints.clearDatePlan(write.date)
     },
     onSuccess: () => void invalidate(),
+  })
+}
+
+export function useArchiveExercise() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => endpoints.patchExercise(id, { is_archived: true }),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['training'] }),
   })
 }
 

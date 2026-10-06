@@ -410,7 +410,14 @@
     "plan_done": "Planned workout done: {{name}}",
     "plan_done_hint": "You can still add cardio or another workout.",
     "weight_kg": "Weight, kg",
-    "burned_empty": "No workouts this week yet"
+    "burned_empty": "No workouts this week yet",
+    "finish_pending": "Sets waiting to be sent: {{n}}. Finish once you are back online.",
+    "week_prev": "Previous week",
+    "week_next": "Next week",
+    "week_current": "Now",
+    "archive_exercise": "Remove from the list",
+    "exercise_archived": "Exercise removed from the list",
+    "archive_hint": "Its history and records are kept."
   },
   "plan": {
     "title": "Plan",
@@ -590,7 +597,22 @@
     "ai_job_not_found": "The analysis was not found — try again",
     "ai_job_not_usable": "This analysis failed — try again",
     "ai_job_already_saved": "This analysis is already saved as a meal",
-    "photo_not_found": "Photo not found"
+    "photo_not_found": "Photo not found",
+    "workout_not_found": "Workout not found",
+    "workout_in_progress": "Finish or discard the workout in progress first",
+    "workout_empty": "Log at least one set or discard the workout",
+    "workout_end_before_start": "A workout cannot end before it started",
+    "workout_too_long": "A workout lasts at most 24 hours",
+    "workout_time_out_of_range": "A workout must be within the last year",
+    "exercise_not_found": "Exercise not found",
+    "exercise_name_required": "An exercise needs a name",
+    "template_not_found": "Template not found",
+    "template_name_required": "A template needs a name",
+    "id_conflict": "ID conflict — reload the page",
+    "too_many_sets": "This workout has too many sets",
+    "too_many_exercises": "Too many custom exercises",
+    "too_many_templates": "Too many templates",
+    "plan_date_out_of_range": "Plans reach at most two years ahead"
   },
   "ai": {
     "capture_row": "Add by photo, text or barcode",

@@ -67,6 +67,15 @@ export async function countPending(): Promise<number> {
   }
 }
 
+/** Queued writes whose path starts with `prefix`, oldest first (a screen can show what waits). */
+export async function pendingFor(prefix: string): Promise<QueuedRequest[]> {
+  try {
+    return (await offlineDb.queue.orderBy('createdAt').toArray()).filter((entry) => entry.path.startsWith(prefix))
+  } catch {
+    return []
+  }
+}
+
 export async function enqueue(
   input: Omit<QueuedRequest, 'id' | 'createdAt' | 'attempts' | 'clientUuid'> & { clientUuid?: string },
 ): Promise<QueuedRequest> {
