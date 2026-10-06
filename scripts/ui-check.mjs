@@ -588,6 +588,138 @@ try {
   const barcodeMeal = ((await apiFetch('/v1/nutrition/day')).body?.meals ?? []).find((meal) => meal.source === 'barcode')
   check(!!barcodeMeal && barcodeMeal.items[0]?.match_method === 'barcode', 'barcode meal saved with source=barcode')
 
+  // 7⁹. stage 4: training — template, weekly plan, live workout, rest timer, finish, cardio
+  console.log('\n7⁹. stage 4 training')
+  const tag = String(Date.now()).slice(-4)
+  const left = (await apiFetch('/v1/training/today')).body
+  if (left?.active) await apiFetch(`/v1/training/workouts/${left.active.id}`, { method: 'DELETE' })
+  const library = (await apiFetch('/v1/training/exercises?limit=200')).body?.items ?? []
+  check(library.length >= 52, 'exercise library is seeded', `${library.length} exercises`)
+
+  await page.goto(`${WEB_URL}/train`, { waitUntil: 'networkidle' })
+  check(await hasText('Сожжено за 7 дней'), 'Train tab shows burned kcal in its own card')
+  check(await hasText('не прибавляется к бюджету'), 'the burned card says it is not food budget')
+
+  // template through the UI
+  await page.getByRole('button', { name: 'Новый шаблон' }).first().click()
+  await page.locator('#template-title').fill(`UI Грудь ${tag}`)
+  await page.getByRole('button', { name: 'Добавить упражнение' }).click()
+  await page.locator('#exercise-search').fill('жим лёжа')
+  await page.waitForTimeout(900)
+  const firstHit = (await page.locator('[data-testid="exercise-results"] button').first().innerText()).split('\n')[0]
+  check(firstHit === 'Жим штанги лёжа', 'exercise search: «жим лёжа» → «Жим штанги лёжа» first', firstHit)
+  await page.locator('[data-testid="exercise-results"] button').first().click()
+  await page.waitForTimeout(500)
+  await page.locator('[data-testid="template-item"] input').nth(2).fill('60')
+  await shot('23-template-editor')
+  await page.getByRole('button', { name: 'Сохранить' }).click()
+  await page.waitForTimeout(900)
+  check(await hasText(`UI Грудь ${tag}`), 'template saved and listed')
+
+  // weekly plan: today's cell → the template
+  await page.locator('[data-testid="week-strip"] button.border-aqua-400\\/50').click()
+  await page.waitForTimeout(500)
+  await page.locator('[data-testid="plan-sheet"] button').filter({ hasText: `UI Грудь ${tag}` }).click()
+  await page.waitForTimeout(900)
+  check(await hasText(`UI Грудь ${tag}`) && (await hasText('Начать по плану')), 'planned for today → «Начать по плану»')
+  await shot('20-train-page')
+
+  // live workout
+  await page.getByRole('button', { name: 'Начать по плану' }).click()
+  await page.waitForURL(/\/train\/workout\//, { timeout: 8000 })
+  await page.waitForTimeout(800)
+  const workoutId = page.url().split('/').pop()
+  const card = page.locator('[data-testid="workout-exercise"]').first()
+  const weights = await card.locator('input[inputmode="decimal"]').evaluateAll((els) => els.map((el) => el.value))
+  check(weights.length === 3 && weights.every((value) => value === '60'), 'three planned sets pre-filled from the template (60 kg)', weights.join(','))
+  await card.locator('[data-testid="save-set"]').nth(0).click()
+  await page.waitForTimeout(900)
+  check(await page.locator('[data-testid="rest-timer"]').isVisible(), 'logging a set starts the rest timer')
+  await card.locator('input[inputmode="decimal"]').nth(1).fill('62,5')
+  await card.locator('[data-testid="save-set"]').nth(1).click()
+  await page.waitForTimeout(900)
+  await shot('21-workout-live')
+  let live = (await apiFetch(`/v1/training/workouts/${workoutId}`)).body
+  check(live?.total_sets === 2 && live?.exercises?.[0]?.sets?.[1]?.weight_kg === 62.5, 'sets saved (comma decimals: 62,5 kg)', `${live?.total_sets} sets`)
+  await page.getByRole('button', { name: 'Дальше' }).click()
+
+  // an exercise added on the fly: pull-ups (reps only)
+  await page.getByRole('button', { name: 'Добавить упражнение' }).click()
+  await page.locator('#exercise-search').fill('подтягивания')
+  await page.waitForTimeout(900)
+  await page.locator('[data-testid="exercise-results"] button').first().click()
+  await page.waitForTimeout(500)
+  const pull = page.locator('[data-testid="workout-exercise"]').last()
+  await pull.locator('input[inputmode="numeric"]').first().fill('9')
+
+  // offline: the set is queued and replayed when the network is back
+  offlineMode = true
+  await context.setOffline(true)
+  await pull.locator('[data-testid="save-set"]').first().click()
+  await page.waitForTimeout(700)
+  check(await hasText('Нет сети — подход сохранится'), 'offline set is queued with a clear message')
+  await context.setOffline(false)
+  offlineMode = false
+  await page.evaluate(() => window.dispatchEvent(new Event('online')))
+  await page.waitForTimeout(2500)
+  live = (await apiFetch(`/v1/training/workouts/${workoutId}`)).body
+  check(live?.total_sets === 3, 'the queued set reached the server after reconnect', `${live?.total_sets} sets`)
+
+  // finish → summary
+  await page.getByRole('button', { name: 'Завершить', exact: true }).click()
+  await page.locator('#finish-minutes').fill('35')
+  await page.getByRole('radio', { name: '4' }).click()
+  await page.getByRole('button', { name: 'Завершить тренировку' }).click()
+  await page.locator('[data-testid="workout-summary"]').waitFor({ timeout: 8000 })
+  const summary = await page.locator('[data-testid="workout-summary"]').innerText()
+  check(/\d+\s?ккал/.test(summary) && summary.includes('не прибавляется'), 'summary: burned kcal shown apart from the food budget')
+  await page.waitForTimeout(3400) // let the toast go before the screenshot
+  await shot('22-workout-summary')
+  const finished = (await apiFetch(`/v1/training/workouts/${workoutId}`)).body
+  check(finished?.status === 'completed' && finished?.duration_s === 2100 && finished?.kcal_burned > 0, 'finished: 35 min, kcal estimated', `${finished?.kcal_burned} kcal`)
+  await page.getByRole('button', { name: 'Готово' }).click()
+  await page.waitForURL(/\/train$/, { timeout: 8000 })
+  await page.waitForTimeout(800)
+  check(await hasText(`UI Грудь ${tag}`) && (await hasText('Сегодня тренировок')), 'history and today summary updated')
+
+  // a record: the same bench a bit heavier, through the API
+  const second = (await apiFetch('/v1/training/workouts', { method: 'POST', body: JSON.stringify({ id: crypto.randomUUID() }) })).body
+  const bench = library.find((exercise) => exercise.name_en === 'Barbell bench press')
+  const bestBefore = Math.max(...(finished?.exercises?.[0]?.sets ?? []).map((set) => set.weight_kg ?? 0), finished?.exercises?.[0]?.bests?.weight_kg ?? 0)
+  await apiFetch(`/v1/training/workouts/${second.id}/sets/${crypto.randomUUID()}`, {
+    method: 'PUT',
+    body: JSON.stringify({ exercise_id: bench.id, reps: 3, weight_kg: bestBefore + 2.5 }),
+  })
+  const recordRun = (await apiFetch(`/v1/training/workouts/${second.id}/finish`, { method: 'POST', body: JSON.stringify({ duration_s: 600 }) })).body
+  check((recordRun?.records ?? []).some((record) => record.kind === 'weight'), 'heavier set → weight record', `${bestBefore + 2.5} kg`)
+  await page.reload({ waitUntil: 'networkidle' })
+  check(await page.locator('[data-testid="records-list"]').isVisible(), 'records list on the Train tab')
+
+  // quick cardio from quick add → start sheet → cardio
+  await page.goto(`${WEB_URL}/today`, { waitUntil: 'networkidle' })
+  await openQuickAdd('Начать тренировку')
+  await page.waitForURL(/\/train/, { timeout: 8000 })
+  await page.locator('[data-testid="start-sheet"]').waitFor({ timeout: 8000 })
+  await page.locator('[data-testid="start-sheet"]').getByRole('button', { name: 'Кардио' }).click()
+  await page.locator('#cardio-minutes').fill('20')
+  await page.locator('#cardio-distance').fill('3,2')
+  await page.getByRole('button', { name: 'Записать кардио' }).click()
+  await page.waitForTimeout(1200)
+  check(await hasText('Кардио записано'), 'quick cardio logged from quick add (2 taps to the form)')
+
+  // Today: the training card and the burned ring (never food budget)
+  const dayBefore = (await apiFetch('/v1/nutrition/day')).body
+  await page.goto(`${WEB_URL}/today`, { waitUntil: 'networkidle' })
+  await page.waitForTimeout(800)
+  const burnedToday = Number((await page.locator('[data-testid="burned-today"]').innerText()).replace(/\D/g, ''))
+  const trainingToday = (await apiFetch('/v1/training/today')).body
+  check(burnedToday === Math.round(trainingToday?.burned_kcal ?? -1) && burnedToday > 0, 'Today: burned ring shows workout kcal', `${burnedToday} kcal`)
+  const dayAfter = (await apiFetch('/v1/nutrition/day')).body
+  check(JSON.stringify(dayBefore?.totals) === JSON.stringify(dayAfter?.totals), 'food totals unchanged by workouts')
+  check(await page.locator('[data-testid="today-training"]').isVisible(), 'Today: training card is live (no stage placeholder)')
+  await page.locator('[data-testid="today-training"]').scrollIntoViewIfNeeded()
+  await shot('24-today-training')
+
   // 8. Reload keeps the session (token persisted).
   console.log('\n8. session persistence')
   await page.goto(`${WEB_URL}/today`, { waitUntil: 'networkidle' })
