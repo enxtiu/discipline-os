@@ -3,8 +3,9 @@
  *
  * All numbers come from `GET /v1/nutrition/day`, which the server aggregates in
  * the user's timezone: calorie ring vs target, macro rings, water, the meal
- * list grouped by type, and the "burned is not budget" card. Steps arrive in
- * stage 5, gamification in stage 8.
+ * list grouped by type, and the "burned is not budget" card (workouts since
+ * stage 4, from `GET /v1/training/today`). Steps arrive in stage 5,
+ * gamification in stage 8.
  */
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -33,6 +34,8 @@ import { useAddWater, useDay, useDeleteMeal, useRecipes } from '@/features/food/
 import { LogSheet } from '@/features/food/LogSheet'
 import { PhotoTrigger, useAiCapture } from '@/features/ai/AiCapture'
 import { MealPhoto } from '@/features/ai/MealPhoto'
+import { TrainingTodayCard } from '@/features/train/TrainingTodayCard'
+import { useTrainingToday } from '@/features/train/useTraining'
 
 const MEAL_ORDER: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack', 'other']
 
@@ -47,6 +50,8 @@ export function TodayPage() {
   const deleteMeal = useDeleteMeal()
   const capture = useAiCapture()
   const recipes = useRecipes()
+  const training = useTrainingToday()
+  const burnedKcal = Math.round(training.data?.burned_kcal ?? 0)
   const [logRecipe, setLogRecipe] = useState<Recipe | null>(null)
   const pinned = (recipes.data?.items ?? []).filter((recipe) => recipe.is_pinned)
 
@@ -169,7 +174,15 @@ export function TodayPage() {
       )}
 
       <Card className="flex items-center gap-4">
-        <ProgressRing size={64} thickness={7} value={0} max={1} tone="warn" glow={false} label={<span className="text-base">0</span>} />
+        <ProgressRing
+          size={64}
+          thickness={7}
+          value={burnedKcal}
+          max={Math.max(burnedKcal, 400)}
+          tone="warn"
+          glow={false}
+          label={<span className="tnum text-base" data-testid="burned-today">{number(burnedKcal)}</span>}
+        />
         <div className="min-w-0 flex-1">
           <p className="flex items-center gap-2 text-sm font-semibold">
             <IconFlame size={16} className="text-amber-400" />
@@ -268,7 +281,7 @@ export function TodayPage() {
       </section>
 
       <div className="grid gap-3 sm:grid-cols-2">
-        <StageCard stage={4} title={t('train.title')} description={t('train.subtitle_planned')} to="/train" icon={<IconPlus size={18} />} />
+        <TrainingTodayCard data={training.data} loading={training.isLoading} />
         <StageCard stage={6} title={t('plan.title')} description={t('plan.subtitle_planned')} to="/plan" icon={<IconPlus size={18} />} />
       </div>
 

@@ -63,7 +63,7 @@ export function QuickAddSheet({ open, onClose }: { open: boolean; onClose: () =>
         <span className="text-sm font-medium leading-tight">
           {action.key === 'task' ? t('plan.quick_add_placeholder') : t(action.labelKey)}
         </span>
-        {action.stage && action.stage > 3 && (
+        {action.stage && action.stage > 4 && (
           <Badge tone="violet" className="shrink-0">
             {action.stage}
           </Badge>
