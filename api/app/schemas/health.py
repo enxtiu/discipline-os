@@ -53,6 +53,9 @@ class HealthDayIn(HealthIn):
     active_kcal: Num | None = Field(default=None, ge=0, le=10_000)
     basal_kcal: Num | None = Field(default=None, ge=0, le=10_000)
     distance_m: Num | None = Field(default=None, ge=0, le=300_000)
+    distance_km: Num | None = Field(
+        default=None, ge=0, le=300, description="alternative to distance_m (Health reports km in metric locales)"
+    )
     floors: Num | None = Field(default=None, ge=0, le=2000)
     resting_hr: Num | None = Field(default=None, ge=20, le=250)
     hrv_ms: Num | None = Field(default=None, ge=1, le=500)
@@ -67,9 +70,20 @@ class HealthDayIn(HealthIn):
     def _something(self) -> HealthDayIn:
         if all(
             getattr(self, key) is None
-            for key in ("steps", "active_kcal", "basal_kcal", "distance_m", "floors", "resting_hr", "hrv_ms")
+            for key in (
+                "steps",
+                "active_kcal",
+                "basal_kcal",
+                "distance_m",
+                "distance_km",
+                "floors",
+                "resting_hr",
+                "hrv_ms",
+            )
         ):
             raise ValueError("send at least one value (steps, active_kcal, distance_m, …)")
+        if self.distance_m is None and self.distance_km is not None:
+            self.distance_m = self.distance_km * 1000
         return self
 
 

@@ -20,7 +20,7 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import delete, func, literal_column, select
+from sqlalchemy import delete, func, literal_column, not_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -37,7 +37,6 @@ PAST_DAYS = 400
 DEFAULT_STEP_M = 0.75
 NET_WALK_KCAL_PER_KG_KM = 0.5
 MAX_SLEEP_MIN = 20 * 60
-INGESTED = (HealthSource.SHORTCUT, HealthSource.APPLE_HEALTH, HealthSource.IMPORT)
 
 
 @dataclass(slots=True)
@@ -97,12 +96,25 @@ def _values(payload: Any) -> dict[str, Any]:
 async def upsert_day(
     db: AsyncSession, *, user_id: uuid.UUID, day: date, values: dict[str, Any], source: HealthSource, raw: dict
 ) -> tuple[HealthDaily, bool]:
-    """Insert or overwrite one day; returns (row, created)."""
+    """Insert or overwrite one day; returns (row, created).
+
+    ``ingested_at``/``raw_payload`` describe the last *ingest*: a manual edit of
+    a synced day keeps them, so "last sync" survives the edit.
+    """
     now = utcnow()
-    changes = {**values, "source": source, "ingested_at": now, "raw_payload": raw, "updated_at": now}
+    manual = source == HealthSource.MANUAL
+    changes = {**values, "source": source, "updated_at": now}
+    if not manual:
+        changes |= {"ingested_at": now, "raw_payload": raw}
     stmt = (
         pg_insert(HealthDaily)
-        .values(id=uuid.uuid4(), user_id=user_id, local_day=day, created_at=now, **{"steps": 0, **changes})
+        .values(
+            id=uuid.uuid4(),
+            user_id=user_id,
+            local_day=day,
+            created_at=now,
+            **{"steps": 0, "ingested_at": now, "raw_payload": raw, **changes},
+        )
         .on_conflict_do_update(constraint="uq_health_daily_user_day", set_=changes)
         .returning(HealthDaily.id, literal_column("(xmax = 0)").label("created"))
     )
@@ -123,15 +135,23 @@ async def ingest_day(db: AsyncSession, *, user_id: uuid.UUID, tz: str | None, pa
 
 async def set_manual_steps(db: AsyncSession, *, user_id: uuid.UUID, tz: str | None, day: date, payload) -> HealthDaily:
     check_day(day, tz)
-    values: dict[str, Any] = {"steps": payload.steps}
-    if payload.distance_m is not None:
-        values["distance_m"] = payload.distance_m
-    if payload.active_kcal is not None:
-        values["active_kcal"] = Decimal(str(round(payload.active_kcal, 1)))
+    # A manual entry replaces the day's activity: synced distance/active energy
+    # belonged to the old step count, so they are cleared unless typed too.
+    values: dict[str, Any] = {
+        "steps": payload.steps,
+        "distance_m": payload.distance_m,
+        "active_kcal": Decimal(str(round(payload.active_kcal, 1))) if payload.active_kcal is not None else None,
+    }
     row, _created = await upsert_day(
         db, user_id=user_id, day=day, values=values, source=HealthSource.MANUAL, raw={"manual": True}
     )
     return row
+
+
+async def delete_day(db: AsyncSession, *, user_id: uuid.UUID, day: date) -> None:
+    result = await db.execute(delete(HealthDaily).where(HealthDaily.user_id == user_id, HealthDaily.local_day == day))
+    if not result.rowcount:
+        raise NotFound("No steps for this day", code="health_day_not_found")
 
 
 async def _settings(db: AsyncSession, user_id: uuid.UUID) -> UserSettings | None:
@@ -186,9 +206,10 @@ async def day_views(db: AsyncSession, *, user_id: uuid.UUID, start: date, end: d
 
 
 async def last_sync_at(db: AsyncSession, user_id: uuid.UUID) -> datetime | None:
+    """Last Shortcut/Health ingest; days only ever typed by hand carry ``{"manual": true}``."""
     return await db.scalar(
         select(func.max(HealthDaily.ingested_at)).where(
-            HealthDaily.user_id == user_id, HealthDaily.source.in_(INGESTED)
+            HealthDaily.user_id == user_id, not_(HealthDaily.raw_payload.has_key("manual"))
         )
     )
 

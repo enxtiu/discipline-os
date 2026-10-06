@@ -80,6 +80,12 @@ async def put_steps(day: date, payload: StepsIn, principal: CurrentPrincipal, db
     return health_day_out(view)
 
 
+@router.delete("/steps/{day}", response_model=OkOut, summary="Clear a day's steps and activity")
+async def delete_steps(day: date, principal: CurrentPrincipal, db: DbSession) -> OkOut:
+    await health.delete_day(db, user_id=principal.user_id, day=day)
+    return OkOut()
+
+
 @router.get("/weight", response_model=WeightSeriesOut, summary="Weigh-ins, 7-day trend and 30-day change")
 async def weight(
     principal: CurrentPrincipal, db: DbSession, days: int = Query(default=90, ge=7, le=400)

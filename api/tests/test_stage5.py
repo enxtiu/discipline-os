@@ -57,12 +57,28 @@ async def test_shortcut_ingest_upserts_the_day(authed: httpx.AsyncClient, client
         7013,
     )
 
+    # Health reports distance in km on metric iPhones
+    in_km = await _ingest(client, token, {"date": day, "distance_km": "7,5"})
+    assert in_km.json()["day"]["distance_m"] == 7500 and in_km.json()["day"]["steps"] == 9400
+
     # the token can do nothing else
     assert (await client.get("/api/v1/health/today", headers={"Authorization": f"Bearer {token}"})).status_code == 403
     weight = await _ingest(client, token, {"weight_kg": 80}, "/api/v1/ingest/weight")
     assert weight.status_code == 403
     authed.headers["Authorization"] = device
     assert (await authed.get("/api/v1/health/today")).json()["last_sync_at"] is not None
+
+    # typing the steps by hand replaces the synced day; its active energy no longer applies
+    await authed.patch("/api/v1/settings", json={"weight_kg": 80, "height_cm": 180})
+    manual = (await authed.put(f"/api/v1/health/steps/{day}", json={"steps": 10_000})).json()
+    assert (manual["steps"], manual["source"], manual["active_kcal"], manual["distance_m"]) == (
+        10_000,
+        "manual",
+        None,
+        None,
+    )
+    assert (manual["steps_kcal"], manual["steps_kcal_estimated"]) == (299, True)
+    assert (await authed.get("/api/v1/health/today")).json()["last_sync_at"] is not None  # the edit is not a sync
 
 
 async def test_ingest_days_and_validation(authed: httpx.AsyncClient) -> None:
@@ -108,6 +124,10 @@ async def test_manual_steps_estimate_and_series(authed: httpx.AsyncClient) -> No
     assert (series["target_steps"], series["days_on_target"], series["average_steps"]) == (8000, 1, 2000)
     today_view = (await authed.get("/api/v1/health/today")).json()
     assert today_view["day"]["steps"] == 10_000 and today_view["last_sync_at"] is None  # manual is not a sync
+    old_day = (today() - timedelta(days=2)).isoformat()
+    assert (await authed.delete(f"/api/v1/health/steps/{old_day}")).status_code == 200
+    gone = await authed.delete(f"/api/v1/health/steps/{old_day}")
+    assert gone.status_code == 404 and gone.json()["error"]["code"] == "health_day_not_found"
     # steps and their calories never touch the food budget
     assert (await authed.get("/api/v1/nutrition/day")).json() == nutrition_before
 
