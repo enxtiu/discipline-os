@@ -180,8 +180,9 @@ Reviews run on this branch:
   `AI_DAILY_CALL_LIMIT` counts every user's calls, retries included; `/ai/usage`
   shows your own count and the shared remainder. Per-user fairness is the
   per-minute limit.
-- **Rate limits are in-process**, like the stage-1 auth limiter: correct for the
-  one-container deployment; a second API worker would need a shared store.
+- **Rate limits are in-process**, like the stage-1 auth limiter. The production
+  image runs two uvicorn workers, so the per-minute limit is per worker (at
+  worst twice the setting); the daily budget lives in the database and is exact.
 - **Photos:** the original lives only in request memory. The thumbnail is
   re-checked server-side (JPEG markers, ≤ 480 px, ≤ 250 KB); anything else is
   dropped, never an error. Thumbnails are in the `api_media` volume, **not** in
