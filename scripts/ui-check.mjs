@@ -738,6 +738,115 @@ try {
   await page.locator('[data-testid="today-training"]').scrollIntoViewIfNeeded()
   await shot('24-today-training')
 
+  // 7¹⁰. stage 5: health — Shortcut token + ingest, manual steps, weight, sleep, offline, /health
+  console.log('\n7¹⁰. stage 5 health')
+  const digits = (value) => Number(String(value).replace(/\D/g, ''))
+  const foodBefore = (await apiFetch('/v1/nutrition/day')).body?.totals
+  await page.goto(`${WEB_URL}/settings`, { waitUntil: 'networkidle' })
+  await page.getByText('Команда iOS', { exact: true }).click()
+  await page.waitForURL(/\/settings\/shortcut$/, { timeout: 8000 })
+  check(await hasText('Как собрать Команду'), 'Settings → iOS Shortcut: setup steps shown')
+  await page.getByRole('button', { name: 'Создать токен' }).click()
+  await page.locator('[data-testid="shortcut-token"]').waitFor({ timeout: 8000 })
+  const shortcutToken = (await page.locator('[data-testid="shortcut-token"]').innerText()).trim()
+  const ingestUrl = (await page.locator('[data-testid="shortcut-url"]').innerText()).trim()
+  check(shortcutToken.startsWith('dsos_pat_') && ingestUrl.endsWith('/api/v1/ingest/health'), 'token issued once, URL shown', ingestUrl)
+  const asShortcut = (path, body) =>
+    apiFetch(path, { method: 'POST', body: JSON.stringify(body), headers: { Authorization: `Bearer ${shortcutToken}` } })
+  const pushed = await asShortcut('/v1/ingest/health', { steps: '8 342', active_kcal: '512,5', distance_km: '6,2' })
+  check(pushed.status === 200 && pushed.body?.day?.steps === 8342 && pushed.body?.day?.distance_m === 6200, 'Shortcut ingest accepts «8 342», «512,5», km', `${pushed.status}`)
+  const replay = await asShortcut('/v1/ingest/health', { steps: '8 342', active_kcal: '512,5', distance_km: '6,2' })
+  check(replay.body?.created === false && replay.body?.day?.steps === 8342, 'second run updates the same day (idempotent)')
+  offlineMode = true // the expected 403 below is logged by the browser; not an app error
+  check((await apiFetch('/v1/settings', { headers: { Authorization: `Bearer ${shortcutToken}` } })).status === 403, 'the Shortcut token cannot read settings')
+  offlineMode = false
+  await page.reload({ waitUntil: 'networkidle' })
+  check(await hasText('прислала данные'), 'Shortcut screen shows the last sync')
+  await shot('26-settings-shortcut')
+
+  await page.goto(`${WEB_URL}/today`, { waitUntil: 'networkidle' })
+  await page.waitForTimeout(600)
+  const stepsLine = await page.locator('[data-testid="steps-today"]').innerText()
+  check(digits(stepsLine.split('/')[0]) === 8342, 'Today: steps from the Shortcut vs target', stepsLine)
+  const healthToday = (await apiFetch('/v1/health/today')).body
+  check(
+    digits(await page.locator('[data-testid="burned-steps"]').innerText()) === Math.round(healthToday?.day?.steps_kcal ?? -1),
+    'Today: step kcal shown apart from workouts (Health active energy)',
+    `${healthToday?.day?.steps_kcal} kcal`,
+  )
+
+  // quick add → steps (no stage badge) → manual entry replaces the synced number
+  await page.locator('nav.tabbar button[aria-label]').first().click()
+  await page.waitForTimeout(500)
+  const stepsTile = page.locator('[role="dialog"] button').filter({ hasText: 'Шаги' })
+  check(!(await stepsTile.innerText()).includes('5'), 'quick add: steps tile has no stage badge')
+  await stepsTile.click()
+  await page.locator('#steps-input').waitFor({ timeout: 8000 })
+  check(await page.locator('[data-testid="steps-synced-note"]').isVisible(), 'steps sheet says the number came from the Shortcut')
+  await page.locator('#steps-input').fill('10 000')
+  await page.getByRole('button', { name: 'Сохранить шаги' }).click()
+  await page.waitForTimeout(1000)
+  const manual = (await apiFetch('/v1/health/today')).body?.day
+  check(manual?.steps === 10000 && manual?.source === 'manual' && manual?.steps_kcal_estimated === true, 'manual steps saved, kcal estimated', `${manual?.steps_kcal} kcal`)
+  check((await page.locator('[data-testid="burned-steps"]').innerText()).startsWith('≈'), 'estimated step kcal marked with ≈')
+
+  // weight → profile
+  await page.locator('[data-testid="health-weight-tile"]').click()
+  await page.locator('#weight-input').fill('80,4')
+  await page.getByRole('button', { name: 'Сохранить вес' }).click()
+  await page.waitForTimeout(1200)
+  const profileWeight = (await apiFetch('/v1/settings')).body?.settings?.weight_kg
+  check(profileWeight === 80.4, 'weigh-in «80,4» saved and synced to the profile', `${profileWeight} kg`)
+  check((await page.locator('[data-testid="health-weight-tile"]').innerText()).includes('80,4'), 'Today: weight tile updated')
+
+  // sleep: 23:30 → 07:15
+  await page.locator('[data-testid="health-sleep-tile"]').click()
+  await page.locator('#bed-input').fill('23:30')
+  await page.locator('#wake-input').fill('07:15')
+  await page.waitForTimeout(200)
+  check((await page.locator('[data-testid="sleep-preview"]').innerText()).includes('7 ч 45 мин'), 'sleep preview: 7 ч 45 мин')
+  await shot('29-sleep-sheet')
+  await page.getByRole('button', { name: 'Сохранить сон' }).click()
+  await page.waitForTimeout(1200)
+  const night = (await apiFetch('/v1/health/today')).body?.sleep
+  check(night?.duration_min === 465, 'sleep saved: 465 min on the wake-up day', night?.date)
+
+  // offline: yesterday's steps are queued, then sent
+  offlineMode = true
+  await context.setOffline(true)
+  await page.getByRole('button', { name: 'Ввести шаги' }).click()
+  await page.getByRole('tab', { name: 'Вчера' }).click()
+  await page.locator('#steps-input').fill('4321')
+  await page.getByRole('button', { name: 'Сохранить шаги' }).click()
+  await page.waitForTimeout(700)
+  check(await hasText('Нет сети — сохранится'), 'offline steps are queued with a clear message')
+  await context.setOffline(false)
+  offlineMode = false
+  await page.evaluate(() => window.dispatchEvent(new Event('online')))
+  await page.waitForTimeout(2500)
+  const series = (await apiFetch('/v1/health/steps?days=2')).body?.days ?? []
+  check(series[0]?.steps === 4321, 'the queued steps reached the server after reconnect', `${series[0]?.date}: ${series[0]?.steps}`)
+  await page.waitForTimeout(2500) // toasts gone
+  await page.locator('[data-testid="health-today"]').scrollIntoViewIfNeeded()
+  await shot('28-today-health')
+
+  // /health page
+  await page.getByRole('link', { name: 'Все данные' }).click()
+  await page.waitForURL(/\/health$/, { timeout: 8000 })
+  await page.locator('[data-testid="steps-chart"]').waitFor({ timeout: 8000 })
+  await page.waitForTimeout(600)
+  const stepBars = await page.locator('[data-testid="steps-chart"] .chart-steps').evaluateAll((els) =>
+    els.filter((el) => el.getBoundingClientRect().height > 0).length,
+  )
+  check(stepBars >= 2, '/health: steps chart draws today and yesterday', `${stepBars} bars`)
+  check((await page.locator('[data-testid="weight-latest"]').innerText()).includes('80,4'), '/health: latest weight 80,4')
+  check((await page.locator('[data-testid="sleep-chart"] .chart-sleep').count()) >= 1, '/health: sleep night drawn on the timeline')
+  await shot('27-health-page')
+  await page.locator('[data-testid="sleep-chart"]').scrollIntoViewIfNeeded()
+  await shot('30-health-sleep-weight')
+  const foodAfter = (await apiFetch('/v1/nutrition/day')).body?.totals
+  check(JSON.stringify(foodBefore) === JSON.stringify(foodAfter), 'food totals unchanged by steps, weight and sleep')
+
   // 8. Reload keeps the session (token persisted).
   console.log('\n8. session persistence')
   await page.goto(`${WEB_URL}/today`, { waitUntil: 'networkidle' })

@@ -214,6 +214,29 @@ else
   pass "start → set (replayed) → finish: ${KCAL} kcal burned, food totals untouched (cleaned up)"
 fi
 
+step "13f. health ingest (stage 5): the Shortcut request, idempotent per day, never food budget"
+split "$(api POST /v1/tokens '{"name":"smoke shortcut","scopes":["ingest:health"]}' "$TOKEN")"
+[[ "$STATUS" == "200" || "$STATUS" == "201" ]] || fail "token create returned $STATUS: $BODY"
+SHORTCUT="$(parse "$BODY" "d['token']")"
+SHORTCUT_ID="$(parse "$BODY" "d['api_token']['id']")"
+# a day 400 days back (the oldest the API accepts) so a real day is never touched; removed below
+OLD_DAY="$(python3 -c 'import datetime;print(datetime.date.today()-datetime.timedelta(days=399))')"
+FOOD_BEFORE="$(parse "$(sed '$d' <<<"$(api GET /v1/nutrition/day '' "$TOKEN")")" "d['totals']")"
+for RUN in 1 2; do
+  split "$(api POST /v1/ingest/health "{\"date\":\"$OLD_DAY\",\"steps\":\"8 342\",\"active_kcal\":\"512,5\",\"distance_km\":6.2}" "$SHORTCUT")"
+  [[ "$STATUS" == "200" ]] || fail "ingest run $RUN returned $STATUS: $BODY"
+done
+[[ "$(parse "$BODY" "d['created']")" == "False" ]] || fail "the second run created a new day"
+[[ "$(parse "$BODY" "(d['day']['steps'], d['day']['distance_m'], d['day']['active_kcal'])")" == "(8342, 6200, 512.5)" ]] \
+  || fail "lenient numbers parsed wrong: $BODY"
+split "$(api GET /v1/health/today '' "$SHORTCUT")"
+[[ "$STATUS" == "403" ]] || fail "the ingest token could read /v1/health/today ($STATUS)"
+FOOD_AFTER="$(parse "$(sed '$d' <<<"$(api GET /v1/nutrition/day '' "$TOKEN")")" "d['totals']")"
+[[ "$FOOD_BEFORE" == "$FOOD_AFTER" ]] || fail "health ingest changed the food totals"
+api DELETE "/v1/health/steps/$OLD_DAY" '' "$TOKEN" >/dev/null
+api DELETE "/v1/tokens/$SHORTCUT_ID" '' "$TOKEN" >/dev/null
+pass "ingest «8 342» / «512,5» / 6.2 km twice → one day, read access refused, food untouched (cleaned up)"
+
 step "14. device self-revoke (cleanup)"
 split "$(api DELETE "/v1/devices/$DEVICE_ID" '' "$TOKEN")"
 [[ "$STATUS" == "200" ]] || fail "device revoke returned $STATUS: $BODY"
@@ -221,4 +244,4 @@ split "$(api GET /v1/auth/session '' "$TOKEN")"
 [[ "$STATUS" == "401" ]] || fail "a revoked device token still works ($STATUS)"
 pass "smoke device revoked, its token is dead"
 
-printf '\n\033[32mAll smoke checks passed (stages 1–4).\033[0m\n'
+printf '\n\033[32mAll smoke checks passed (stages 1–5).\033[0m\n'
