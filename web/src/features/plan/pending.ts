@@ -153,6 +153,7 @@ export function applyQueuedTaskEdits(queryClient: QueryClient, entries: QueuedRe
 // --------------------------------------------------------------------------- //
 let pendingIds: ReadonlySet<string> = new Set()
 let pendingEntries: QueuedRequest[] = []
+let signature = ''
 let readVersion = -1
 const idListeners = new Set<() => void>()
 
@@ -160,8 +161,13 @@ async function reread(version: number): Promise<void> {
   const entries = await listEntries()
   if (version < readVersion) return
   readVersion = version
-  pendingEntries = entries.filter((entry) => statusOf(entry) === 'pending' && taskWriteOf(entry) !== null)
-  const ids = new Set(pendingEntries.map((entry) => taskWriteOf(entry)!.id))
+  const waiting = entries.filter((entry) => statusOf(entry) === 'pending' && taskWriteOf(entry) !== null)
+  // the queue changes often during a replay (sending flags, counts): act only when these writes did
+  const next = waiting.map((entry) => `${entry.id}:${entry.updatedAt ?? entry.createdAt}`).join(',')
+  if (next === signature) return
+  signature = next
+  pendingEntries = waiting
+  const ids = new Set(waiting.map((entry) => taskWriteOf(entry)!.id))
   const same = ids.size === pendingIds.size && [...ids].every((id) => pendingIds.has(id))
   if (!same) pendingIds = ids
   for (const listener of idListeners) listener()

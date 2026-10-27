@@ -673,10 +673,11 @@ export async function mutate<T>(
 // --------------------------------------------------------------------------- //
 // The user's decisions (sync sheet)
 // --------------------------------------------------------------------------- //
-/** Drop one write for good. */
+/** Drop one write for good (what waited behind it may go now). */
 export async function discardEntry(id: number): Promise<void> {
   await offlineDb.queue.delete(id)
   await refresh()
+  if (navigator.onLine) kick()
 }
 
 /**
