@@ -91,7 +91,7 @@ from app.models import (
 )
 from app.services import export
 from app.services.export import LIBRARY, SECTIONS
-from app.services.restore import RestoreError, read_backup, restore
+from app.services.restore import RestoreError, check_signature, read_backup, restore
 from tests.stage6_helpers import other_user
 from tests.stage8_helpers import (
     NOON,
@@ -543,7 +543,7 @@ async def test_csv_zip_one_file_per_table_with_bom_headers_and_safe_cells(accoun
     client, secrets = account["client"], account["secrets"]
     response = await download(client, "csv")
     assert response.headers["content-type"] == "application/zip"
-    assert response.headers["content-disposition"] == f'attachment; filename="disciplineos-{local_today()}.zip"'
+    assert response.headers["content-disposition"] == f'attachment; filename="disciplineos-{local_today()}-csv.zip"'
     archive = zip_of(response)
     expected = [f"{section.name}.csv" for section in SECTIONS] + [f"library_{item.name}.csv" for item in LIBRARY]
     assert archive.namelist() == [*expected, "README.txt"]
@@ -584,20 +584,28 @@ async def test_csv_zip_one_file_per_table_with_bom_headers_and_safe_cells(accoun
     readme = archive.read("README.txt").decode()
     assert "UTF-8" in readme and "tasks.csv" in readme and str(account["user_id"]) in readme
     assert readme.startswith("DisciplineOS — выгрузка данных (CSV)")  # the app's language: ru by default
+    assert "«Английский (США)»" in readme  # a dot decimal: how to import it in a Russian-locale spreadsheet
     assert (await client.patch("/api/v1/settings", json={"language": "en"})).status_code == 200
     english = zip_of(await download(client, "csv")).read("README.txt").decode()
     assert english.startswith("DisciplineOS — data export (CSV)") and "Files and rows:" in english
+    assert "English (United States)" in english
 
 
 # --------------------------------------------------------------------------- #
 # Backup
 # --------------------------------------------------------------------------- #
-async def test_backup_zip_manifest_counts_and_checksums(account) -> None:
+def _saved(tmp_path: Path, response: httpx.Response) -> Path:
+    path = tmp_path / "backup.zip"
+    path.write_bytes(response.content)
+    return path
+
+
+async def test_backup_zip_manifest_counts_and_checksums(account, tmp_path) -> None:
     client, user_id = account["client"], account["user_id"]
     before = datetime.now(UTC)
     response = await download(client, "backup")
     assert response.headers["content-type"] == "application/zip"
-    assert response.headers["content-disposition"] == f'attachment; filename="disciplineos-{local_today()}.zip"'
+    assert response.headers["content-disposition"] == f'attachment; filename="disciplineos-{local_today()}-backup.zip"'
     archive = zip_of(response)
     assert archive.namelist() == ["data.json", "manifest.json"]
     manifest = orjson.loads(archive.read("manifest.json"))
@@ -609,6 +617,14 @@ async def test_backup_zip_manifest_counts_and_checksums(account) -> None:
     created = datetime.fromisoformat(manifest["created_at"])
     assert created.tzinfo is not None and before - timedelta(seconds=5) <= created <= datetime.now(UTC)
     assert manifest["files"] == {"data.json": {"sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data)}}
+    signature = manifest["signature"]  # HMAC over the rest of the manifest: made here, unchanged
+    assert signature == {
+        "alg": "HMAC-SHA256",
+        "key_id": export.signing_key_id(),
+        "value": export.manifest_signature(manifest),
+    }
+    assert len(signature["key_id"]) == 16 and len(signature["value"]) == 64
+    assert check_signature(manifest).valid and read_backup(_saved(tmp_path, response)).signed
     assert manifest["counts"] == document["counts"]
     assert all(manifest["counts"][section.name] >= 1 for section in SECTIONS)
     assert document["format"] == "disciplineos-export" and document["user_id"] == str(user_id)
@@ -737,9 +753,13 @@ def rewrite_backup(
     *,
     data: bytes | None = None,
     checksum: bool = True,
+    sign: bool = False,
 ) -> Path:
     """A copy of a backup with ``mutate(data, manifest)`` applied (checksum updated
-    unless ``checksum=False``), or with ``data.json`` replaced by raw bytes."""
+    unless ``checksum=False``), or with ``data.json`` replaced by raw bytes. The old
+    signature stays — it no longer matches, as for anyone who edits a backup — unless
+    ``sign=True`` signs it again with this server's key (a backup this server made with
+    that content, e.g. on another server sharing ``BACKUP_SIGNING_KEY``)."""
     archive = zipfile.ZipFile(source)
     manifest = orjson.loads(archive.read("manifest.json"))
     document = orjson.loads(archive.read("data.json"))
@@ -748,6 +768,8 @@ def rewrite_backup(
     payload = data if data is not None else orjson.dumps(document)
     if checksum:
         manifest["files"]["data.json"] = {"sha256": hashlib.sha256(payload).hexdigest(), "bytes": len(payload)}
+    if sign:
+        manifest = export.sign_manifest(manifest)
     with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as out:
         out.writestr("data.json", payload)
         out.writestr("manifest.json", orjson.dumps(manifest))
@@ -841,7 +863,9 @@ async def test_restore_into_an_empty_account_on_another_server(account, db, tmp_
         for row in data["tables"]["user_quests"]:
             row["quest_id"] = unknown if row["quest_id"] == retired else row["quest_id"]
 
-    path = rewrite_backup(original, tmp_path / "other-server.zip", retire)
+    # the other server shares BACKUP_SIGNING_KEY: its backups restore here in full (one this
+    # server cannot verify is covered in test_stage8_restore_hardening)
+    path = rewrite_backup(original, tmp_path / "other-server.zip", retire, sign=True)
 
     await db.execute(sa.delete(User).where(User.id == source))
     await db.execute(sa.delete(Food).where(Food.id == account["ids"]["library_food"]))
@@ -936,8 +960,8 @@ async def test_damaged_or_foreign_backups_are_refused_and_nothing_is_written(acc
     damaged = data.replace(b'"Hello"', b'"Hellp"') if b'"Hello"' in data else data[:-3] + b" }\n"
     refused(rewrite_backup(original, tmp_path / "damaged.zip", data=damaged, checksum=False), "checksum mismatch")
 
-    def mutate(path: str, change) -> Path:
-        return rewrite_backup(original, tmp_path / path, change)
+    def mutate(path: str, change) -> Path:  # signed again: the checks behind the signature are reached
+        return rewrite_backup(original, tmp_path / path, change, sign=True)
 
     refused(mutate("format.zip", lambda d, m: m.update(format="something-else")), "unknown format")
     refused(mutate("version.zip", lambda d, m: m.update(format_version=2)), "unsupported format version")
@@ -972,6 +996,10 @@ async def test_damaged_or_foreign_backups_are_refused_and_nothing_is_written(acc
         await restore_file(mutate("reference.zip", broken_reference))
     assert sum((await counts(db, user_id)).values()) == 0
 
+    unsigned = rewrite_backup(original, tmp_path / "unsigned.zip", lambda d, m: None)  # edited: no longer signed
+    with pytest.raises(RestoreError, match=r"this server did not sign the backup \(its signature does not match"):
+        await restore_file(unsigned)
+    assert sum((await counts(db, user_id)).values()) == 0
     assert (await restore_file(original)).inserted > 0  # the untouched backup still restores
 
 
@@ -992,7 +1020,7 @@ def cli(*args: str) -> subprocess.CompletedProcess[str]:
 
 async def test_cli_restore_backup(account, db, tmp_path) -> None:
     client, user_id = account["client"], account["user_id"]
-    path = await save_backup(client, tmp_path / "disciplineos-2026-10-01.zip")
+    path = await save_backup(client, tmp_path / "disciplineos-2026-10-01-backup.zip")
     expected = await counts(db, user_id)
     total = sum(expected.values())
     await wipe(db, user_id)
@@ -1006,6 +1034,7 @@ async def test_cli_restore_backup(account, db, tmp_path) -> None:
     assert dry.returncode == 0, dry.stdout + dry.stderr
     assert "DRY RUN" in dry.stdout and f"would restore: {total} inserted, 0 updated" in dry.stdout
     assert f"account {user_id} (the backup's own)" in dry.stdout and "meal_logs" in dry.stdout
+    assert "signature: valid — made by this server" in dry.stdout
     assert sum((await counts(db, user_id)).values()) == 0
 
     real = cli(str(path))
@@ -1015,3 +1044,7 @@ async def test_cli_restore_backup(account, db, tmp_path) -> None:
 
     again = cli(str(path))
     assert again.returncode == 0 and f"restored: 0 inserted, 0 updated, {total} unchanged" in again.stdout
+
+    edited = cli(str(rewrite_backup(path, tmp_path / "edited.zip", lambda d, m: None)))
+    assert edited.returncode == 1 and "this server did not sign the backup" in edited.stdout + edited.stderr
+    assert "--user-id" in edited.stdout + edited.stderr

@@ -14,8 +14,11 @@ quests) are listed under ``library`` so a backup can be restored on another serv
 
 **Never a secret**: token hashes and prefixes, device fingerprints, the recovery
 phrase hash, pairing codes (the table is not exported at all), push endpoints and
-keys, raw AI request/response payloads (they can hold photos), raw provider payloads
-of library foods. VAPID keys live in the environment and are never read here.
+keys, raw AI request/response payloads (they can hold photos), an AI provider's error
+body (``ai_jobs.error`` leaves as the status and the provider's error code only —
+:func:`app.ai.providers.public_error`, also for rows stored before that rule), raw
+provider payloads of library foods. VAPID keys live in the environment and are never
+read here.
 Columns maintained by database triggers (search vectors, ``aliases_text``) are left
 out too — they are rebuilt on restore.
 
@@ -36,12 +39,19 @@ How it leaves
   schema version = the database's alembic revision, user id, created_at, row counts,
   sha256 and size per file); ``python -m app.cli restore-backup`` reads it back
   (``app.services.restore``).
+* **Signed.** The manifest carries an HMAC-SHA256 over everything else in it (so over
+  the data checksum, the user id, the schema version and the creation time) with a key
+  derived by HKDF from ``BACKUP_SIGNING_KEY`` — or from ``SECRET_KEY`` while that is
+  not set; the key itself never appears, only an id naming it. Checksums say a file is
+  intact, the signature says this server made it: only a signed backup restores as it
+  is (see ``app.services.restore``).
 """
 
 from __future__ import annotations
 
 import csv
 import hashlib
+import hmac
 import io
 import uuid
 import zipfile
@@ -57,7 +67,9 @@ import sqlalchemy as sa
 from sqlalchemy import and_, select, text, union
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.ai.providers import public_error
 from app.core.config import get_settings
+from app.core.security import hkdf_sha256
 from app.core.tz import get_zone
 from app.models import (
     Achievement,
@@ -111,6 +123,8 @@ BACKUP_FORMAT = "disciplineos-backup"
 FORMAT_VERSION = 1
 DATA_FILE = "data.json"
 MANIFEST_FILE = "manifest.json"
+SIGNATURE_ALG = "HMAC-SHA256"
+_SIGNING_SALT = b"disciplineos backup manifest"
 BATCH = 1000  # rows per server-side cursor fetch
 FLUSH_BYTES = 256 * 1024  # hand a chunk to the client about every 256 KiB
 CSV_BOM = "﻿"
@@ -159,7 +173,8 @@ CLIENT_UUID = NaturalKey(("client_uuid",))
 class Section:
     """One table of the export. ``owner`` is the column holding the user's id;
     ``where`` narrows the rows further (custom foods/exercises only); ``exclude`` are
-    secret or raw columns that never leave the server; ``restore`` says whether
+    secret or raw columns that never leave the server; ``sanitise`` maps a column to
+    the function its value passes through on the way out; ``restore`` says whether
     ``restore-backup`` writes the section back (account records — devices, tokens,
     push subscriptions, logs — are not: they are bound to this server)."""
 
@@ -173,10 +188,18 @@ class Section:
     # tags), the settings row and what opening the app derives (streaks, scores, quests)
     in_empty_account: bool = False
     natural_keys: tuple[NaturalKey, ...] = ()
+    sanitise: tuple[tuple[str, Callable[[Any], Any]], ...] = ()
+    # computed by the gamification engine from the records: taken from a signed backup
+    # only (checked), rebuilt by the engine after restoring one that is not
+    derived: bool = False
 
     @property
     def columns(self) -> list[sa.Column]:
         return exported_columns(self.table, self.exclude)
+
+    @property
+    def sanitisers(self) -> dict[str, Callable[[Any], Any]]:
+        return dict(self.sanitise)
 
     @property
     def primary_key(self) -> list[sa.Column]:
@@ -275,20 +298,34 @@ SECTIONS: tuple[Section, ...] = (
     Section("journal_entries", JournalEntry.__table__, natural_keys=(NaturalKey(("entry_date",)), CLIENT_UUID)),
     Section("reminders", Reminder.__table__, natural_keys=(NaturalKey(("dedupe_key",)),)),
     # ---- gamification (derived from the data above; an "empty" account may have them) --
-    Section("xp_events", XpEvent.__table__, in_empty_account=True, natural_keys=(NaturalKey(("dedupe_key",)),)),
+    Section(
+        "xp_events",
+        XpEvent.__table__,
+        in_empty_account=True,
+        natural_keys=(NaturalKey(("dedupe_key",)),),
+        derived=True,
+    ),
     Section(
         "user_achievements",
         UserAchievement.__table__,
         in_empty_account=True,
         natural_keys=(NaturalKey(("achievement_id",)),),
+        derived=True,
     ),
-    Section("streaks", Streak.__table__, in_empty_account=True, natural_keys=(NaturalKey(("kind",)),)),
-    Section("daily_scores", DailyScore.__table__, in_empty_account=True, natural_keys=(NaturalKey(("local_day",)),)),
+    Section("streaks", Streak.__table__, in_empty_account=True, natural_keys=(NaturalKey(("kind",)),), derived=True),
+    Section(
+        "daily_scores",
+        DailyScore.__table__,
+        in_empty_account=True,
+        natural_keys=(NaturalKey(("local_day",)),),
+        derived=True,
+    ),
     Section(
         "user_quests",
         UserQuest.__table__,
         in_empty_account=True,
         natural_keys=(NaturalKey(("quest_id", "period_start")),),
+        derived=True,
     ),
     # ---- account records (exported for you; bound to this server, never restored) ------
     Section(
@@ -311,6 +348,7 @@ SECTIONS: tuple[Section, ...] = (
         AiJob.__table__,
         exclude=frozenset({"request_payload", "response_payload", "input_thumb_path"}),
         restore=False,
+        sanitise=(("error", public_error),),  # never a provider's error body (rows stored before too)
     ),
     Section("ai_usage_daily", AiUsageDaily.__table__, restore=False),
 )
@@ -395,6 +433,13 @@ def _json_converter(column: sa.Column) -> Callable[[Any], Any] | None:
     return None
 
 
+def _then(first: Callable[[Any], Any] | None, second: Callable[[Any], Any] | None) -> Callable[[Any], Any] | None:
+    """``second(first(value))``, either of them optional."""
+    if first is None or second is None:
+        return first or second
+    return lambda value: second(first(value))
+
+
 def _orjson_default(value: Any) -> Any:
     if isinstance(value, Decimal):
         return float(value)
@@ -444,8 +489,10 @@ class ExportJob:
     def local_now(self) -> datetime:
         return self.now.astimezone(get_zone(self.tz))
 
-    def filename(self, extension: str) -> str:
-        return f"disciplineos-{self.local_now.date().isoformat()}.{extension}"
+    def filename(self, extension: str, kind: str = "") -> str:
+        """``disciplineos-YYYY-MM-DD.json``, ``…-csv.zip``, ``…-backup.zip`` (the user's local day):
+        the two zips never share a name, so the CSV one is not handed to ``restore-backup``."""
+        return f"disciplineos-{self.local_now.date().isoformat()}{f'-{kind}' if kind else ''}.{extension}"
 
 
 async def schema_version(db: AsyncSession) -> str | None:
@@ -494,7 +541,9 @@ async def json_chunks(db: AsyncSession, job: ExportJob) -> AsyncIterator[bytes]:
     yield b"{\n" + b",\n".join(dumps(key) + b": " + dumps(value) for key, value in head.items()) + b',\n"tables": {'
     for index, section in enumerate(SECTIONS):
         stmt = _section_select(section, job.user_id)
-        async for chunk in _json_table(db, section.name, section.name, section.columns, stmt, job, first=index == 0):
+        async for chunk in _json_table(
+            db, section.name, section.name, section.columns, stmt, job, first=index == 0, sanitise=section.sanitisers
+        ):
             yield chunk
     yield b'\n},\n"library": {'
     for index, library in enumerate(LIBRARY):
@@ -514,10 +563,12 @@ async def _json_table(
     job: ExportJob,
     *,
     first: bool,
+    sanitise: dict[str, Callable[[Any], Any]] | None = None,
 ) -> AsyncIterator[bytes]:
     """``"key": [ rows… ]`` (preceded by a comma unless it is the first member)."""
     names = [str(column.name) for column in columns]  # plain str: orjson refuses subclasses
-    converters = [_json_converter(column) for column in columns]
+    sanitise = sanitise or {}
+    converters = [_then(sanitise.get(column.name), _json_converter(column)) for column in columns]
     buffer = bytearray((b"" if first else b",") + b"\n" + dumps(key) + b": [")
     count = 0
     async for rows in _batches(db, stmt):
@@ -617,6 +668,9 @@ Exported {exported_at} (UTC) for account {user_id}, timezone {timezone}.
 * Dates are YYYY-MM-DD; timestamps are ISO-8601 in UTC (e.g. 2026-10-01T09:00:00+00:00);
   `local_day`, `entry_date`, `measured_on` … are days in your timezone.
 * Numbers use a dot as the decimal separator; true/false for yes/no; empty = no value.
+  In a spreadsheet with a comma-decimal locale (e.g. Russian) set the import locale (or the
+  spreadsheet's locale) to English (United States) first — otherwise 12.5 may turn into a
+  date (12 May) and 80.4 into text.
 * Columns holding structured data (aliases, scopes, settings, components …) contain JSON.
 * A text cell that would start with = + - @ is written with a leading ' so a spreadsheet
   shows it as text instead of running it as a formula.
@@ -642,6 +696,9 @@ README_RU = """DisciplineOS — выгрузка данных (CSV)
 * Даты — ГГГГ-ММ-ДД; моменты времени — ISO-8601 в UTC (например, 2026-10-01T09:00:00+00:00);
   `local_day`, `entry_date`, `measured_on` … — дни в вашем часовом поясе.
 * Десятичный разделитель — точка; да/нет — true/false; пустая ячейка — нет значения.
+  В таблице с русской локалью (Excel, Google Таблицы, LibreOffice) перед импортом выберите
+  локаль импорта (или локаль таблицы) «Английский (США)» — иначе 12.5 станет датой (12 мая),
+  а 80.4 — текстом.
 * Столбцы со структурированными данными (aliases, scopes, настройки, components …) — JSON.
 * Текст, который начинается с = + - @, записан с ведущим ', чтобы таблица показала его
   как текст, а не выполнила как формулу.
@@ -661,7 +718,14 @@ READMES = {"ru": README_RU, "en": README}
 
 
 async def _csv_table(
-    db: AsyncSession, zs: ZipStream, filename: str, columns: list[sa.Column], stmt: Any, job: ExportJob, count_key: str
+    db: AsyncSession,
+    zs: ZipStream,
+    filename: str,
+    columns: list[sa.Column],
+    stmt: Any,
+    job: ExportJob,
+    count_key: str,
+    sanitise: dict[str, Callable[[Any], Any]] | None = None,
 ) -> AsyncIterator[bytes]:
     """One CSV entry of the zip, chunk by chunk; records its row count in ``job.counts``."""
     zs.open(filename)
@@ -669,9 +733,14 @@ async def _csv_table(
     writer = csv.writer(out, lineterminator="\r\n")
     out.write(CSV_BOM)
     writer.writerow([column.name for column in columns])
+    cleaners = [(sanitise or {}).get(column.name) for column in columns]
+    if not any(cleaners):
+        cleaners = []
     count = 0
     async for rows in _batches(db, stmt):
         for row in rows:
+            if cleaners:
+                row = [clean(value) if clean is not None else value for clean, value in zip(cleaners, row, strict=True)]
             writer.writerow([csv_cell(value) for value in row])
             count += 1
         if out.tell() >= FLUSH_BYTES:
@@ -685,16 +754,17 @@ async def _csv_table(
 async def csv_zip_chunks(db: AsyncSession, job: ExportJob) -> AsyncIterator[bytes]:
     zs = ZipStream(job.local_now)
     files: list[tuple[str, int]] = []
-    tables: list[tuple[str, list[sa.Column], Any]] = [
-        (f"{section.name}.csv", section.columns, _section_select(section, job.user_id)) for section in SECTIONS
+    tables: list[tuple[str, list[sa.Column], Any, dict[str, Callable[[Any], Any]]]] = [
+        (f"{section.name}.csv", section.columns, _section_select(section, job.user_id), section.sanitisers)
+        for section in SECTIONS
     ]
     tables += [
-        (f"library_{library.name}.csv", library.selected(), _library_select(library, job.user_id))
+        (f"library_{library.name}.csv", library.selected(), _library_select(library, job.user_id), {})
         for library in LIBRARY
     ]
-    for filename, columns, stmt in tables:
+    for filename, columns, stmt, sanitise in tables:
         count_key = filename.removesuffix(".csv").replace("library_", "library.", 1)
-        async for chunk in _csv_table(db, zs, filename, columns, stmt, job, count_key):
+        async for chunk in _csv_table(db, zs, filename, columns, stmt, job, count_key, sanitise):
             if chunk:
                 yield chunk
         files.append((filename, job.counts[count_key]))
@@ -717,8 +787,36 @@ async def stream_csv(job: ExportJob) -> AsyncIterator[bytes]:
 # --------------------------------------------------------------------------- #
 # Backup zip
 # --------------------------------------------------------------------------- #
+def _signing_secret() -> bytes:
+    settings = get_settings()
+    return (settings.backup_signing_key or settings.secret_key).encode("utf-8")
+
+
+def signing_key() -> bytes:
+    """The manifest's HMAC key: HKDF-SHA256 of ``BACKUP_SIGNING_KEY`` (else ``SECRET_KEY``)."""
+    return hkdf_sha256(_signing_secret(), salt=_SIGNING_SALT, info=b"manifest signature v1")
+
+
+def signing_key_id() -> str:
+    """Names the signing key without revealing anything of it (16 hex digits)."""
+    return hkdf_sha256(_signing_secret(), salt=_SIGNING_SALT, info=b"key id v1", length=8).hex()
+
+
+def manifest_signature(manifest: dict[str, Any]) -> str:
+    """HMAC-SHA256 over the manifest without its ``signature`` — canonical JSON (sorted
+    keys), so the manifest as written and as read back give the same bytes."""
+    body = {key: value for key, value in manifest.items() if key != "signature"}
+    canonical = orjson.dumps(orjson.loads(dumps(body)), option=orjson.OPT_SORT_KEYS)
+    return hmac.new(signing_key(), canonical, hashlib.sha256).hexdigest()
+
+
+def sign_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
+    signature = {"alg": SIGNATURE_ALG, "key_id": signing_key_id(), "value": manifest_signature(manifest)}
+    return {**{key: value for key, value in manifest.items() if key != "signature"}, "signature": signature}
+
+
 async def backup_chunks(db: AsyncSession, job: ExportJob) -> AsyncIterator[bytes]:
-    """``data.json`` (the JSON export, hashed while it streams) then ``manifest.json``."""
+    """``data.json`` (the JSON export, hashed while it streams) then the signed ``manifest.json``."""
     zs = ZipStream(job.local_now)
     digest = hashlib.sha256()
     size = 0
@@ -741,6 +839,7 @@ async def backup_chunks(db: AsyncSession, job: ExportJob) -> AsyncIterator[bytes
         "counts": job.counts,
         "files": {DATA_FILE: {"sha256": digest.hexdigest(), "bytes": size}},
     }
+    manifest = sign_manifest(manifest)
     zs.open(MANIFEST_FILE)
     yield zs.write(orjson.dumps(manifest, option=orjson.OPT_INDENT_2) + b"\n") + zs.close_entry() + zs.finish()
 
