@@ -112,12 +112,17 @@ API_TBD
    for the sheets, layout for the planner toast) as its own chunk, requested as soon as
    the app code runs. Every animation, `MotionConfig` and the reduced-motion handling
    are unchanged; until the chunk is there an `m.*` element shows its `initial` state.
-3. **Lazy screens and sheets.** Pairing, the onboarding wizard, every settings section
-   (with `qrcode.react`) and the Food tab are chunks of their own (`App.tsx`, inside the
-   existing spinner fallbacks); the sheets most visits never open load on first use and
-   then stay mounted so their close animation plays (`src/lib/lazy.ts` → `useOnceTrue`):
-   Today's log and health sheets, the AI review / barcode log / custom-food sheets of
-   `AiCapture`, the score breakdown.
+3. **Lazy screens and sheets.** Pairing, the onboarding wizard and the Food tab are chunks
+   of their own (`App.tsx`, inside the existing spinner fallbacks); the settings hub and
+   all its sections (with `qrcode.react`) are one chunk (`features/settings/sections.ts`) —
+   `lib/lazy.ts` `chunk()` renders a section at once when its chunk is already there, so
+   moving between sections never shows a spinner (plain `React.lazy` suspends on the first
+   render of every lazy component). The route table in `App.tsx` is unchanged. The sheets
+   most visits never open load on first use and then stay mounted so their close
+   animation plays (`useOnceTrue`): Today's log and health sheets, the AI review / barcode
+   log / custom-food sheets of `AiCapture`, the score breakdown. The health sheets now
+   read the day's entry when they open, so their fields take the stored values only until
+   the user edits them (an entry arriving after the first keystroke never overwrites it).
 4. **Manual chunks as a function** (`vite.config.ts`): `vendor` (React, the router and
    the small helpers shared with other libraries), `dexie`, `charts` (Recharts and what
    only it uses). The old list form put clsx into the `charts` chunk, so the entry
@@ -173,13 +178,14 @@ web/vite.config.ts                      localePreload, json.stringify, manualChu
 web/src/i18n/index.ts                   locale backend, i18nReady
 web/src/main.tsx                        render after i18nReady, MotionProvider, installQueueRefresh
 web/src/lib/{motion.tsx,motionFeatures.ts,lazy.ts,queueRefresh.ts}   ★ new
+web/src/features/settings/sections.ts   ★ the settings chunk (hub + sections)
 web/src/lib/queryClient.ts              staleTime per family
 web/src/api/client.ts                   takeEarly
-web/src/App.tsx                         lazy pairing, onboarding, settings, Food
+web/src/App.tsx                         lazy pairing, onboarding, settings chunk, Food
 web/src/features/today/TodayPage.tsx    m.div, lazy log/health sheets
 web/src/features/ai/AiCapture.tsx       lazy review/log/custom-food sheets
 web/src/features/game/{DayScoreCard,Celebration,queries}.tsx|ts   lazy score sheet, m, no queue listener
-web/src/features/health/{useHealth,sheets}.ts(x)   series only while open, no mount refetch
+web/src/features/health/{useHealth,sheets}.ts(x)   series only while open, no mount refetch, keep typed values
 web/src/features/plan/queries.ts        no mount refetch (app-wide refresh)
 web/src/components/ui/{index,Toast,ProgressRing}.tsx, components/layout/{BottomTabBar,SyncStatus}.tsx,
 web/src/features/auth/{PairingScreen,OnboardingWizard}.tsx, features/plan/tasks/toast.tsx   motion → m
@@ -227,7 +233,19 @@ cd api && .venv/bin/python scripts/bench_api.py --runs 30 --explain 4 [--compare
 
 ## 7. Gates
 
-GATES_TBD
+```
+api      pytest -q (TEST_DATABASE_URL=…/dsos_test_s9perf): 1153 passed, 1 skipped — the same as
+         the base (0549984: 1153 passed, 1 skipped) · ruff check clean · ruff format --check clean
+web      npm run typecheck clean · npm run build (tsc + vite + PWA, 55 precache entries)
+         node scripts/perf/bundle-report.mjs --check: main chunk 249.5 kB ≤ 300 kB; no
+         Recharts, stats code or framer-motion features at start
+i18n     node scripts/check-i18n.mjs: complete and in sync
+browser  scripts/ui-check.mjs, the whole run on a freshly created database (API with the
+         scheduler and the VAPID keys, Vite dev server, fake camera): 295/295 green.
+         The first whole run caught two regressions of the lazy loading (4 checks: a
+         settings section rendered a spinner before its text; a weigh-in typed before the
+         day's entry arrived was overwritten by it) — fixed in dc9fc51, then 295/295.
+```
 
 ## 8. Not done, and why
 
