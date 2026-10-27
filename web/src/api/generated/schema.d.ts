@@ -1931,6 +1931,142 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/stats/nutrition": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Food and water per day, zone, averages */
+        get: operations["nutrition_api_v1_stats_nutrition_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stats/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Steps, workouts, burned kcal, volume, records */
+        get: operations["activity_api_v1_stats_activity_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stats/body": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Weight with a 7-day mean, 30-day change, sleep */
+        get: operations["body_api_v1_stats_body_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stats/planner": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Tasks done/created, tracked time, areas, projects */
+        get: operations["planner_api_v1_stats_planner_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stats/progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Daily scores, XP per day, streak calendar */
+        get: operations["progress_api_v1_stats_progress_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/export/json": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Everything you own as one JSON document (streamed) */
+        get: operations["export_json_api_v1_export_json_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/export/csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One CSV per table in a zip (UTF-8 with BOM, comma separated, ISO dates) */
+        get: operations["export_csv_api_v1_export_csv_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/export/backup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Restorable backup: manifest.json (versions, counts, sha256) + data.json */
+        get: operations["export_backup_api_v1_export_backup_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1998,6 +2134,114 @@ export interface components {
              * @description achievement ids from `celebrate`
              */
             ids: string[];
+        };
+        /** ActivityDayOut */
+        ActivityDayOut: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /**
+             * Steps
+             * @description null = nothing synced or entered that day
+             */
+            steps: number | null;
+            /**
+             * On Target
+             * @description steps ≥ target_steps; null without steps or without a target
+             */
+            on_target: boolean | null;
+            /**
+             * Workouts
+             * @description completed workouts (0 = none)
+             */
+            workouts: number;
+            /**
+             * Workout Kcal
+             * @description burned in workouts — never food budget (0 = no workout)
+             */
+            workout_kcal: number;
+            /**
+             * Active Kcal
+             * @description Health's active energy — never food budget; null = not reported
+             */
+            active_kcal: number | null;
+        };
+        /** ActivityStatsOut */
+        ActivityStatsOut: {
+            /**
+             * Period
+             * @enum {string}
+             */
+            period: "week" | "month" | "quarter" | "year";
+            /**
+             * From
+             * Format: date
+             * @description first day of the period (inclusive)
+             */
+            from: string;
+            /**
+             * To
+             * Format: date
+             * @description last day of the period (inclusive)
+             */
+            to: string;
+            /**
+             * Today
+             * Format: date
+             * @description your today: days after it are in the future and carry no data
+             */
+            today: string;
+            /** Target Steps */
+            target_steps: number | null;
+            /** Days */
+            days: components["schemas"]["ActivityDayOut"][];
+            /** Weeks */
+            weeks: components["schemas"]["ActivityWeekOut"][];
+            /**
+             * Muscle Volume
+             * @description the period's days, most volume first
+             */
+            muscle_volume: components["schemas"]["MuscleVolumeOut"][];
+            /**
+             * Records
+             * @description personal records of the period, newest first (at most 100)
+             */
+            records: components["schemas"]["RecordOut"][];
+            /** Records Total */
+            records_total: number;
+        };
+        /**
+         * ActivityWeekOut
+         * @description A whole week (``week_start`` … +6 days) that overlaps the period.
+         */
+        ActivityWeekOut: {
+            /**
+             * Week Start
+             * Format: date
+             */
+            week_start: string;
+            /**
+             * Workouts
+             * @description completed workouts that week
+             */
+            workouts: number;
+            /**
+             * Planned
+             * @description workout days in your weekly plan that week (0 = none planned)
+             */
+            planned: number;
+            /**
+             * Required
+             * @description what makes the week count for the workout streak: planned, or 3 without a plan
+             */
+            required: number;
+            /**
+             * Volume Kg
+             * @description kg × reps of the working sets
+             */
+            volume_kg: number;
         };
         /** AiAnalysisOut */
         AiAnalysisOut: {
@@ -2380,6 +2624,18 @@ export interface components {
             /** Sort Order */
             sort_order?: number | null;
         };
+        /** AreaTimeOut */
+        AreaTimeOut: {
+            /** @description null = time without an area */
+            area: components["schemas"]["RefOut"] | null;
+            /** Minutes */
+            minutes: number;
+            /**
+             * Target Minutes
+             * @description the area's weekly target scaled to the period (week ×1, month ×4.35, quarter ×13.05, year ×52.2); null without a target
+             */
+            target_minutes: number | null;
+        };
         /** BatchResultOut */
         BatchResultOut: {
             /** Days */
@@ -2487,6 +2743,46 @@ export interface components {
             lean_body_mass_kg?: number | null;
             /** Bmi */
             bmi?: number | null;
+        };
+        /** BodyStatsOut */
+        BodyStatsOut: {
+            /**
+             * Period
+             * @enum {string}
+             */
+            period: "week" | "month" | "quarter" | "year";
+            /**
+             * From
+             * Format: date
+             * @description first day of the period (inclusive)
+             */
+            from: string;
+            /**
+             * To
+             * Format: date
+             * @description last day of the period (inclusive)
+             */
+            to: string;
+            /**
+             * Today
+             * Format: date
+             * @description your today: days after it are in the future and carry no data
+             */
+            today: string;
+            /** Weight */
+            weight: components["schemas"]["WeightPointOut"][];
+            /**
+             * Change 30D
+             * @description the period's newest weigh-in minus the newest one 30–45 days before it; null = not enough data
+             */
+            change_30d: number | null;
+            /** Sleep */
+            sleep: components["schemas"]["SleepPointOut"][];
+            /**
+             * Sleep Avg
+             * @description mean minutes over the nights logged in the period; null = none
+             */
+            sleep_avg: number | null;
         };
         /** Body_analyze_meal_api_v1_ai_analyze_meal_post */
         Body_analyze_meal_api_v1_ai_analyze_meal_post: {
@@ -3868,6 +4164,22 @@ export interface components {
              */
             fiber_g: number;
         };
+        /** MuscleVolumeOut */
+        MuscleVolumeOut: {
+            /**
+             * Muscle
+             * @description the exercise's primary muscle group
+             * @enum {string}
+             */
+            muscle: "chest" | "back" | "lats" | "traps" | "shoulders" | "biceps" | "triceps" | "forearms" | "abs" | "obliques" | "lower_back" | "glutes" | "quads" | "hamstrings" | "calves" | "full_body" | "cardio" | "other";
+            /**
+             * Sets
+             * @description working sets (warm-ups excluded)
+             */
+            sets: number;
+            /** Volume Kg */
+            volume_kg: number;
+        };
         /** NotificationListOut */
         NotificationListOut: {
             /** Items */
@@ -3964,6 +4276,159 @@ export interface components {
             push_enabled: boolean;
             /** Active Subscriptions */
             active_subscriptions: number;
+        };
+        /**
+         * NutritionAdherenceOut
+         * @description Day counts up to today (future days never count).
+         */
+        NutritionAdherenceOut: {
+            /**
+             * Zone Days
+             * @description finished days with meals and kcal inside the zone
+             */
+            zone_days: number;
+            /**
+             * Protein Days
+             * @description days with protein ≥ target and intake ≥ the safe floor
+             */
+            protein_days: number;
+            /**
+             * Water Days
+             * @description days with water ≥ target
+             */
+            water_days: number;
+            /**
+             * Logged Days
+             * @description days with at least one meal (today included)
+             */
+            logged_days: number;
+        };
+        /**
+         * NutritionAveragesOut
+         * @description Means over finished days (before today) that have at least one meal — a partial
+         *     day or a day without logging never pulls an average down.
+         */
+        NutritionAveragesOut: {
+            /**
+             * Days
+             * @description finished days with meals the food averages are taken over
+             */
+            days: number;
+            /** Kcal */
+            kcal: number | null;
+            /** Protein G */
+            protein_g: number | null;
+            /** Fat G */
+            fat_g: number | null;
+            /** Carbs G */
+            carbs_g: number | null;
+            /** Fiber G */
+            fiber_g: number | null;
+            /** Meals */
+            meals: number | null;
+            /**
+             * Water Days
+             * @description finished days with water logged (the water average's days)
+             */
+            water_days: number;
+            /** Water Ml */
+            water_ml: number | null;
+        };
+        /** NutritionDayOut */
+        NutritionDayOut: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /**
+             * Kcal
+             * @description eaten (meals only, never burned calories); null = no meal logged
+             */
+            kcal: number | null;
+            /**
+             * Protein G
+             * @description null = no meal logged
+             */
+            protein_g: number | null;
+            /**
+             * Fat G
+             * @description null = no meal logged
+             */
+            fat_g: number | null;
+            /**
+             * Carbs G
+             * @description null = no meal logged
+             */
+            carbs_g: number | null;
+            /**
+             * Fiber G
+             * @description null = no meal logged
+             */
+            fiber_g: number | null;
+            /**
+             * Water Ml
+             * @description null = no water logged
+             */
+            water_ml: number | null;
+            /**
+             * Meals
+             * @description meals logged (0 = none)
+             */
+            meals: number;
+            /**
+             * In Zone
+             * @description finished days with meals: kcal inside the zone; null for days without meals, today (in progress), future days, or without a calorie target
+             */
+            in_zone: boolean | null;
+        };
+        /** NutritionStatsOut */
+        NutritionStatsOut: {
+            /**
+             * Period
+             * @enum {string}
+             */
+            period: "week" | "month" | "quarter" | "year";
+            /**
+             * From
+             * Format: date
+             * @description first day of the period (inclusive)
+             */
+            from: string;
+            /**
+             * To
+             * Format: date
+             * @description last day of the period (inclusive)
+             */
+            to: string;
+            /**
+             * Today
+             * Format: date
+             * @description your today: days after it are in the future and carry no data
+             */
+            today: string;
+            /**
+             * Target Kcal
+             * @description null until targets exist
+             */
+            target_kcal: number | null;
+            /** Target Protein G */
+            target_protein_g: number | null;
+            /** Target Fiber G */
+            target_fiber_g: number | null;
+            /** Target Water Ml */
+            target_water_ml: number | null;
+            /** @description the daily score's calorie zone; null without a calorie target */
+            zone: components["schemas"]["ZoneOut"] | null;
+            /**
+             * Floor
+             * @description the safe floor (kcal); nothing below it is ever rewarded
+             */
+            floor: number;
+            /** Days */
+            days: components["schemas"]["NutritionDayOut"][];
+            averages: components["schemas"]["NutritionAveragesOut"];
+            adherence: components["schemas"]["NutritionAdherenceOut"];
         };
         /** OccurrenceBlockOut */
         OccurrenceBlockOut: {
@@ -4286,6 +4751,67 @@ export interface components {
             /** Workouts */
             workouts?: components["schemas"]["WorkoutBriefOut"][];
         };
+        /** PlannerDayOut */
+        PlannerDayOut: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /**
+             * Done
+             * @description tasks (and subtasks) completed that day
+             */
+            done: number;
+            /**
+             * Created
+             * @description tasks (and subtasks) created that day
+             */
+            created: number;
+            /**
+             * Tracked Minutes
+             * @description time tracked that day; the running timer counts up to now
+             */
+            tracked_minutes: number;
+        };
+        /** PlannerStatsOut */
+        PlannerStatsOut: {
+            /**
+             * Period
+             * @enum {string}
+             */
+            period: "week" | "month" | "quarter" | "year";
+            /**
+             * From
+             * Format: date
+             * @description first day of the period (inclusive)
+             */
+            from: string;
+            /**
+             * To
+             * Format: date
+             * @description last day of the period (inclusive)
+             */
+            to: string;
+            /**
+             * Today
+             * Format: date
+             * @description your today: days after it are in the future and carry no data
+             */
+            today: string;
+            /** Days */
+            days: components["schemas"]["PlannerDayOut"][];
+            /**
+             * By Area
+             * @description most time first
+             */
+            by_area: components["schemas"]["AreaTimeOut"][];
+            /**
+             * Projects
+             * @description open projects and any project with a task completed in the period
+             */
+            projects: components["schemas"]["ProjectProgressOut"][];
+        };
         /** PreviousSetOut */
         PreviousSetOut: {
             /** Reps */
@@ -4324,6 +4850,38 @@ export interface components {
             level: components["schemas"]["LevelProgressOut"];
             /** Last 30 Days */
             last_30_days: components["schemas"]["XpDayOut"][];
+        };
+        /** ProgressStatsOut */
+        ProgressStatsOut: {
+            /**
+             * Period
+             * @enum {string}
+             */
+            period: "week" | "month" | "quarter" | "year";
+            /**
+             * From
+             * Format: date
+             * @description first day of the period (inclusive)
+             */
+            from: string;
+            /**
+             * To
+             * Format: date
+             * @description last day of the period (inclusive)
+             */
+            to: string;
+            /**
+             * Today
+             * Format: date
+             * @description your today: days after it are in the future and carry no data
+             */
+            today: string;
+            /** Scores */
+            scores: components["schemas"]["ScorePointOut"][];
+            /** Xp */
+            xp: components["schemas"]["XpPointOut"][];
+            /** Streak Calendar */
+            streak_calendar: components["schemas"]["StreakDayOut"][];
         };
         /** ProjectCountsOut */
         ProjectCountsOut: {
@@ -4487,6 +5045,25 @@ export interface components {
             is_archived?: boolean | null;
             /** Sort Order */
             sort_order?: number | null;
+        };
+        /** ProjectProgressOut */
+        ProjectProgressOut: {
+            project: components["schemas"]["RefOut"];
+            /**
+             * Done
+             * @description top-level tasks done (all time)
+             */
+            done: number;
+            /**
+             * Total
+             * @description top-level tasks, cancelled ones excluded (all time)
+             */
+            total: number;
+            /**
+             * Done In Period
+             * @description top-level tasks completed within the period
+             */
+            done_in_period: number;
         };
         /** PushConfigOut */
         PushConfigOut: {
@@ -5172,6 +5749,19 @@ export interface components {
             /** Items */
             items: components["schemas"]["ScoreHistoryDayOut"][];
         };
+        /** ScorePointOut */
+        ScorePointOut: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /**
+             * Score
+             * @description the stored daily score 0–100; null = never scored (no data yet, future)
+             */
+            score: number | null;
+        };
         /** SearchOut */
         SearchOut: {
             /** Query */
@@ -5347,6 +5937,19 @@ export interface components {
             /** Source */
             source: string;
         };
+        /** SleepPointOut */
+        SleepPointOut: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /**
+             * Minutes
+             * @description the night ending that morning; null = no entry
+             */
+            minutes: number | null;
+        };
         /** SleepSeriesOut */
         SleepSeriesOut: {
             /**
@@ -5379,6 +5982,24 @@ export interface components {
             average_steps: number;
             /** Days On Target */
             days_on_target: number;
+        };
+        /** StreakDayOut */
+        StreakDayOut: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /**
+             * Overall
+             * @description the day counted for the overall streak (score ≥ 60 with credit)
+             */
+            overall: boolean;
+            /**
+             * Freeze
+             * @description a freeze token saved the overall streak that day
+             */
+            freeze: boolean;
         };
         /** StreakOut */
         StreakOut: {
@@ -6733,6 +7354,24 @@ export interface components {
             /** Source */
             source: string;
         };
+        /** WeightPointOut */
+        WeightPointOut: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /**
+             * Kg
+             * @description the weigh-in of that day; null = none
+             */
+            kg: number | null;
+            /**
+             * Avg7
+             * @description mean of the weigh-ins of the 7 days ending that day; null = none or future
+             */
+            avg7: number | null;
+        };
         /** WeightSeriesOut */
         WeightSeriesOut: {
             /**
@@ -7130,6 +7769,19 @@ export interface components {
             /** Items */
             items: components["schemas"]["XpHistoryDayOut"][];
         };
+        /** XpPointOut */
+        XpPointOut: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /**
+             * Xp
+             * @description XP earned that day (0 = none)
+             */
+            xp: number;
+        };
         /** XpTodayOut */
         XpTodayOut: {
             /** Today */
@@ -7137,6 +7789,19 @@ export interface components {
             /** Total */
             total: number;
             level: components["schemas"]["LevelProgressOut"];
+        };
+        /** ZoneOut */
+        ZoneOut: {
+            /**
+             * Low
+             * @description max(floor, 0.92 × target) — never below the safe floor
+             */
+            low: number;
+            /**
+             * High
+             * @description 1.06 × target
+             */
+            high: number;
         };
     };
     responses: never;
@@ -11697,6 +12362,236 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    nutrition_api_v1_stats_nutrition_get: {
+        parameters: {
+            query?: {
+                /** @description calendar period containing `date`: week (your week start), month, quarter or year */
+                period?: "week" | "month" | "quarter" | "year";
+                /** @description any day of the period; default: your today */
+                date?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NutritionStatsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    activity_api_v1_stats_activity_get: {
+        parameters: {
+            query?: {
+                /** @description calendar period containing `date`: week (your week start), month, quarter or year */
+                period?: "week" | "month" | "quarter" | "year";
+                /** @description any day of the period; default: your today */
+                date?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivityStatsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    body_api_v1_stats_body_get: {
+        parameters: {
+            query?: {
+                /** @description calendar period containing `date`: week (your week start), month, quarter or year */
+                period?: "week" | "month" | "quarter" | "year";
+                /** @description any day of the period; default: your today */
+                date?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BodyStatsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    planner_api_v1_stats_planner_get: {
+        parameters: {
+            query?: {
+                /** @description calendar period containing `date`: week (your week start), month, quarter or year */
+                period?: "week" | "month" | "quarter" | "year";
+                /** @description any day of the period; default: your today */
+                date?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlannerStatsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    progress_api_v1_stats_progress_get: {
+        parameters: {
+            query?: {
+                /** @description calendar period containing `date`: week (your week start), month, quarter or year */
+                period?: "week" | "month" | "quarter" | "year";
+                /** @description any day of the period; default: your today */
+                date?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProgressStatsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_json_api_v1_export_json_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description disciplineos-YYYY-MM-DD.json */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": string;
+                };
+            };
+        };
+    };
+    export_csv_api_v1_export_csv_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description disciplineos-YYYY-MM-DD.zip */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/zip": string;
+                };
+            };
+        };
+    };
+    export_backup_api_v1_export_backup_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description disciplineos-YYYY-MM-DD.zip — restore with `python -m app.cli restore-backup` */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/zip": string;
                 };
             };
         };
