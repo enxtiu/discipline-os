@@ -298,6 +298,7 @@ function StreakRow({ streak }: { streak: Streak }) {
       data-current={streak.current}
       data-longest={streak.longest}
       data-freeze={streak.freeze_tokens}
+      data-at-risk={streak.at_risk}
     >
       <div className="flex items-center gap-3">
         <IconFlameLit
@@ -324,8 +325,17 @@ function StreakRow({ streak }: { streak: Streak }) {
               : t('game.streak.week_progress', { done: streak.period.done, required: streak.period.required })}
           </span>
         ) : (
-          <span className={clsx(streak.today_met && 'text-[rgb(var(--accent))]')}>
-            {streak.today_met ? t('game.streak.today_met') : t('game.streak.today_pending')}
+          <span
+            className={clsx(
+              streak.today_met && 'text-[rgb(var(--accent))]',
+              streak.at_risk && 'font-medium text-[rgb(var(--warn))]',
+            )}
+          >
+            {streak.today_met
+              ? t('game.streak.today_met')
+              : streak.at_risk
+                ? `${t('game.streak.at_risk_title')} — ${t(`game.streak.action.${streak.kind}`)}`
+                : t('game.streak.today_pending')}
           </span>
         )}
         <span className="inline-flex items-center gap-1" data-testid="streak-freeze">
