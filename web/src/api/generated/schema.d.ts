@@ -1708,10 +1708,297 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/push/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Is web push configured? The VAPID public key */
+        get: operations["config_api_v1_push_config_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/push/subscriptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Your push subscriptions (no keys) */
+        get: operations["list_subscriptions_api_v1_push_subscriptions_get"];
+        put?: never;
+        /** Register this browser's push subscription (upsert by endpoint) */
+        post: operations["subscribe_api_v1_push_subscriptions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/push/subscriptions/{subscription_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove a push subscription (e.g. of a lost phone) */
+        delete: operations["delete_subscription_api_v1_push_subscriptions__subscription_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/push/unsubscribe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Forget the subscription this browser knows (by endpoint; unknown ones are ignored) */
+        post: operations["unsubscribe_api_v1_push_unsubscribe_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/push/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Send a test notification to your devices now (ignores quiet hours and categories) */
+        post: operations["test_api_v1_push_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/prefs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Categories, their times, quiet hours */
+        get: operations["get_prefs_api_v1_notifications_prefs_get"];
+        /** Update categories and times (fields not sent keep their value) */
+        put: operations["put_prefs_api_v1_notifications_prefs_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Recent notifications (sent, deferred, suppressed, failed) */
+        get: operations["list_notifications_api_v1_notifications_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gamification/today": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Today: score, rings, XP, streaks, quests */
+        get: operations["today_api_v1_gamification_today_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gamification/profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** XP, levels, streaks, achievements, totals */
+        get: operations["profile_api_v1_gamification_profile_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gamification/xp": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** XP per day with its events (≤ 366 days) */
+        get: operations["xp_history_api_v1_gamification_xp_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gamification/scores": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Daily scores with their breakdown (≤ 366 days) */
+        get: operations["score_history_api_v1_gamification_scores_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gamification/achievements/seen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark celebrated achievements as seen */
+        post: operations["achievements_seen_api_v1_gamification_achievements_seen_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gamification/quests/{user_quest_id}/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Claim a completed quest (idempotent; 409 quest_not_completed) */
+        post: operations["claim_quest_api_v1_gamification_quests__user_quest_id__claim_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AchievementOut */
+        AchievementOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Code
+             * @description 'secret' while a secret achievement is locked
+             */
+            code: string;
+            /** Name Ru */
+            name_ru: string;
+            /** Name En */
+            name_en: string;
+            /** Description Ru */
+            description_ru?: string | null;
+            /** Description En */
+            description_en?: string | null;
+            /** Icon */
+            icon?: string | null;
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "nutrition" | "training" | "activity" | "planner" | "review" | "streaks" | "levels" | "special";
+            /**
+             * Rarity
+             * @enum {string}
+             */
+            rarity: "common" | "rare" | "epic" | "legendary";
+            /** Xp Reward */
+            xp_reward: number;
+            /** Is Secret */
+            is_secret: boolean;
+            /**
+             * Masked
+             * @description a locked secret achievement: name, description and progress are hidden
+             */
+            masked: boolean;
+            /** Unlocked */
+            unlocked: boolean;
+            /** Unlocked At */
+            unlocked_at?: string | null;
+            /** Seen */
+            seen: boolean;
+            progress?: components["schemas"]["AchievementProgressOut"] | null;
+        };
+        /** AchievementProgressOut */
+        AchievementProgressOut: {
+            /** Value */
+            value: number;
+            /** Target */
+            target: number;
+        };
+        /** AchievementsSeenIn */
+        AchievementsSeenIn: {
+            /**
+             * Ids
+             * @description achievement ids from `celebrate`
+             */
+            ids: string[];
+        };
         /** AiAnalysisOut */
         AiAnalysisOut: {
             /**
@@ -2337,6 +2624,21 @@ export interface components {
              */
             minutes: number;
         };
+        /** DayScoreOut */
+        DayScoreOut: {
+            /**
+             * Value
+             * @description 0..100
+             */
+            value: number;
+            /**
+             * Provisional
+             * @description today: the day is in progress (the kcal part is progress, not a verdict)
+             */
+            provisional: boolean;
+            /** Components */
+            components: components["schemas"]["ScoreComponentOut"][];
+        };
         /** DaySummaryOut */
         DaySummaryOut: {
             /**
@@ -2894,6 +3196,41 @@ export interface components {
              */
             has_more: boolean;
         };
+        /** GamificationProfileOut */
+        GamificationProfileOut: {
+            xp: components["schemas"]["ProfileXpOut"];
+            /** Levels */
+            levels: components["schemas"]["LevelOut"][];
+            /** Streaks */
+            streaks: components["schemas"]["StreakOut"][];
+            /**
+             * Achievements
+             * @description unlocked first (newest first), then locked with progress; locked secrets are masked
+             */
+            achievements: components["schemas"]["AchievementOut"][];
+            stats: components["schemas"]["ProfileStatsOut"];
+        };
+        /** GamificationTodayOut */
+        GamificationTodayOut: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            score: components["schemas"]["DayScoreOut"];
+            /** Rings */
+            rings: components["schemas"]["RingOut"][];
+            xp: components["schemas"]["XpTodayOut"];
+            /** Streaks */
+            streaks: components["schemas"]["StreakOut"][];
+            /** Quests */
+            quests: components["schemas"]["UserQuestOut"][];
+            /**
+             * Celebrate
+             * @description unlocked and not yet seen (POST /achievements/seen)
+             */
+            celebrate: components["schemas"]["AchievementOut"][];
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -3209,6 +3546,38 @@ export interface components {
             /** Snippet */
             snippet: string;
         };
+        /** LevelOut */
+        LevelOut: {
+            /** Level */
+            level: number;
+            /** Title Ru */
+            title_ru: string;
+            /** Title En */
+            title_en: string;
+            /** Min Xp */
+            min_xp: number;
+        };
+        /** LevelProgressOut */
+        LevelProgressOut: {
+            /** Level */
+            level: number;
+            /** Title Ru */
+            title_ru: string;
+            /** Title En */
+            title_en: string;
+            /** Min Xp */
+            min_xp: number;
+            /**
+             * Next Min Xp
+             * @description null at the top level
+             */
+            next_min_xp: number | null;
+            /**
+             * Progress
+             * @description 0..1 within the current level (1 at the top level)
+             */
+            progress: number;
+        };
         /** MacrosOut */
         MacrosOut: {
             /**
@@ -3498,6 +3867,103 @@ export interface components {
              * @default 0
              */
             fiber_g: number;
+        };
+        /** NotificationListOut */
+        NotificationListOut: {
+            /** Items */
+            items: components["schemas"]["NotificationOut"][];
+        };
+        /** NotificationOut */
+        NotificationOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Title */
+            title: string;
+            /** Body */
+            body?: string | null;
+            /** Url */
+            url?: string | null;
+            /** Status */
+            status: string;
+            /** Sent At */
+            sent_at?: string | null;
+            /** Scheduled For */
+            scheduled_for?: string | null;
+            /** Quiet Hours Suppressed */
+            quiet_hours_suppressed: boolean;
+            /** Error */
+            error?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * NotificationPrefsIn
+         * @description Every field optional: fields not sent keep their value (unknown legacy keys are kept too).
+         */
+        NotificationPrefsIn: {
+            /** Task Reminders */
+            task_reminders?: boolean | null;
+            /** Meal Logging */
+            meal_logging?: boolean | null;
+            /** Water */
+            water?: boolean | null;
+            /** Workout */
+            workout?: boolean | null;
+            /** Evening Review */
+            evening_review?: boolean | null;
+            /** Streak At Risk */
+            streak_at_risk?: boolean | null;
+            /** Meal Times */
+            meal_times?: string[] | null;
+            /** Water Times */
+            water_times?: string[] | null;
+            /** Workout Time */
+            workout_time?: string | null;
+            /** Evening Review Time */
+            evening_review_time?: string | null;
+        };
+        /** NotificationPrefsOut */
+        NotificationPrefsOut: {
+            /** Task Reminders */
+            task_reminders: boolean;
+            /** Meal Logging */
+            meal_logging: boolean;
+            /** Water */
+            water: boolean;
+            /** Workout */
+            workout: boolean;
+            /** Evening Review */
+            evening_review: boolean;
+            /** Streak At Risk */
+            streak_at_risk: boolean;
+            /** Meal Times */
+            meal_times: string[];
+            /** Water Times */
+            water_times: string[];
+            /** Workout Time */
+            workout_time: string;
+            /** Evening Review Time */
+            evening_review_time: string;
+            quiet_hours: components["schemas"]["QuietHoursOut"];
+            /** Timezone */
+            timezone: string;
+            /** Push Enabled */
+            push_enabled: boolean;
+            /** Active Subscriptions */
+            active_subscriptions: number;
         };
         /** OccurrenceBlockOut */
         OccurrenceBlockOut: {
@@ -3836,6 +4302,29 @@ export interface components {
              */
             is_warmup: boolean;
         };
+        /** ProfileStatsOut */
+        ProfileStatsOut: {
+            /** Meals Logged Total */
+            meals_logged_total: number;
+            /** Workouts Total */
+            workouts_total: number;
+            /** Tasks Completed Total */
+            tasks_completed_total: number;
+            /** Tracked Minutes Total */
+            tracked_minutes_total: number;
+            /** Journal Entries Total */
+            journal_entries_total: number;
+        };
+        /** ProfileXpOut */
+        ProfileXpOut: {
+            /** Total */
+            total: number;
+            /** Today */
+            today: number;
+            level: components["schemas"]["LevelProgressOut"];
+            /** Last 30 Days */
+            last_30_days: components["schemas"]["XpDayOut"][];
+        };
         /** ProjectCountsOut */
         ProjectCountsOut: {
             /**
@@ -3999,6 +4488,107 @@ export interface components {
             /** Sort Order */
             sort_order?: number | null;
         };
+        /** PushConfigOut */
+        PushConfigOut: {
+            /** Enabled */
+            enabled: boolean;
+            /** Vapid Public Key */
+            vapid_public_key?: string | null;
+        };
+        /** PushKeysIn */
+        PushKeysIn: {
+            /**
+             * P256Dh
+             * @description P-256 public key, uncompressed, base64url
+             */
+            p256dh: string;
+            /**
+             * Auth
+             * @description 16-byte auth secret, base64url
+             */
+            auth: string;
+        };
+        /** PushSubscriptionIn */
+        PushSubscriptionIn: {
+            /** Endpoint */
+            endpoint: string;
+            keys: components["schemas"]["PushKeysIn"];
+            /** Expiration Time */
+            expiration_time?: string | null;
+            /** User Agent */
+            user_agent?: string | null;
+        };
+        /** PushSubscriptionListOut */
+        PushSubscriptionListOut: {
+            /** Items */
+            items: components["schemas"]["PushSubscriptionOut"][];
+        };
+        /** PushSubscriptionOut */
+        PushSubscriptionOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Device Id */
+            device_id?: string | null;
+            /** Device Name */
+            device_name?: string | null;
+            /**
+             * Device Active
+             * @default false
+             */
+            device_active: boolean;
+            /**
+             * Is Current Device
+             * @default false
+             */
+            is_current_device: boolean;
+            /** Endpoint Host */
+            endpoint_host: string;
+            /** Is Active */
+            is_active: boolean;
+            /** Failure Count */
+            failure_count: number;
+            /** Last Success At */
+            last_success_at?: string | null;
+            /** Last Failure At */
+            last_failure_at?: string | null;
+            /** Last Error */
+            last_error?: string | null;
+            /** Expiration Time */
+            expiration_time?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** PushTestOut */
+        PushTestOut: {
+            /** Sent */
+            sent: number;
+            /** Failed */
+            failed: number;
+            /** Deactivated */
+            deactivated: number;
+        };
+        /** PushUnsubscribeIn */
+        PushUnsubscribeIn: {
+            /** Endpoint */
+            endpoint: string;
+        };
+        /** QuestClaimOut */
+        QuestClaimOut: {
+            quest: components["schemas"]["UserQuestOut"];
+            /** Xp Awarded */
+            xp_awarded: number;
+        };
         /** QuickAddDefaultsIn */
         QuickAddDefaultsIn: {
             /** Project Id */
@@ -4030,6 +4620,15 @@ export interface components {
         QuickAddOut: {
             task: components["schemas"]["TaskDetailOut"];
             parsed: components["schemas"]["ParseOut"];
+        };
+        /** QuietHoursOut */
+        QuietHoursOut: {
+            /** Enabled */
+            enabled: boolean;
+            /** Start */
+            start: string;
+            /** End */
+            end: string;
         };
         /** RecentListOut */
         RecentListOut: {
@@ -4453,6 +5052,19 @@ export interface components {
             /** Is Archived */
             is_archived?: boolean | null;
         };
+        /** RingOut */
+        RingOut: {
+            /**
+             * Key
+             * @enum {string}
+             */
+            key: "nutrition" | "activity" | "discipline";
+            /**
+             * Value
+             * @description 0..1
+             */
+            value: number;
+        };
         /** RunningTimerOut */
         RunningTimerOut: {
             entry: components["schemas"]["TimeEntryOut"];
@@ -4474,6 +5086,91 @@ export interface components {
             description_ru: string;
             /** Group */
             group: string;
+        };
+        /** ScoreComponentOut */
+        ScoreComponentOut: {
+            /**
+             * Key
+             * @enum {string}
+             */
+            key: "kcal" | "protein" | "water" | "fiber" | "activity" | "tasks" | "sleep" | "review";
+            /**
+             * Value
+             * @description 0..1
+             */
+            value: number;
+            /**
+             * Weight
+             * @description effective weight in points (non-excluded weights sum to 100); 0 if excluded
+             */
+            weight: number;
+            /** Excluded */
+            excluded: boolean;
+            detail: components["schemas"]["ScoreDetailOut"];
+        };
+        /**
+         * ScoreDetailOut
+         * @description What a component was computed from (only the fields that apply are set).
+         */
+        ScoreDetailOut: {
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "no_target" | "no_meals" | "below_floor" | "below_zone" | "progress" | "in_zone" | "above_zone" | "no_data" | "no_tasks" | "workout" | "ok";
+            /**
+             * Amount
+             * @description kcal, g, ml, steps or minutes — see unit
+             */
+            amount?: number | null;
+            /** Target */
+            target?: number | null;
+            /** Unit */
+            unit?: ("kcal" | "g" | "ml" | "steps" | "min") | null;
+            /**
+             * Zone Low
+             * @description kcal: lower edge of the target zone (≥ the floor)
+             */
+            zone_low?: number | null;
+            /** Zone High */
+            zone_high?: number | null;
+            /**
+             * Floor
+             * @description kcal: the safe floor
+             */
+            floor?: number | null;
+            /** Meals */
+            meals?: number | null;
+            /** Workouts */
+            workouts?: number | null;
+            /** Done */
+            done?: number | null;
+            /** Open Due */
+            open_due?: number | null;
+            /** Has Entry */
+            has_entry?: boolean | null;
+        };
+        /** ScoreHistoryDayOut */
+        ScoreHistoryDayOut: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /**
+             * Score
+             * @description null when the day has no score (before your first data, or the future)
+             */
+            score: number | null;
+            /** Provisional */
+            provisional: boolean;
+            /** Components */
+            components: components["schemas"]["ScoreComponentOut"][];
+        };
+        /** ScoreHistoryOut */
+        ScoreHistoryOut: {
+            /** Items */
+            items: components["schemas"]["ScoreHistoryDayOut"][];
         };
         /** SearchOut */
         SearchOut: {
@@ -4682,6 +5379,66 @@ export interface components {
             average_steps: number;
             /** Days On Target */
             days_on_target: number;
+        };
+        /** StreakOut */
+        StreakOut: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "overall" | "meal_logging" | "water" | "steps" | "tasks" | "review" | "workout";
+            /**
+             * Unit
+             * @enum {string}
+             */
+            unit: "day" | "week";
+            /**
+             * Current
+             * @description days (or weeks) in a row, today/this week included once met
+             */
+            current: number;
+            /** Longest */
+            longest: number;
+            /**
+             * Today Met
+             * @description today's (this week's) condition is met
+             */
+            today_met: boolean;
+            /**
+             * At Risk
+             * @description not met yet, a streak to lose, and it is after 18:00 local (weekly: last day)
+             */
+            at_risk: boolean;
+            /**
+             * Freeze Tokens
+             * @description 0..2; +1 every week, one is used automatically for a missed day/week
+             */
+            freeze_tokens: number;
+            /**
+             * Freeze Used Dates
+             * @description days (weekly: week starts) saved by a freeze, newest last
+             */
+            freeze_used_dates: string[];
+            /** Last Met Date */
+            last_met_date?: string | null;
+            /** Broken On */
+            broken_on?: string | null;
+            period?: components["schemas"]["StreakPeriodOut"] | null;
+            /**
+             * Next Milestone
+             * @description overall streak: the next XP milestone
+             */
+            next_milestone?: number | null;
+        };
+        /**
+         * StreakPeriodOut
+         * @description Weekly streak: completed workouts this week vs the number that makes it count.
+         */
+        StreakPeriodOut: {
+            /** Done */
+            done: number;
+            /** Required */
+            required: number;
         };
         /** SubtaskCountsOut */
         SubtaskCountsOut: {
@@ -5679,6 +6436,69 @@ export interface components {
             /** Days */
             days: components["schemas"]["UpcomingDayOut"][];
         };
+        /** UserQuestOut */
+        UserQuestOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Quest Id
+             * Format: uuid
+             */
+            quest_id: string;
+            /** Code */
+            code: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "daily" | "weekly";
+            /** Title Ru */
+            title_ru: string;
+            /** Title En */
+            title_en: string;
+            /** Description Ru */
+            description_ru?: string | null;
+            /** Description En */
+            description_en?: string | null;
+            /** Icon */
+            icon?: string | null;
+            /**
+             * Period Start
+             * Format: date
+             */
+            period_start: string;
+            /**
+             * Period End
+             * Format: date
+             */
+            period_end: string;
+            /** Progress */
+            progress: number;
+            /** Target */
+            target: number;
+            /**
+             * Unit
+             * @default count
+             * @enum {string}
+             */
+            unit: "count" | "ml" | "steps" | "min" | "days";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "completed" | "claimed" | "expired";
+            /** Claimable */
+            claimable: boolean;
+            /** Xp Reward */
+            xp_reward: number;
+            /** Completed At */
+            completed_at?: string | null;
+            /** Claimed At */
+            claimed_at?: string | null;
+        };
         /** UserSettingsOut */
         UserSettingsOut: {
             /**
@@ -6270,6 +7090,53 @@ export interface components {
             kind?: ("strength" | "cardio" | "mobility" | "sport" | "other") | null;
             /** Started At */
             started_at?: string | null;
+        };
+        /** XpDayOut */
+        XpDayOut: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Xp */
+            xp: number;
+        };
+        /** XpEventOut */
+        XpEventOut: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "meal_logged" | "protein_target" | "fiber_target" | "water_target" | "kcal_in_zone" | "steps_target" | "workout_completed" | "workout_volume" | "task_completed" | "project_completed" | "timer_session" | "daily_review" | "sleep_logged" | "weight_logged" | "streak_bonus" | "quest_completed" | "achievement_unlocked" | "manual";
+            /** Points */
+            points: number;
+            /** Reason */
+            reason?: string | null;
+        };
+        /** XpHistoryDayOut */
+        XpHistoryDayOut: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Xp */
+            xp: number;
+            /** Events */
+            events: components["schemas"]["XpEventOut"][];
+        };
+        /** XpHistoryOut */
+        XpHistoryOut: {
+            /** Items */
+            items: components["schemas"]["XpHistoryDayOut"][];
+        };
+        /** XpTodayOut */
+        XpTodayOut: {
+            /** Today */
+            today: number;
+            /** Total */
+            total: number;
+            level: components["schemas"]["LevelProgressOut"];
         };
     };
     responses: never;
@@ -10416,6 +11283,412 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    config_api_v1_push_config_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PushConfigOut"];
+                };
+            };
+        };
+    };
+    list_subscriptions_api_v1_push_subscriptions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PushSubscriptionListOut"];
+                };
+            };
+        };
+    };
+    subscribe_api_v1_push_subscriptions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PushSubscriptionIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PushSubscriptionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_subscription_api_v1_push_subscriptions__subscription_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                subscription_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unsubscribe_api_v1_push_unsubscribe_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PushUnsubscribeIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    test_api_v1_push_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PushTestOut"];
+                };
+            };
+        };
+    };
+    get_prefs_api_v1_notifications_prefs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationPrefsOut"];
+                };
+            };
+        };
+    };
+    put_prefs_api_v1_notifications_prefs_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotificationPrefsIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationPrefsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_notifications_api_v1_notifications_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    today_api_v1_gamification_today_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GamificationTodayOut"];
+                };
+            };
+        };
+    };
+    profile_api_v1_gamification_profile_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GamificationProfileOut"];
+                };
+            };
+        };
+    };
+    xp_history_api_v1_gamification_xp_get: {
+        parameters: {
+            query: {
+                from: string;
+                to: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["XpHistoryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    score_history_api_v1_gamification_scores_get: {
+        parameters: {
+            query: {
+                from: string;
+                to: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoreHistoryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    achievements_seen_api_v1_gamification_achievements_seen_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AchievementsSeenIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    claim_quest_api_v1_gamification_quests__user_quest_id__claim_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description id of the user quest (UserQuestOut.id) */
+                user_quest_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuestClaimOut"];
+                };
             };
             /** @description Validation Error */
             422: {

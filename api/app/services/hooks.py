@@ -97,3 +97,68 @@ register_job(
         tags=("stage7", "push"),
     )
 )
+
+
+# --------------------------------------------------------------------------- #
+# stage 8: gamification (each job is idempotent; overlapping runs take turns per user)
+# --------------------------------------------------------------------------- #
+async def _recompute_daily_scores() -> None:
+    from app.services.gamification.engine import recompute_daily_scores_job
+
+    await recompute_daily_scores_job()
+
+
+async def _sync_xp() -> None:
+    from app.services.gamification.engine import sync_xp_job
+
+    await sync_xp_job()
+
+
+async def _evaluate_achievements() -> None:
+    from app.services.gamification.engine import evaluate_achievements_job
+
+    await evaluate_achievements_job()
+
+
+async def _rotate_quests() -> None:
+    from app.services.gamification.engine import rotate_quests_job
+
+    await rotate_quests_job()
+
+
+register_job(
+    ScheduledJobSpec(
+        id="recompute_daily_scores",
+        func=_recompute_daily_scores,
+        minutes=15,
+        description="Daily scores (and day XP) for today and yesterday per user; older days frozen after grace",
+        tags=("stage8", "gamification"),
+    )
+)
+register_job(
+    ScheduledJobSpec(
+        id="sync_xp",
+        func=_sync_xp,
+        minutes=15,
+        description="XP for the open window (today, yesterday), streaks and streak milestones per user",
+        tags=("stage8", "gamification"),
+    )
+)
+register_job(
+    ScheduledJobSpec(
+        id="evaluate_achievements",
+        func=_evaluate_achievements,
+        minutes=15,
+        description="Scores and XP first, then unlock achievements (permanent XP) per user",
+        tags=("stage8", "gamification"),
+    )
+)
+register_job(
+    ScheduledJobSpec(
+        id="rotate_quests",
+        func=_rotate_quests,
+        minutes=15,
+        description="Today's daily and this week's weekly quests per user, expire past periods, refresh progress",
+        tags=("stage8", "gamification"),
+    )
+)
