@@ -1317,3 +1317,21 @@ def test_cli_vapid_keys_prints_a_working_pair(monkeypatch) -> None:
     key = push.vapid()
     signed = key.sign({"sub": "mailto:owner@example.com", "aud": "https://push.example.test"})
     assert Vapid02.verify(signed["Authorization"]) and signed["Authorization"].endswith(f"k={public}")
+
+
+async def test_a_failing_planner_never_blocks_delivery(ready, db, monkeypatch) -> None:
+    from app.services import notifications
+
+    async def broken(now=None) -> int:
+        raise RuntimeError("planner down")
+
+    monkeypatch.setattr(notifications, "plan_daily_reminders", broken)
+    monkeypatch.setattr(notifications, "_last_planned_at", None)
+    await set_settings(db, ready["user_id"], quiet_hours_enabled=False)
+    now = datetime.now(UTC)
+    rid = await add_reminder(
+        db, ready["user_id"], task_id=await add_task(db, ready["user_id"], due_at=now), remind_at=now
+    )
+    await notifications.dispatch_job()  # the scheduler entry point: plans first (fails), then delivers
+    assert (await reminder(db, rid)).status == ReminderStatus.SENT
+    assert notifications._last_planned_at is not None  # no retry storm: the planner waits for its own schedule

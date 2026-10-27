@@ -1019,8 +1019,8 @@ _last_planned_at: datetime | None = None
 
 async def planner_job() -> None:
     global _last_planned_at
+    _last_planned_at = utcnow()  # set first: a failing run is retried by its own schedule, not every minute
     created = await plan_daily_reminders()
-    _last_planned_at = utcnow()
     if created:
         log.info("smart_reminders_planned", created=created)
 
@@ -1028,7 +1028,10 @@ async def planner_job() -> None:
 async def dispatch_job() -> None:
     # right after a (re)start the 15-minute planner has not run yet: plan first
     if _last_planned_at is None or utcnow() - _last_planned_at >= PLANNER_INTERVAL + timedelta(minutes=1):
-        await planner_job()
+        try:
+            await planner_job()
+        except Exception as exc:  # planning trouble must never hold up delivery
+            log.exception("reminder_planning_failed", error=type(exc).__name__)
     report = await dispatch_due()
     if report.total:
         log.info("notifications_dispatched", **report.counts)
