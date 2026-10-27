@@ -102,7 +102,7 @@ export interface Task {
   recurrence_preset: RecurrencePreset | null
   is_recurring: boolean
   series_id: string | null
-  series_index: number | null
+  series_index: number
   tags: TagRef[]
   context: string | null
   energy: number | null
@@ -111,7 +111,7 @@ export interface Task {
   overdue: boolean
   subtask_counts: { done: number; total: number }
   reminders: Reminder[]
-  source: 'manual' | 'quick_add' | 'recurrence' | 'import' | string
+  source: 'manual' | 'quick_add' | 'recurrence' | 'import'
   created_at: string
   updated_at: string
 }
@@ -523,3 +523,83 @@ export interface JournalDay {
 export interface JournalList {
   items: { date: string; rating: number | null; mood: number | null; energy: number | null; has_note: boolean }[]
 }
+
+// --------------------------------------------------------------------------- //
+// Drift guard: every read model above must be a subtype of the server's
+// OpenAPI schema (`npm run gen:api`) and must not invent fields. The generator
+// marks defaulted response fields optional and widens literals (priority is
+// `number`, `virtual` is `boolean`); these hand-narrowed types are what the
+// server actually sends. A schema change that breaks them fails `tsc`.
+// --------------------------------------------------------------------------- //
+import type { components } from '@/api/generated/schema'
+
+type S = components['schemas']
+type NoExtraKeys<T, U> = Exclude<keyof T, keyof U> extends never ? true : false
+type Matches<T, U> = [T] extends [U] ? NoExtraKeys<T, U> : false
+type Check<T extends true> = T
+
+/** Compile-time only (exported so `noUnusedLocals` keeps it): one entry per read model. */
+export type PlannerSchemaGuard = [
+  Check<Matches<Ref, S['RefOut']>>,
+  Check<Matches<TagRef, S['TagRefOut']>>,
+  Check<Matches<TaskRef, S['TaskRefOut']>>,
+  Check<Matches<Block, S['BlockOut']>>,
+  Check<Matches<Reminder, S['ReminderOut']>>,
+  Check<Matches<Task, S['TaskOut']>>,
+  Check<Matches<TaskDetail, S['TaskDetailOut']>>,
+  Check<Matches<Occurrence, S['OccurrenceOut']>>,
+  Check<Matches<TaskPatchResult, S['TaskPatchResultOut']>>,
+  Check<Matches<TaskCompleteResult, S['TaskCompleteOut']>>,
+  Check<Matches<TaskReopenResult, S['TaskReopenOut']>>,
+  Check<Matches<ParseToken, S['ParseTokenOut']>>,
+  Check<Matches<ParseResult, S['ParseOut']>>,
+  Check<Matches<QuickAddResult, S['QuickAddOut']>>,
+  Check<Matches<Counts, S['CountsOut']>>,
+  Check<Matches<TodayView, S['TodayViewOut']>>,
+  Check<Matches<InboxView, S['InboxViewOut']>>,
+  Check<Matches<UpcomingDay, S['UpcomingDayOut']>>,
+  Check<Matches<UpcomingView, S['UpcomingViewOut']>>,
+  Check<Matches<CalendarDay, S['CalendarDayOut']>>,
+  Check<Matches<CalendarView, S['CalendarViewOut']>>,
+  Check<Matches<TagView, S['TagViewOut']>>,
+  Check<Matches<ArchiveView, S['ArchiveViewOut']>>,
+  Check<Matches<SearchResult, S['SearchOut']>>,
+  Check<Matches<Area, S['AreaOut']>>,
+  Check<Matches<AreaDetail, S['AreaDetailOut']>>,
+  Check<Matches<Project, S['ProjectOut']>>,
+  Check<Matches<ProjectDetail, S['ProjectDetailOut']>>,
+  Check<Matches<Resource, S['ResourceOut']>>,
+  Check<Matches<Tag, S['TagOut']>>,
+  Check<Matches<TimeEntry, S['TimeEntryOut']>>,
+  Check<Matches<RunningTimer, S['RunningTimerOut']>>,
+  Check<Matches<TimerState, S['TimerStateOut']>>,
+  Check<Matches<TimerStartResult, S['TimerStartOut']>>,
+  Check<Matches<TimerStopResult, S['TimerStopOut']>>,
+  Check<Matches<TimeEntryList, S['TimeEntryListOut']>>,
+  Check<Matches<TimeSummary, S['TimeSummaryOut']>>,
+  Check<Matches<JournalEntry, S['JournalOut']>>,
+  Check<Matches<DaySummary, S['JournalDaySummaryOut']>>,
+  Check<Matches<JournalDay, S['JournalDayOut']>>,
+  Check<Matches<JournalList, S['JournalListOut']>>,
+]
+
+/** Request bodies: every key must exist on the server model (it forbids unknown fields). */
+type InMatches<T, U> = [T] extends [Partial<U>] ? NoExtraKeys<T, U> : false
+export type PlannerInputGuard = [
+  Check<InMatches<TaskIn, S['TaskIn']>>,
+  Check<InMatches<TaskPatchIn, S['TaskPatchIn']>>,
+  Check<InMatches<QuickAddIn, S['QuickAddIn']>>,
+  Check<InMatches<BlockIn, S['BlockIn']>>,
+  Check<InMatches<AreaIn, S['AreaIn']>>,
+  Check<InMatches<AreaPatchIn, S['AreaPatchIn']>>,
+  Check<InMatches<ProjectIn, S['ProjectIn']>>,
+  Check<InMatches<ProjectPatchIn, S['ProjectPatchIn']>>,
+  Check<InMatches<ResourceIn, S['ResourceIn']>>,
+  Check<InMatches<ResourcePatchIn, S['ResourcePatchIn']>>,
+  Check<InMatches<TagIn, S['TagIn']>>,
+  Check<InMatches<TimerStartIn, S['TimerStartIn']>>,
+  Check<InMatches<TimerStopIn, S['TimerStopIn']>>,
+  Check<InMatches<TimeEntryIn, S['TimeEntryIn']>>,
+  Check<InMatches<TimeEntryPatchIn, S['TimeEntryPatchIn']>>,
+  Check<InMatches<JournalIn, S['JournalIn']>>,
+]
