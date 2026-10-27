@@ -14,8 +14,15 @@
 * **Idempotent upserts by primary key in one transaction.** A missing row is inserted,
   a changed one updated, an identical one left alone — restoring twice changes
   nothing. A row whose id belongs to another account aborts the restore before
-  anything is written to it: nothing of another user is ever touched. The caller
-  owns the transaction (commit, or roll back for ``--dry-run``).
+  anything is written to it, and so does a foreign key (after remapping) that points
+  at another account's row: a backup row may only point at the target's rows (those
+  of the backup restored before included) or at library rows — nothing of another
+  user is ever touched or reachable. The caller owns the transaction (commit, or roll
+  back for ``--dry-run``).
+* **No server paths from a backup.** A meal keeps ``photo_thumb_path`` only when it is
+  exactly the path this server builds for that meal of the target account and the
+  file exists (a restore on the same server); otherwise the meal has no photo. Recipes
+  have no thumbnails here: their path is never restored.
 * **Natural keys.** When a backup row's one-per-day / per-name / per-kind key is held
   by another row of the account under a different id (the settings row of a new
   account, its default "Health" area, a day re-entered after a deletion), that row
@@ -50,13 +57,13 @@ from typing import Any
 
 import orjson
 import sqlalchemy as sa
-from sqlalchemy import and_, exists, func, literal_column, select, tuple_
+from sqlalchemy import and_, exists, func, literal_column, or_, select, tuple_
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.models import Achievement, Exercise, Food, Quest, User
-from app.services import export
+from app.services import export, media
 from app.services.export import (
     BACKUP_FORMAT,
     DATA_FILE,
@@ -659,11 +666,61 @@ async def _restore_section(
                 report.merged += await _merge_natural_keys(db, section, batch, owners, backup_ids, plan)
                 for row in batch:
                     _remap(row, foreign, plan)  # a parent in this very batch may have been merged
+            await _check_references(db, section, batch, plan.target)
+            _server_paths(section, batch, plan.target)
             inserted, updated = await _upsert(db, section, batch, plan.target)
             report.inserted += inserted
             report.updated += updated
             report.unchanged += len(batch) - inserted - updated
     return report
+
+
+async def _check_references(db: AsyncSession, section: Section, batch: list[dict[str, Any]], target: uuid.UUID) -> None:
+    """Every foreign key of these rows (remapped) points at a row of the target account
+    — rows of this backup restored before are the target's by now — or at a library row
+    (``user_id`` NULL, global foods/exercises), or at nothing in this database (the
+    foreign key itself then refuses the row). A row of another account aborts the
+    restore before anything is written. One query per column and batch."""
+    for column in section.columns:
+        if column.name == section.owner:
+            continue
+        for key in column.foreign_keys:
+            referenced = key.column.table
+            owner = referenced.c.get("user_id")
+            if owner is None:  # achievements: library rows only
+                continue
+            values = {row[column.name] for row in batch if row.get(column.name) is not None}
+            if not values:
+                continue
+            if "is_global" in referenced.c:
+                theirs = and_(referenced.c.is_global.is_(False), or_(owner.is_(None), owner != target))
+            else:
+                theirs = and_(owner.is_not(None), owner != target)
+            found = await db.scalar(select(key.column).where(key.column.in_(values), theirs).limit(1))
+            if found is not None:
+                raise RestoreError(
+                    f"{section.name}.{column.name}: {referenced.name} {found} belongs to another account here "
+                    "— nothing was restored"
+                )
+
+
+# Columns holding a path on this server's disk: never taken from a backup. A meal keeps its
+# thumbnail only when the path is exactly the one built for that meal of the target account
+# and the file is here (a restore on the same server); a recipe has no thumbnails at all.
+SERVER_PATHS: dict[str, dict[str, Callable[[uuid.UUID, dict[str, Any]], str | None]]] = {
+    "meal_logs": {"photo_thumb_path": lambda target, row: media.meal_thumb_relpath(target, row["id"])},
+    "recipes": {"photo_thumb_path": lambda target, row: None},
+}
+
+
+def _server_paths(section: Section, batch: list[dict[str, Any]], target: uuid.UUID) -> None:
+    for column, built in SERVER_PATHS.get(section.name, {}).items():
+        for row in batch:
+            path = row.get(column)
+            if path is None:
+                continue
+            expected = built(target, row)
+            row[column] = path if expected is not None and path == expected and media.path_of(path) else None
 
 
 async def _owners(db: AsyncSession, section: Section, batch: list[dict[str, Any]]) -> dict[tuple, uuid.UUID]:
