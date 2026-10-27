@@ -4,6 +4,13 @@
  * * one retry for transient failures, none for 4xx (the UI shows the message),
  * * refetch on reconnect (the offline queue flushes in the same moment),
  * * long `staleTime` for settings — this is a personal tracker, not a feed.
+ *
+ * Freshness per family (stage 9): the day's live reads (nutrition day, planner
+ * views, health today, the score…) keep the 30 s default — a tab switch within
+ * it does not refetch, and the queries that follow other devices or the Shortcut
+ * also refetch on focus. Reference lists that only this app's own writes change
+ * (and those writes invalidate them) stay fresh for 5 minutes. Explicit
+ * `staleTime` in a hook wins over both.
  */
 import { QueryClient, type DefaultOptions } from '@tanstack/react-query'
 import { ApiError } from '@/api/client'
@@ -30,6 +37,28 @@ const defaults: DefaultOptions = {
 }
 
 export const queryClient = new QueryClient({ defaultOptions: defaults })
+
+const REFERENCE_STALE_MS = 5 * 60_000
+for (const family of [
+  ['recipes'],
+  ['foods', 'favorites'],
+  ['foods', 'recents'],
+  ['training', 'templates'],
+  ['training', 'exercises'],
+  ['training', 'records'],
+  ['planner', 'areas'],
+  ['planner', 'projects'],
+  ['planner', 'resources'],
+  ['planner', 'tags'],
+  ['settings'],
+  ['body-params'],
+  ['devices'],
+  ['tokens'],
+  ['notifications', 'prefs'],
+  ['notifications', 'subscriptions'],
+]) {
+  queryClient.setQueryDefaults(family, { staleTime: REFERENCE_STALE_MS })
+}
 
 export const queryKeys = {
   session: ['session'] as const,

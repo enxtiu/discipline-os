@@ -6,12 +6,11 @@
  * metro, sent when the network is back. A weigh-in also moves the profile
  * weight (and so the targets), hence the session refresh.
  */
-import { useEffect } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { endpoints } from '@/api/client'
 import type { HealthDay, SleepEntry, SleepIn, StepsIn, WeightEntry, WeightIn } from '@/api/types'
-import { mutate, onQueueChange } from '@/lib/offlineQueue'
+import { mutate } from '@/lib/offlineQueue'
 import { queryKeys } from '@/lib/queryClient'
 
 export function useHealthToday() {
@@ -23,16 +22,17 @@ export function useHealthToday() {
   })
 }
 
-export function useStepsSeries(days = 14) {
-  return useQuery({ queryKey: queryKeys.steps(days), queryFn: () => endpoints.stepsSeries(days) })
+/** `enabled`: a sheet asks only while it is open (stage 9: Today opened without three series reads). */
+export function useStepsSeries(days = 14, enabled = true) {
+  return useQuery({ queryKey: queryKeys.steps(days), queryFn: () => endpoints.stepsSeries(days), enabled })
 }
 
-export function useWeightSeries(days = 90) {
-  return useQuery({ queryKey: queryKeys.weight(days), queryFn: () => endpoints.weightSeries(days) })
+export function useWeightSeries(days = 90, enabled = true) {
+  return useQuery({ queryKey: queryKeys.weight(days), queryFn: () => endpoints.weightSeries(days), enabled })
 }
 
-export function useSleepSeries(days = 14) {
-  return useQuery({ queryKey: queryKeys.sleep(days), queryFn: () => endpoints.sleepSeries(days) })
+export function useSleepSeries(days = 14, enabled = true) {
+  return useQuery({ queryKey: queryKeys.sleep(days), queryFn: () => endpoints.sleepSeries(days), enabled })
 }
 
 function useInvalidateHealth(alsoSession = false) {
@@ -46,20 +46,12 @@ function useInvalidateHealth(alsoSession = false) {
   }
 }
 
-/** Refresh health numbers once queued entries have been sent. */
-export function useHealthQueueRefresh() {
-  const queryClient = useQueryClient()
-  useEffect(() => {
-    let last = Number.POSITIVE_INFINITY
-    return onQueueChange((count) => {
-      if (last > count) {
-        void queryClient.invalidateQueries({ queryKey: queryKeys.healthData })
-        void queryClient.invalidateQueries({ queryKey: queryKeys.session })
-      }
-      last = count
-    })
-  }, [queryClient])
-}
+/**
+ * Health numbers after queued entries have been sent: since stage 9 the app-wide
+ * refresh does it (lib/queueRefresh.ts, health data and the session included) —
+ * this hook no longer refetches health and the session on every mount.
+ */
+export function useHealthQueueRefresh(): void {}
 
 type Saved<T> = { queued: true } | { queued: false; data: T }
 
