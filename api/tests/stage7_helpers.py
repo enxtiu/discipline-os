@@ -79,14 +79,6 @@ class BrowserKeys:
         )
 
 
-class FakeResponse:
-    def __init__(self, status: int) -> None:
-        self.status_code = status
-        self.reason = "fake"
-        self.text = ""
-        self.headers: dict[str, str] = {}
-
-
 @dataclass
 class Captured:
     url: str
@@ -141,17 +133,6 @@ class FakePushService(httpx.AsyncBaseTransport):
             return httpx.Response(status, request=request)
         finally:
             self.in_flight -= 1
-
-    # the stage-7 sender before the review fixes used a ``requests.Session``; kept until it is gone
-    def post(self, url: str, data: bytes | None = None, headers: dict | None = None, timeout: Any = None):
-        pause = self.delays.get(url, self.delay)
-        if pause:
-            clock.sleep(pause)
-        status = self._book(url, data or b"", dict(headers or {}), timeout)
-        self.answered_at[url] = clock.monotonic()
-        if url in self.errors:
-            raise self.errors[url]
-        return FakeResponse(status)
 
     def to(self, endpoint: str) -> list[Captured]:
         return [req for req in self.requests if req.url == endpoint]

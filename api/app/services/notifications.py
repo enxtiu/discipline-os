@@ -417,6 +417,8 @@ def review_message(lang: str) -> push.PushMessage:
 
 
 def test_message(lang: str) -> push.PushMessage:
+    """Sent on request, quiet hours or not; the user is waiting for it, so the service worker
+    never treats it as expired (the push service still keeps it only a minute)."""
     return push.PushMessage(
         title=_t(lang, "test.title"),
         body=_t(lang, "test.body"),
@@ -425,6 +427,7 @@ def test_message(lang: str) -> push.PushMessage:
         kind="test",
         ttl=push.TEST_TTL_SECONDS,
         urgency="high",
+        expires=False,
     )
 
 
@@ -683,7 +686,7 @@ async def log_test(
         kind="test",
         title=message.title,
         body=message.body,
-        payload=message.data(),
+        payload=message.data(now),
         status=status,
         now=now,
         scheduled_for=now,

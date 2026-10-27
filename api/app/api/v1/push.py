@@ -108,10 +108,13 @@ async def unsubscribe(payload: PushUnsubscribeIn, principal: CurrentPrincipal, d
     dependencies=[Depends(_test_limit)],
 )
 async def test(principal: CurrentPrincipal, db: DbSession) -> PushTestOut:
+    """Answers within the push sender's deadline (``SEND_DEADLINE_SECONDS``) whatever the
+    push services do; nothing stays locked meanwhile."""
     push.vapid()  # 503 push_disabled when the server has no (readable) VAPID keys
     now = utcnow()
     message = notifications.test_message(notifications.language_of(principal.settings_row))
     subscriptions = await push.active_subscriptions(db, principal.user_id, now=now)
+    await db.commit()  # e.g. an expired subscription switched off above: not held during the POSTs
     report = await push.deliver(db, subscriptions, message, now=now)
     await notifications.log_test(db, user_id=principal.user_id, message=message, report=report, now=now)
     return PushTestOut(sent=report.sent, failed=report.failed, deactivated=report.deactivated)

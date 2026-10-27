@@ -18,7 +18,6 @@ from datetime import UTC, date, datetime, time, timedelta
 
 import httpx
 import pytest
-import requests
 from cryptography.hazmat.primitives import serialization
 from py_vapid import Vapid02
 from sqlalchemy import select
@@ -293,6 +292,8 @@ async def test_malformed_stored_prefs_fall_back_to_defaults(authed: httpx.AsyncC
         (400, "permanent", True),
         (413, "permanent", True),
         (403, "permanent", True),
+        (401, "permanent", True),
+        (307, "permanent", True),  # redirects are never followed
         (429, "transient", True),
         (500, "transient", True),
         (503, "transient", True),
@@ -320,7 +321,10 @@ async def test_sender_maps_push_service_answers(
     if outcome == "sent":
         assert sub.last_success_at is not None and sub.failure_count == 0 and sub.last_error is None
     else:
-        assert sub.failure_count == 3 and sub.last_error == f"http_{status}" and sub.last_failure_at is not None
+        # 401/403 count towards retiring the subscription (vapid_rejected after three in a row)
+        expected = "vapid_rejected:1" if status in (401, 403) else f"http_{status}"
+        assert report.results[0].error == f"http_{status}"
+        assert sub.failure_count == 3 and sub.last_error == expected and sub.last_failure_at is not None
     device = (await db.execute(select(Device).where(Device.id == sub.device_id))).scalar_one()
     assert device.push_enabled is active_after
 
@@ -333,7 +337,7 @@ async def test_sender_network_errors_are_transient_and_headers_are_set(
     down, up = endpoint("down"), endpoint("up")
     await subscribe(authed, down)
     await subscribe(authed, up)
-    push_service.errors[down] = requests.ConnectionError("refused")
+    push_service.errors[down] = httpx.ConnectError("refused")
     subs = await push.active_subscriptions(db, await owner_id(db))
     message = push.PushMessage(
         title="Зал", body="Сейчас", url="/plan?task=1", tag="task:1", kind="task", urgency="high"
@@ -341,15 +345,15 @@ async def test_sender_network_errors_are_transient_and_headers_are_set(
     report = await push.deliver(db, subs, message)
     await db.commit()
     assert (report.sent, report.transient, report.failed) == (1, 1, 1)
-    assert next(r for r in report.results if r.outcome.value == "transient").error == "network:ConnectionError"
+    assert next(r for r in report.results if r.outcome.value == "transient").error == "network:ConnectError"
 
     sent = push_service.to(up)[0]
     assert sent.headers["content-encoding"] == "aes128gcm"
-    assert sent.headers["ttl"] == str(push.REMINDER_TTL_SECONDS)
+    assert sent.headers["ttl"] == str(push.DEFAULT_TTL_SECONDS)
     assert sent.headers["urgency"] == "high"
     assert re.fullmatch(r"[A-Za-z0-9_-]{1,32}", sent.headers["topic"])
     assert sent.headers["authorization"].startswith("vapid t=")
-    assert sent.timeout == push.SEND_TIMEOUT_SECONDS
+    assert set(sent.timeout.values()) == {push.SEND_TIMEOUT_SECONDS}  # connect, read, write, pool
     assert len(sent.data) < 4096
 
 
@@ -368,7 +372,7 @@ async def test_encryption_round_trip_through_the_real_pywebpush_path(
     payload = keys.decrypt(captured.data)  # only the browser's private key can read it
     assert payload["title"] == "Проверка уведомлений"
     assert payload["url"] == "/settings/notifications" and payload["tag"] == "test" and payload["kind"] == "test"
-    assert set(payload) == {"title", "body", "url", "tag", "renotify", "kind", "id"}
+    assert set(payload) == {"title", "body", "url", "tag", "renotify", "kind", "id", "sent_at"}  # never expires
     assert captured.headers["ttl"] == "60"
 
     # RFC 8292: the JWT is signed by our VAPID key, for this push service, with our contact
@@ -429,7 +433,10 @@ async def test_dispatch_due_and_not_due(ready, db) -> None:
         "renotify": True,
         "kind": "task",
         "id": str(task_id),
+        "sent_at": "2026-07-15T05:00:00Z",
+        "expires_at": "2026-07-15T06:00:00Z",  # the default hour
     }
+    assert fake.to(ready["endpoint"])[0].headers["ttl"] == "3600"
     logs = await log_rows(db, user_id)
     assert len(logs) == 1
     assert (logs[0].dedupe_key, logs[0].status, logs[0].sent_at, logs[0].reminder_id) == (
