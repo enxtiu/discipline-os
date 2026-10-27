@@ -14,8 +14,11 @@ quests) are listed under ``library`` so a backup can be restored on another serv
 
 **Never a secret**: token hashes and prefixes, device fingerprints, the recovery
 phrase hash, pairing codes (the table is not exported at all), push endpoints and
-keys, raw AI request/response payloads (they can hold photos), raw provider payloads
-of library foods. VAPID keys live in the environment and are never read here.
+keys, raw AI request/response payloads (they can hold photos), an AI provider's error
+body (``ai_jobs.error`` leaves as the status and the provider's error code only —
+:func:`app.ai.providers.public_error`, also for rows stored before that rule), raw
+provider payloads of library foods. VAPID keys live in the environment and are never
+read here.
 Columns maintained by database triggers (search vectors, ``aliases_text``) are left
 out too — they are rebuilt on restore.
 
@@ -57,6 +60,7 @@ import sqlalchemy as sa
 from sqlalchemy import and_, select, text, union
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.ai.providers import public_error
 from app.core.config import get_settings
 from app.core.tz import get_zone
 from app.models import (
@@ -159,7 +163,8 @@ CLIENT_UUID = NaturalKey(("client_uuid",))
 class Section:
     """One table of the export. ``owner`` is the column holding the user's id;
     ``where`` narrows the rows further (custom foods/exercises only); ``exclude`` are
-    secret or raw columns that never leave the server; ``restore`` says whether
+    secret or raw columns that never leave the server; ``sanitise`` maps a column to
+    the function its value passes through on the way out; ``restore`` says whether
     ``restore-backup`` writes the section back (account records — devices, tokens,
     push subscriptions, logs — are not: they are bound to this server)."""
 
@@ -173,10 +178,15 @@ class Section:
     # tags), the settings row and what opening the app derives (streaks, scores, quests)
     in_empty_account: bool = False
     natural_keys: tuple[NaturalKey, ...] = ()
+    sanitise: tuple[tuple[str, Callable[[Any], Any]], ...] = ()
 
     @property
     def columns(self) -> list[sa.Column]:
         return exported_columns(self.table, self.exclude)
+
+    @property
+    def sanitisers(self) -> dict[str, Callable[[Any], Any]]:
+        return dict(self.sanitise)
 
     @property
     def primary_key(self) -> list[sa.Column]:
@@ -311,6 +321,7 @@ SECTIONS: tuple[Section, ...] = (
         AiJob.__table__,
         exclude=frozenset({"request_payload", "response_payload", "input_thumb_path"}),
         restore=False,
+        sanitise=(("error", public_error),),  # never a provider's error body (rows stored before too)
     ),
     Section("ai_usage_daily", AiUsageDaily.__table__, restore=False),
 )
@@ -393,6 +404,13 @@ def _json_converter(column: sa.Column) -> Callable[[Any], Any] | None:
     if isinstance(kind, sa.Numeric) and not isinstance(kind, sa.Float):
         return lambda value: float(value) if isinstance(value, Decimal) else value
     return None
+
+
+def _then(first: Callable[[Any], Any] | None, second: Callable[[Any], Any] | None) -> Callable[[Any], Any] | None:
+    """``second(first(value))``, either of them optional."""
+    if first is None or second is None:
+        return first or second
+    return lambda value: second(first(value))
 
 
 def _orjson_default(value: Any) -> Any:
@@ -494,7 +512,9 @@ async def json_chunks(db: AsyncSession, job: ExportJob) -> AsyncIterator[bytes]:
     yield b"{\n" + b",\n".join(dumps(key) + b": " + dumps(value) for key, value in head.items()) + b',\n"tables": {'
     for index, section in enumerate(SECTIONS):
         stmt = _section_select(section, job.user_id)
-        async for chunk in _json_table(db, section.name, section.name, section.columns, stmt, job, first=index == 0):
+        async for chunk in _json_table(
+            db, section.name, section.name, section.columns, stmt, job, first=index == 0, sanitise=section.sanitisers
+        ):
             yield chunk
     yield b'\n},\n"library": {'
     for index, library in enumerate(LIBRARY):
@@ -514,10 +534,12 @@ async def _json_table(
     job: ExportJob,
     *,
     first: bool,
+    sanitise: dict[str, Callable[[Any], Any]] | None = None,
 ) -> AsyncIterator[bytes]:
     """``"key": [ rows… ]`` (preceded by a comma unless it is the first member)."""
     names = [str(column.name) for column in columns]  # plain str: orjson refuses subclasses
-    converters = [_json_converter(column) for column in columns]
+    sanitise = sanitise or {}
+    converters = [_then(sanitise.get(column.name), _json_converter(column)) for column in columns]
     buffer = bytearray((b"" if first else b",") + b"\n" + dumps(key) + b": [")
     count = 0
     async for rows in _batches(db, stmt):
@@ -661,7 +683,14 @@ READMES = {"ru": README_RU, "en": README}
 
 
 async def _csv_table(
-    db: AsyncSession, zs: ZipStream, filename: str, columns: list[sa.Column], stmt: Any, job: ExportJob, count_key: str
+    db: AsyncSession,
+    zs: ZipStream,
+    filename: str,
+    columns: list[sa.Column],
+    stmt: Any,
+    job: ExportJob,
+    count_key: str,
+    sanitise: dict[str, Callable[[Any], Any]] | None = None,
 ) -> AsyncIterator[bytes]:
     """One CSV entry of the zip, chunk by chunk; records its row count in ``job.counts``."""
     zs.open(filename)
@@ -669,9 +698,14 @@ async def _csv_table(
     writer = csv.writer(out, lineterminator="\r\n")
     out.write(CSV_BOM)
     writer.writerow([column.name for column in columns])
+    cleaners = [(sanitise or {}).get(column.name) for column in columns]
+    if not any(cleaners):
+        cleaners = []
     count = 0
     async for rows in _batches(db, stmt):
         for row in rows:
+            if cleaners:
+                row = [clean(value) if clean is not None else value for clean, value in zip(cleaners, row, strict=True)]
             writer.writerow([csv_cell(value) for value in row])
             count += 1
         if out.tell() >= FLUSH_BYTES:
@@ -685,16 +719,17 @@ async def _csv_table(
 async def csv_zip_chunks(db: AsyncSession, job: ExportJob) -> AsyncIterator[bytes]:
     zs = ZipStream(job.local_now)
     files: list[tuple[str, int]] = []
-    tables: list[tuple[str, list[sa.Column], Any]] = [
-        (f"{section.name}.csv", section.columns, _section_select(section, job.user_id)) for section in SECTIONS
+    tables: list[tuple[str, list[sa.Column], Any, dict[str, Callable[[Any], Any]]]] = [
+        (f"{section.name}.csv", section.columns, _section_select(section, job.user_id), section.sanitisers)
+        for section in SECTIONS
     ]
     tables += [
-        (f"library_{library.name}.csv", library.selected(), _library_select(library, job.user_id))
+        (f"library_{library.name}.csv", library.selected(), _library_select(library, job.user_id), {})
         for library in LIBRARY
     ]
-    for filename, columns, stmt in tables:
+    for filename, columns, stmt, sanitise in tables:
         count_key = filename.removesuffix(".csv").replace("library_", "library.", 1)
-        async for chunk in _csv_table(db, zs, filename, columns, stmt, job, count_key):
+        async for chunk in _csv_table(db, zs, filename, columns, stmt, job, count_key, sanitise):
             if chunk:
                 yield chunk
         files.append((filename, job.counts[count_key]))
