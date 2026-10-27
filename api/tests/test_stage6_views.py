@@ -293,3 +293,53 @@ async def test_search_ru_en_partial_and_other_kinds(authed: httpx.AsyncClient) -
         assert (await authed.get(f"{API}/search", params={"q": bad})).status_code == 422
     async with other_user() as stranger:
         assert (await stranger.get(f"{API}/search", params={"q": "купить"})).json()["tasks"] == []
+
+
+async def test_list_views_have_no_n_plus_one(authed: httpx.AsyncClient) -> None:
+    """The number of SQL statements of a list view does not grow with the number of tasks."""
+    from sqlalchemy import event
+
+    from app.db import engine
+
+    statements: list[str] = []
+
+    def count(conn, cursor, statement, *args) -> None:
+        statements.append(statement)
+
+    day = today().isoformat()
+    project = (await authed.post(f"{API}/projects", json={"name": "Много"})).json()
+
+    async def fill(n: int) -> None:
+        for index in range(n):
+            task = await make_task(
+                authed,
+                f"задача {index}",
+                due_date=day,
+                project_id=project["id"],
+                tags=[f"tag{index % 3}"],
+                reminders=[{"lead_minutes": 10}],
+            )
+            await make_task(authed, f"шаг {index}", parent_id=task["id"], due_date=day)
+
+    async def measure(path: str, params: dict | None = None) -> int:
+        statements.clear()
+        event.listen(engine.sync_engine, "before_cursor_execute", count)
+        try:
+            response = await authed.get(f"{API}{path}", params=params)
+        finally:
+            event.remove(engine.sync_engine, "before_cursor_execute", count)
+        assert response.status_code == 200, response.text
+        return len(statements)
+
+    views = [
+        ("/views/today", None),
+        ("/views/upcoming", None),
+        ("/views/calendar", {"from": day, "to": day}),
+        (f"/projects/{project['id']}", None),
+        ("/search", {"q": "задача"}),
+    ]
+    await fill(3)
+    small = [await measure(path, params) for path, params in views]
+    await fill(27)
+    large = [await measure(path, params) for path, params in views]
+    assert large == small, list(zip([path for path, _ in views], small, large, strict=True))
