@@ -5,17 +5,19 @@ from __future__ import annotations
 import asyncio
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import httpx
 import psycopg.errors
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.exc import OperationalError
 
 from app.db import SessionLocal
-from app.models import Reminder, Task, TimeEntry
+from app.models import NotificationLog, Reminder, ReminderStatus, Task, TimeEntry
 from tests.stage6_helpers import (
     API,
+    BANGKOK,
     code,
     complete,
     get_task,
@@ -392,6 +394,195 @@ async def test_reminders_store_recompute_and_cancel(authed: httpx.AsyncClient) -
     )
     remind_at = datetime.fromisoformat(block_only["reminders"][0]["remind_at"])
     assert remind_at == datetime(day.year, day.month, day.day, 11, 30, tzinfo=UTC)  # 18:30 Bangkok
+
+
+async def _fire(task_id: str, status: str = "sent") -> list[str]:
+    """What the stage-7 dispatcher does with the task's due reminders: marks them ``sent`` (or
+    ``suppressed``: stale, quiet hours) and logs each one keyed ``reminder:{id}``. Their ids."""
+    now = datetime.now(UTC)
+    async with SessionLocal() as session:
+        due = (
+            await session.scalars(
+                select(Reminder).where(
+                    Reminder.task_id == uuid.UUID(task_id),
+                    Reminder.status == ReminderStatus.PENDING,
+                    Reminder.remind_at <= now,
+                )
+            )
+        ).all()
+        for row in due:
+            row.status, row.sent_at, row.attempts = ReminderStatus(status), now if status == "sent" else None, 1
+            session.add(
+                NotificationLog(
+                    user_id=row.user_id,
+                    reminder_id=row.id,
+                    kind=row.kind.value,
+                    title=row.title,
+                    status=status,
+                    scheduled_for=row.remind_at,
+                    sent_at=row.sent_at,
+                    dedupe_key=f"reminder:{row.id}",
+                )
+            )
+        await session.commit()
+        return [str(row.id) for row in due]
+
+
+async def _due(task_id: str) -> list[Reminder]:
+    """What the dispatcher would send now."""
+    now = datetime.now(UTC)
+    return [row for row in await _reminders(task_id) if row.status == ReminderStatus.PENDING and row.remind_at <= now]
+
+
+async def _logged() -> dict[str, str | None]:
+    """notifications_log: dedupe key → the reminder row it refers to."""
+    async with SessionLocal() as session:
+        rows = (await session.execute(select(NotificationLog.dedupe_key, NotificationLog.reminder_id))).all()
+    return {key: str(reminder_id) if reminder_id else None for key, reminder_id in rows}
+
+
+def _local(moment: datetime) -> dict[str, str]:
+    return {"due_date": moment.date().isoformat(), "due_time": moment.strftime("%H:%M")}
+
+
+def _states(task: dict[str, Any]) -> list[tuple[str, str]]:
+    return [(item["id"], item["status"]) for item in task["reminders"]]
+
+
+def _lead_states(task: dict[str, Any]) -> list[tuple[int, str]]:
+    return [(item["lead_minutes"], item["status"]) for item in task["reminders"]]
+
+
+def _before_due(task: dict[str, Any], minutes: int) -> datetime:
+    return datetime.fromisoformat(task["due_at"]) - timedelta(minutes=minutes)
+
+
+async def test_fired_reminders_follow_later_edits(authed: httpx.AsyncClient) -> None:
+    """A: re-sending the reminder set after it fired armed it again at the same past instant (sent twice);
+    B: moving the due time later left it sent at the old time (no reminder for the new time)."""
+    soon = datetime.now(BANGKOK) + timedelta(minutes=10)  # 15 minutes before it: due now
+    task = await make_task(authed, "позвонить", **_local(soon), reminders=[{"lead_minutes": 15}])
+    [fired] = task["reminders"]
+    assert await _fire(task["id"]) == [fired["id"]]
+
+    renamed = await patch_task(authed, task["id"], title="позвонить маме", reminders=[{"lead_minutes": 15}])
+    assert _states(renamed["task"]) == [(fired["id"], "sent")]  # A: nothing to send a second time
+    assert await _due(task["id"]) == [] and len(await _reminders(task["id"])) == 1
+    nudged = await patch_task(authed, task["id"], **_local(soon + timedelta(minutes=2)))  # its time is still past
+    assert [(item["id"], item["status"], item["remind_at"]) for item in nudged["task"]["reminders"]] == [
+        (fired["id"], "sent", fired["remind_at"])
+    ]
+
+    moved = await patch_task(authed, task["id"], **_local(soon + timedelta(hours=1)))  # B
+    sent, armed = moved["task"]["reminders"]
+    assert (sent["id"], sent["status"], sent["remind_at"]) == (fired["id"], "sent", fired["remind_at"])
+    assert (armed["lead_minutes"], armed["status"], armed["sent_at"]) == (15, "pending", None)
+    assert datetime.fromisoformat(armed["remind_at"]) == _before_due(moved["task"], 15)
+    # a new arming: its own row and dedupe key; the fired row stays — the notifications log refers to it
+    rows = {str(row.id): row for row in await _reminders(task["id"])}
+    assert rows.keys() == {fired["id"], armed["id"]}
+    assert rows[armed["id"]].dedupe_key == f"task:{task['id']}:{armed['id']}" != rows[fired["id"]].dedupe_key
+    assert (rows[armed["id"]].title, rows[fired["id"]].title) == ("позвонить маме", "позвонить")
+    assert await _logged() == {f"reminder:{fired['id']}": fired["id"]}
+    assert await _due(task["id"]) == []
+    again = await patch_task(authed, task["id"], title="позвонить", reminders=[{"lead_minutes": 15}])
+    assert _states(again["task"]) == [(fired["id"], "sent"), (armed["id"], "pending")]  # armed: kept as is
+
+    # moved back before it went out, onto the instant it already fired at: dropped, not sent twice …
+    back = await patch_task(authed, task["id"], **_local(soon))
+    assert _states(back["task"]) == [(fired["id"], "sent"), (armed["id"], "suppressed")]
+    assert await _due(task["id"]) == []
+    # … and it still follows: moved later again, it is armed again
+    later = await patch_task(authed, task["id"], **_local(soon + timedelta(hours=2)))
+    assert [item["status"] for item in later["task"]["reminders"]] == ["sent", "suppressed", "pending"]
+    assert datetime.fromisoformat(later["task"]["reminders"][2]["remind_at"]) == _before_due(later["task"], 15)
+    assert len({row.dedupe_key for row in await _reminders(task["id"])}) == 3
+
+
+async def test_fired_reminders_and_the_pending_set(authed: httpx.AsyncClient) -> None:
+    """``reminders`` lists the pending ones (what the web editor sends): a fired reminder is matched when
+    listed, follows the due time when not, and one removed after it was armed again never comes back."""
+    soon = datetime.now(BANGKOK) + timedelta(minutes=10)  # 15 minutes before it: due now
+    later = soon + timedelta(hours=1)
+
+    # dropped by the dispatcher (stale, quiet hours), then moved with the set re-sent in the same PATCH
+    report = await make_task(authed, "отчёт", **_local(soon), reminders=[{"lead_minutes": 15}])
+    await _fire(report["id"], status="suppressed")
+    resent = await patch_task(authed, report["id"], **_local(later), reminders=[{"lead_minutes": 15}])
+    assert [(item["status"], datetime.fromisoformat(item["remind_at"])) for item in resent["task"]["reminders"]] == [
+        ("suppressed", datetime.fromisoformat(report["reminders"][0]["remind_at"])),
+        ("pending", _before_due(resent["task"], 15)),
+    ]
+
+    # one save moves the due and adds a reminder; it lists the pending set only: the fired one follows too
+    gym = await make_task(authed, "зал", **_local(soon), reminders=[{"lead_minutes": 15}])
+    await _fire(gym["id"])
+    saved = await patch_task(authed, gym["id"], **_local(later), reminders=[{"lead_minutes": 60}])
+    assert _lead_states(saved["task"]) == [(15, "sent"), (60, "pending"), (15, "pending")]
+    # removed once it was armed again, it never comes back
+    removed = await patch_task(authed, gym["id"], reminders=[{"lead_minutes": 60}])
+    assert _lead_states(removed["task"]) == [(15, "sent"), (60, "pending")]
+    moved = await patch_task(authed, gym["id"], **_local(later + timedelta(hours=1)))
+    assert _lead_states(moved["task"]) == [(15, "sent"), (60, "pending")]
+
+    # completed after it fired, moved while done (nothing is armed), reopened: armed for the new time
+    call = await make_task(authed, "звонок", **_local(soon), reminders=[{"lead_minutes": 15}])
+    await _fire(call["id"])
+    await complete(authed, call["id"])
+    closed = await patch_task(authed, call["id"], **_local(later))
+    assert [item["status"] for item in closed["task"]["reminders"]] == ["sent"]
+    reopened = (await authed.post(f"{API}/tasks/{call['id']}/reopen")).json()
+    assert [item["status"] for item in reopened["task"]["reminders"]] == ["sent", "pending"]
+    assert datetime.fromisoformat(reopened["task"]["reminders"][1]["remind_at"]) == _before_due(reopened["task"], 15)
+
+    # the next instance of a recurring task copies the reminder once, from its live row
+    daily = await make_task(
+        authed, "зарядка", **_local(soon), recurrence_rule="daily", reminders=[{"lead_minutes": 15}]
+    )
+    await _fire(daily["id"])
+    await patch_task(authed, daily["id"], **_local(later))  # armed again: two rows, one reminder
+    following = (await complete(authed, daily["id"]))["next_instance"]
+    assert _lead_states(following) == [(15, "pending")]
+    assert [row.payload for row in await _reminders(following["id"])] == [{"lead_minutes": 15}]
+
+
+async def _until_an_edit_waits_for_a_lock() -> None:
+    for _ in range(400):
+        async with SessionLocal() as session:  # a fresh transaction: pg_stat_activity is a per-transaction snapshot
+            waiting = await session.scalar(
+                text(
+                    "SELECT count(*) FROM pg_stat_activity"
+                    " WHERE datname = current_database() AND wait_event_type = 'Lock'"
+                )
+            )
+        if waiting:
+            return
+        await asyncio.sleep(0.025)
+    raise AssertionError("the edit never waited for the reminder's row lock")
+
+
+async def test_a_reminder_booked_during_an_edit_is_never_lost(authed: httpx.AsyncClient) -> None:
+    """The dispatcher books a reminder as sent (under its row lock) while a PATCH moves the due time later:
+    the edit used to move the row it had read as pending — sent, at the new time, never to go out again."""
+    soon = datetime.now(BANGKOK) + timedelta(minutes=10)  # 15 minutes before it: due now
+    task = await make_task(authed, "позвонить", **_local(soon), reminders=[{"lead_minutes": 15}])
+    [reminder] = task["reminders"]
+    async with SessionLocal() as booking:
+        row = await booking.scalar(select(Reminder).where(Reminder.id == uuid.UUID(reminder["id"])).with_for_update())
+        assert row is not None
+        edit = asyncio.create_task(authed.patch(f"{API}/tasks/{task['id']}", json=_local(soon + timedelta(hours=1))))
+        try:
+            await _until_an_edit_waits_for_a_lock()
+            row.status, row.sent_at, row.attempts = ReminderStatus.SENT, datetime.now(UTC), 1
+        finally:
+            await booking.commit()
+        response = await edit
+    assert response.status_code == 200, response.text
+    moved = response.json()["task"]
+    assert [(item["id"], item["status"]) for item in moved["reminders"][:1]] == [(reminder["id"], "sent")]
+    assert [item["status"] for item in moved["reminders"]] == ["sent", "pending"]
+    assert moved["reminders"][0]["remind_at"] == reminder["remind_at"]  # the time it went out at
+    assert datetime.fromisoformat(moved["reminders"][1]["remind_at"]) == _before_due(moved, 15)
 
 
 async def test_reminder_validation(authed: httpx.AsyncClient) -> None:
