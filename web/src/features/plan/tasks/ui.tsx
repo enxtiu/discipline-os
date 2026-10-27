@@ -16,6 +16,9 @@ import { Markdown, toggleTaskLine } from '@/lib/markdown'
 
 export { ColorDot } from './ColorDot'
 
+/** The dates the API accepts (`2000-01-01…2100-12-31`): native date pickers stay inside them. */
+export const DATE_BOUNDS = { min: '2000-01-01', max: '2100-12-31' } as const
+
 /** "‹ Проекты" — back to the list a detail screen belongs to (48 px target). */
 export function BackLink({ to, label }: { to: string; label: string }) {
   return (

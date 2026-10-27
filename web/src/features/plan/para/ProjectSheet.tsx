@@ -8,6 +8,7 @@ import { errorMessage } from '@/lib/errors'
 import { newId, useAreas, useCreateProject, useUpdateProject } from '../queries'
 import type { Project, ProjectPatchIn, ProjectStatus } from '../types'
 import { planToast } from '../tasks/toast'
+import { DATE_BOUNDS } from '../tasks/ui'
 import { ColorPicker } from './palette'
 
 const STATUSES: ProjectStatus[] = ['active', 'on_hold', 'completed', 'cancelled', 'archived']
@@ -143,12 +144,20 @@ export function ProjectSheet({
         </Field>
         <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-3">
           <Field label={t('plan.start_date')} htmlFor={ids.start}>
-            <Input id={ids.start} type="date" className="tnum" value={startDate} onChange={(event) => setStartDate(event.target.value)} />
+            <Input
+              id={ids.start}
+              type="date"
+              {...DATE_BOUNDS}
+              className="tnum"
+              value={startDate}
+              onChange={(event) => setStartDate(event.target.value)}
+            />
           </Field>
           <Field label={t('plan.deadline')} htmlFor={ids.deadline}>
             <Input
               id={ids.deadline}
               type="date"
+              {...DATE_BOUNDS}
               className="tnum"
               value={deadline}
               onChange={(event) => setDeadline(event.target.value)}

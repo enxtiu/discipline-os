@@ -9,6 +9,7 @@ import clsx from 'clsx'
 
 import { Button, Input, SegmentedControl, Select } from '@/components/ui'
 import { dayLabel } from '@/lib/format'
+import { DATE_BOUNDS } from './ui'
 import {
   buildRule,
   DEFAULT_PARTS,
@@ -173,6 +174,7 @@ export function RepeatEditor({
           <Input
             id={untilId}
             type="date"
+            {...DATE_BOUNDS}
             className="tnum"
             value={until ?? ''}
             onChange={(event) => onChange(rule, event.target.value || null)}

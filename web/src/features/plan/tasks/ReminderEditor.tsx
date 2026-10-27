@@ -19,7 +19,7 @@ import {
   reminderOutLabel,
   sameReminder,
 } from './reminders'
-import { Chip } from './ui'
+import { Chip, DATE_BOUNDS } from './ui'
 
 export function ReminderEditor({
   reminders,
@@ -103,7 +103,14 @@ export function ReminderEditor({
             <label htmlFor={dateId} className="sr-only">
               {t('task.reminder_date')}
             </label>
-            <Input id={dateId} type="date" className="tnum" value={date} onChange={(event) => setDate(event.target.value)} />
+            <Input
+              id={dateId}
+              type="date"
+              {...DATE_BOUNDS}
+              className="tnum"
+              value={date}
+              onChange={(event) => setDate(event.target.value)}
+            />
           </div>
           <div className="min-w-0">
             <label htmlFor={timeId} className="sr-only">

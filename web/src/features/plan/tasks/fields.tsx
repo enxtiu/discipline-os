@@ -14,7 +14,7 @@ import { IconClock } from '@/components/ui/icons'
 import { addDays } from '@/lib/format'
 import { blockLabel, dueLabel, formatMinutes, PRIORITY_STYLES, priorityLabel } from '../format'
 import type { BlockIn, Priority, TaskStatusIn } from '../types'
-import { Chip } from './ui'
+import { Chip, DATE_BOUNDS } from './ui'
 
 export function FieldSection({
   label,
@@ -187,6 +187,7 @@ export function DueEditor({
           <Input
             id={dateId}
             type="date"
+            {...DATE_BOUNDS}
             className="tnum"
             value={date ?? ''}
             onChange={(event) => onChange(event.target.value || null, event.target.value ? time : null)}
@@ -267,6 +268,7 @@ export function BlockEditor({
         <Input
           id={dateId}
           type="date"
+          {...DATE_BOUNDS}
           className="tnum"
           value={block.date}
           onChange={(event) => event.target.value && onChange({ ...block, date: event.target.value })}
