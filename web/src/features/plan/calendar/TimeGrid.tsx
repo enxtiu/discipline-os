@@ -415,7 +415,8 @@ const BlocksLayer = memo(function BlocksLayer({
             left: `calc(${((dayIndex + column / span) / count) * 100}% + 1px)`,
             width: `calc(${(1 / span / count) * 100}% - 2px)`,
           }
-          // What fits: two title lines from 38 px, the time from 34 px (day) / 60 px (week).
+          // What fits: two title lines from 38 px, the time from 34 px (day) / 60 px (week),
+          // read from the top (a flex column: a button centres its content).
           // Side by side in a week column a block is ~20 px wide: one clipped line,
           // never a word broken into a letter per line.
           const narrow = compact && span > 1
@@ -434,7 +435,7 @@ const BlocksLayer = memo(function BlocksLayer({
                 type="button"
                 onClick={() => openTask(occurrence.task_id)}
                 className={clsx(
-                  'absolute z-10 overflow-hidden rounded-md border border-dashed border-[rgb(var(--text-muted))]/60 py-0.5 text-left leading-tight opacity-75',
+                  'absolute z-10 flex flex-col overflow-hidden rounded-md border border-dashed border-[rgb(var(--text-muted))]/60 py-0.5 text-left leading-tight opacity-75',
                   compact ? 'text-[10px]' : 'text-xs',
                   narrow ? 'px-0.5' : 'px-1',
                 )}
@@ -467,7 +468,7 @@ const BlocksLayer = memo(function BlocksLayer({
               onClick={() => openTask(task.id)}
               {...(movable ? bind(origin) : {})}
               className={clsx(
-                'absolute z-10 overflow-hidden rounded-md border-l-[3px] py-0.5 text-left leading-tight text-[rgb(var(--text))]',
+                'absolute z-10 flex flex-col overflow-hidden rounded-md border-l-[3px] py-0.5 text-left leading-tight text-[rgb(var(--text))]',
                 compact ? 'text-[10px]' : 'text-xs',
                 narrow ? 'px-0.5' : 'px-1',
                 PRIORITY_TINT[task.priority],
