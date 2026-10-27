@@ -58,6 +58,11 @@ export async function run(ctx) {
   const quickInput = page.locator('[data-testid="quick-add-input"]')
   const toasts = page.locator('[data-testid="plan-toast"]')
   const toastText = async () => (await toasts.allInnerTexts()).join(' | ').replace(/\s+/g, ' ')
+  /** Tap every toast away (a tap on the message dismisses it) so screenshots show the screen. */
+  const clearToasts = async () => {
+    for (const toast of await toasts.all()) await toast.locator('p').click().catch(() => {})
+    await toasts.first().waitFor({ state: 'detached', timeout: 3000 }).catch(() => {})
+  }
   const closeDialog = async () => {
     await page.locator('[role="dialog"]').last().getByRole('button', { name: 'Close' }).click()
     await sleep(500)
@@ -235,6 +240,7 @@ export async function run(ctx) {
       `${defaultsChip.trim()} · preview «${previewLabel}» → ${onDay?.due_date} ${onDay?.due_time}`,
     )
     await closeDialog()
+    await clearToasts()
     await shot('43-plan-upcoming')
 
     // ---- overdue → «Перенести всё на сегодня» (+ undo) ---------------------------
@@ -295,7 +301,7 @@ export async function run(ctx) {
       progressed.body?.project?.progress === 0.5 && (await page.locator('[data-testid="project-progress"]').innerText()).includes('50'),
       'ticking one of two tasks moves the project to 50 %',
     )
-    await sleep(3200) // let the toast go before the screenshot
+    await clearToasts()
     await shot('45-plan-project')
 
     // ---- inbox: «Проект…» files a task under a project ---------------------------

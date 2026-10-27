@@ -51,6 +51,8 @@ export function ResourceSheet({
   const [tags, setTags] = useState<string[]>([])
   const [notes, setNotes] = useState('')
   const [error, setError] = useState<string | null>(null)
+  // remounts the notes field once the opening's values are in (saved notes open as a preview)
+  const [session, setSession] = useState(0)
 
   useEffect(() => {
     if (!open) return
@@ -60,6 +62,7 @@ export function ResourceSheet({
     setTags(resource?.tags ?? [])
     setNotes(resource?.notes_md ?? '')
     setError(null)
+    setSession((value) => value + 1)
     // re-initialise per opening / resource, not on every background refetch
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, resource?.id, defaultAreaId])
@@ -159,6 +162,7 @@ export function ResourceSheet({
           />
         </Field>
         <MarkdownField
+          key={session}
           id={ids.notes}
           label={t('task.notes')}
           value={notes}
