@@ -429,6 +429,13 @@ export async function run(ctx) {
       'Месяц → the month around the anchor is fetched and shown',
       `${norm(await label.innerText())} (${month.from} … ${month.to}), ${month.days.length} days`,
     )
+    const monthUnlogged = month.days.filter((day) => day.date <= month.today && day.meals === 0).length
+    const monthGhosts = await page.locator('[data-testid="chart-kcal"] .stats-ghost path').count()
+    check(
+      monthGhosts === monthUnlogged,
+      'the month: every past day without meals is a «нет записей» placeholder',
+      `${monthGhosts} placeholder(s) for ${monthUnlogged} unlogged day(s)`,
+    )
     await shot('62-stats-month')
     const previousFrom = addDays(month.from, -1)
     const [previousResponse] = await Promise.all([
