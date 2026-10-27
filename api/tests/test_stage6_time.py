@@ -304,3 +304,84 @@ async def test_dst_fall_back_day_is_one_whole_day(authed: httpx.AsyncClient, own
     )
     assert midnight.status_code == 200, midnight.text
     assert (midnight.json()["stopped"]["duration_s"], midnight.json()["stopped"]["end"]) == (25 * 3600, "00:00")
+
+
+def _ago(now: datetime, minutes: int) -> str:
+    return (now - timedelta(minutes=minutes)).isoformat()
+
+
+async def test_replayed_start_keeps_the_newer_running_timer(authed: httpx.AsyncClient) -> None:
+    """Laptop timer runs since 20 min; the offline phone tapped start 30 min ago and stop 25 min ago.
+    Replaying both used to stop the laptop timer at 0 s and leave nothing running (20+ min lost)."""
+    now = datetime.now(UTC)
+    task = await make_task(authed, "звонок")
+    laptop_id, phone_id = uid(), uid()
+    laptop = await authed.post(
+        f"{API}/timer/start", json={"id": laptop_id, "description": "laptop", "started_at": _ago(now, 20)}
+    )
+    assert laptop.status_code == 200, laptop.text
+    replay = await authed.post(
+        f"{API}/timer/start",
+        json={"id": phone_id, "task_id": task["id"], "description": "phone", "started_at": _ago(now, 30)},
+    )
+    assert replay.status_code == 200, replay.text
+    body = replay.json()
+    assert (body["entry"]["id"], body["entry"]["running"], body["entry"]["duration_s"]) == (phone_id, False, 600)
+    assert body["entry"]["ended_at"] == laptop.json()["entry"]["started_at"]  # ended where the newer timer began
+    assert body["running"]["entry"]["id"] == laptop_id and body["stopped"] is None
+
+    stop = await authed.post(f"{API}/timer/stop", json={"entry_id": phone_id, "ended_at": _ago(now, 25)})
+    assert stop.status_code == 200, stop.text
+    assert (stop.json()["stopped"]["id"], stop.json()["stopped"]["duration_s"]) == (phone_id, 300)  # first stop wins
+    running = (await authed.get(f"{API}/timer")).json()["running"]
+    assert running["entry"]["id"] == laptop_id and running["entry"]["duration_s"] is None
+    assert running["elapsed_s"] >= 20 * 60 - 5
+    assert (await get_task(authed, task["id"]))["actual_minutes"] == 5
+
+    for later in ({"entry_id": phone_id, "ended_at": _ago(now, 22)}, {"entry_id": phone_id}):
+        again = await authed.post(f"{API}/timer/stop", json=later)  # a later or repeated stop changes nothing
+        assert again.status_code == 200 and again.json()["stopped"]["duration_s"] == 300, later
+    before_start = await authed.post(f"{API}/timer/stop", json={"entry_id": phone_id, "ended_at": _ago(now, 40)})
+    assert before_start.status_code == 422 and code(before_start) == "invalid_time_entry"
+    # an old client's stop without entry_id cannot reach back before the running timer either
+    blind = await authed.post(f"{API}/timer/stop", json={"ended_at": _ago(now, 25)})
+    assert blind.status_code == 422 and code(blind) == "invalid_time_entry"
+    assert (await authed.get(f"{API}/timer")).json()["running"]["entry"]["id"] == laptop_id
+    replayed_again = (
+        await authed.post(f"{API}/timer/start", json={"id": phone_id, "started_at": _ago(now, 30)})
+    ).json()
+    assert (replayed_again["entry"]["duration_s"], replayed_again["running"]["entry"]["id"]) == (300, laptop_id)
+    assert await _running_count() == 1
+
+
+async def test_replayed_offline_switches_end_each_other(authed: httpx.AsyncClient) -> None:
+    """Offline: start A 30 min ago, switch to C 28 min ago, stop 25 min ago — replayed onto a timer running since 20."""
+    now = datetime.now(UTC)
+    laptop_id, a_id, c_id = uid(), uid(), uid()
+    await authed.post(f"{API}/timer/start", json={"id": laptop_id, "started_at": _ago(now, 20)})
+    first = (await authed.post(f"{API}/timer/start", json={"id": a_id, "started_at": _ago(now, 30)})).json()
+    assert (first["entry"]["running"], first["entry"]["duration_s"], first["stopped"]) == (False, 600, None)
+    switch = (await authed.post(f"{API}/timer/start", json={"id": c_id, "started_at": _ago(now, 28)})).json()
+    assert (switch["entry"]["id"], switch["entry"]["running"], switch["entry"]["duration_s"]) == (c_id, False, 480)
+    assert (switch["stopped"]["id"], switch["stopped"]["duration_s"]) == (a_id, 120)  # C switched A off at its start
+    assert switch["running"]["entry"]["id"] == laptop_id
+    stop = (await authed.post(f"{API}/timer/stop", json={"entry_id": c_id, "ended_at": _ago(now, 25)})).json()
+    assert stop["stopped"]["duration_s"] == 180
+    day = (now - timedelta(minutes=30)).astimezone(BANGKOK).date().isoformat()
+    listing = (await authed.get(f"{API}/time-entries", params={"from": day, "to": today().isoformat()})).json()
+    durations = {item["id"]: item["duration_s"] for item in listing["items"]}
+    assert (durations[a_id], durations[c_id], durations[laptop_id]) == (120, 180, None)
+    assert await _running_count() == 1
+
+
+async def test_start_now_switches_even_a_timer_stamped_ahead(authed: httpx.AsyncClient) -> None:
+    """A device clock a few minutes fast stamps its start ahead of the server: a later "start now" still switches."""
+    ahead_id, now_id = uid(), uid()
+    ahead = await authed.post(
+        f"{API}/timer/start",
+        json={"id": ahead_id, "started_at": (datetime.now(UTC) + timedelta(minutes=3)).isoformat()},
+    )
+    assert ahead.status_code == 200, ahead.text
+    switched = (await authed.post(f"{API}/timer/start", json={"id": now_id})).json()
+    assert (switched["entry"]["running"], switched["running"]["entry"]["id"]) == (True, now_id)
+    assert (switched["stopped"]["id"], switched["stopped"]["duration_s"]) == (ahead_id, 0)

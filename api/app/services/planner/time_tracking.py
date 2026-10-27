@@ -7,6 +7,13 @@
 * **Switch.** Starting while a timer runs stops it at the new ``started_at``.
 * **Replays.** A replayed start (same client id) returns the current state and
   never creates a second row; stopping without a running timer is a no-op.
+* **Offline catch-up.** A start dated before the running timer began (a device
+  replaying its offline queue) never stops that newer timer: the entry is
+  stored already ended where the next timer began (any start ends what runs),
+  and it ends, at its own start, a replayed entry that had been ended at that
+  same point (an offline switch). A stop names its entry (``entry_id``) and
+  touches nothing else; stopping an entry that already ended moves its end
+  earlier when this stop came first (the first stop wins), never later.
 * **Bounds.** A timer may start ≤ 24 h back and ≤ 5 min ahead; an entry lasts at
   most 24 h; a timer running longer than that needs an explicit ``ended_at``. A day
   is a day of wall clock: midnight to midnight across a fall-back night (25 real
@@ -157,13 +164,6 @@ async def start_timer(db: AsyncSession, *, user_id: uuid.UUID, clock: Clock, pay
     if started_at > clock.now + FUTURE_TOLERANCE or started_at < clock.now - MAX_START_BACK:
         raise _invalid("A timer starts at most 24 hours back and 5 minutes ahead")
     task_id, project_id, area_id = await _attribution(db, user_id, payload.task_id, payload.project_id, payload.area_id)
-    stopped = await running_entry(db, user_id, lock=True)
-    if stopped is not None:
-        ended_at = max(started_at, stopped.started_at)
-        if _longer_than_a_day(stopped.started_at, ended_at, clock):
-            raise _too_long(stopped)
-        _stop(stopped, ended_at)
-        await db.flush()
     entry = TimeEntry(
         id=payload.id,
         client_uuid=payload.id,
@@ -177,16 +177,62 @@ async def start_timer(db: AsyncSession, *, user_id: uuid.UUID, clock: Clock, pay
         source=TimeEntrySource.TIMER,
         is_deleted=False,
     )
+    running = await running_entry(db, user_id, lock=True)
+    if running is not None and started_at < running.started_at <= clock.now:
+        return await _start_before(db, user_id=user_id, entry=entry, running=running)
+    stopped = running
+    if stopped is not None:
+        ended_at = max(started_at, stopped.started_at)
+        if _longer_than_a_day(stopped.started_at, ended_at, clock):
+            raise _too_long(stopped)
+        _stop(stopped, ended_at)
+        await db.flush()
+    await _insert(db, entry)
+    if stopped is not None:
+        await recompute_actual(db, user_id, [stopped.task_id])
+    log.info("timer_started", entry_id=str(entry.id), switched=str(stopped.id) if stopped else None)
+    return TimerState(entry=entry, running=entry, stopped=stopped)
+
+
+async def _insert(db: AsyncSession, entry: TimeEntry) -> None:
     try:
         async with db.begin_nested():
             db.add(entry)
             await db.flush()
     except IntegrityError:
         raise id_conflict("time entry") from None
-    if stopped is not None:
-        await recompute_actual(db, user_id, [stopped.task_id])
-    log.info("timer_started", entry_id=str(entry.id), switched=str(stopped.id) if stopped else None)
-    return TimerState(entry=entry, running=entry, stopped=stopped)
+
+
+async def _start_before(db: AsyncSession, *, user_id: uuid.UUID, entry: TimeEntry, running: TimeEntry) -> TimerState:
+    """A start dated before the running timer began: a device replaying its offline queue.
+
+    The newer timer keeps running. Any start ends the timer that ran before it, so the
+    replayed entry is stored already ended where the next timer began; and it ends, at
+    its own start, an entry that had been ended at that same point — the previous step
+    of the same offline sequence (start A, switch to C) — instead of overlapping it.
+    """
+    timers = (TimeEntry.user_id == user_id, TimeEntry.source == TimeEntrySource.TIMER, TimeEntry.is_deleted.is_(False))
+    later = await db.scalar(
+        select(func.min(TimeEntry.started_at)).where(*timers, TimeEntry.started_at > entry.started_at)
+    )
+    next_start = running.started_at if later is None else min(later, running.started_at)
+    switched = (
+        await db.scalars(
+            select(TimeEntry)
+            .where(*timers, TimeEntry.started_at <= entry.started_at, TimeEntry.ended_at == next_start)
+            .order_by(TimeEntry.started_at.desc())
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    ).all()
+    for row in switched:
+        _stop(row, entry.started_at)
+    await db.flush()
+    _stop(entry, next_start)
+    await _insert(db, entry)
+    await recompute_actual(db, user_id, [entry.task_id, *(row.task_id for row in switched)])
+    log.info("timer_start_replayed", entry_id=str(entry.id), running=str(running.id), switched=len(switched))
+    return TimerState(entry=entry, running=running, stopped=switched[0] if switched else None)
 
 
 async def stop_timer(db: AsyncSession, *, user_id: uuid.UUID, clock: Clock, payload) -> TimeEntry | None:
@@ -201,7 +247,7 @@ async def stop_timer(db: AsyncSession, *, user_id: uuid.UUID, clock: Clock, payl
         if entry is None:
             raise NotFound("Time entry not found", details={"id": str(payload.entry_id)})
         if entry.ended_at is not None:
-            return entry  # already stopped: idempotent
+            return await _stop_again(db, user_id=user_id, clock=clock, entry=entry, ended_at=payload.ended_at)
     else:
         entry = await running_entry(db, user_id, lock=True)
         if entry is None:
@@ -220,6 +266,26 @@ async def stop_timer(db: AsyncSession, *, user_id: uuid.UUID, clock: Clock, payl
     await db.flush()
     await recompute_actual(db, user_id, [entry.task_id])
     log.info("timer_stopped", entry_id=str(entry.id), seconds=entry.duration_s)
+    return entry
+
+
+async def _stop_again(
+    db: AsyncSession, *, user_id: uuid.UUID, clock: Clock, entry: TimeEntry, ended_at: datetime | None
+) -> TimeEntry:
+    """A stop of a timer entry that already ended: a replay changes nothing, but a stop that
+    came first — an offline stop replayed after a switch or a replayed start ended the entry
+    at the next timer's start — moves the end back to it. The first stop wins."""
+    if ended_at is None or entry.source != TimeEntrySource.TIMER:
+        return entry
+    when = clock.instant(ended_at)
+    if entry.ended_at is None or when >= entry.ended_at:
+        return entry
+    if when < entry.started_at:
+        raise _invalid("ended_at must be after the start and not in the future")
+    _stop(entry, when)
+    await db.flush()
+    await recompute_actual(db, user_id, [entry.task_id])
+    log.info("timer_stop_replayed", entry_id=str(entry.id), seconds=entry.duration_s)
     return entry
 
 
