@@ -533,7 +533,7 @@ try {
   await page.getByRole('button', { name: 'Распознать' }).click()
   await page.waitForTimeout(600)
   check(await hasText('ИИ-функции доступны только онлайн'), 'offline: AI shows a clear message')
-  await page.locator('[role="dialog"]').getByRole('button', { name: 'Close' }).click()
+  await page.locator('[role="dialog"]').getByRole('button', { name: /^(Закрыть|Close)$/ }).click()
   await page.waitForTimeout(800)
   // the photo tile says so before the camera opens (no picture taken in vain)
   let chooserOpened = false
@@ -549,7 +549,7 @@ try {
   await page.waitForTimeout(700)
   page.off('filechooser', onChooser)
   check(!chooserOpened && (await hasText('ИИ-функции доступны только онлайн')), 'offline: photo tile warns before opening the camera')
-  await page.locator('[role="dialog"]').getByRole('button', { name: 'Close' }).click()
+  await page.locator('[role="dialog"]').getByRole('button', { name: /^(Закрыть|Close)$/ }).click()
   await context.setOffline(false)
   await page.waitForTimeout(800)
   offlineMode = false

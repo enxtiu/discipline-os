@@ -75,7 +75,7 @@ export async function run(ctx) {
   const toast = (needle) => page.locator('div.fixed[role="status"] p', { hasText: needle })
   const sheet = page.locator('[role="dialog"]')
   const closeSheet = async () => {
-    const close = sheet.getByRole('button', { name: 'Close' }).first()
+    const close = sheet.getByRole('button', { name: /^(Закрыть|Close)$/ }).first()
     if (await close.count()) await close.click()
     await sheet.first().waitFor({ state: 'detached', timeout: 3000 }).catch(() => {})
   }

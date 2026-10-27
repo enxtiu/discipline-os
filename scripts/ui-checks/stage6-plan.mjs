@@ -64,7 +64,7 @@ export async function run(ctx) {
     await toasts.first().waitFor({ state: 'detached', timeout: 3000 }).catch(() => {})
   }
   const closeDialog = async () => {
-    await page.locator('[role="dialog"]').last().getByRole('button', { name: 'Close' }).click()
+    await page.locator('[role="dialog"]').last().getByRole('button', { name: /^(Закрыть|Close)$/ }).click()
     await sleep(500)
   }
   const openTask = async (id) => {
