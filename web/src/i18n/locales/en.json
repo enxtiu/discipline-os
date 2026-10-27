@@ -783,8 +783,6 @@
     "legend_today": "today",
     "legend_no_records": "nothing logged",
     "legend_no_data": "no data",
-    "legend_target": "target",
-    "legend_average": "average",
     "table_show": "Show table",
     "table_hide": "Hide table",
     "period": {
@@ -1095,8 +1093,6 @@
     "token_revoke": "Revoke",
     "keep_thumbnail": "Keep a photo thumbnail (400 px)",
     "keep_thumbnail_hint": "By default the photo is deleted right after saving a meal.",
-    "export_title": "Export & backup",
-    "export_hint": "Full export arrives in stage 8. Nightly encrypted backups are already configured on the server (age + private repo).",
     "about_version": "Version",
     "about_env": "Environment",
     "install_steps": [
@@ -1198,7 +1194,47 @@
       "push_disabled": "Push notifications are not configured on the server",
       "subscription_conflict": "This device was subscribed under another account. Please try again.",
       "push_service_not_allowed": "The server does not send notifications to this browser's push service. It can be allowed with the server setting PUSH_EXTRA_HOSTS."
-    }
+    },
+    "export": {
+      "json": {
+        "title": "Download my data (JSON)",
+        "desc": "Everything in one file: profile and targets, food and water, recipes, workouts and records, steps, weight and sleep, the planner (tasks, projects, time, journal), XP, streaks and achievements. For moving it elsewhere or your own scripts."
+      },
+      "csv": {
+        "title": "Spreadsheets for Excel (CSV, zip)",
+        "desc": "One file per table in a zip: UTF-8, comma separated, ISO dates. Opens in Excel and Google Sheets; a README inside explains what is where."
+      },
+      "backup": {
+        "title": "Backup (zip)",
+        "desc": "data.json and manifest.json with versions, row counts and checksums — to restore on the server as described below."
+      }
+    },
+    "data_export_title": "My data as files",
+    "data_export_hint": "The file is built on the server and downloads straight to this device. At most 6 times a minute.",
+    "data_no_secrets": "No secrets inside: no tokens, no pairing codes, no notification keys.",
+    "data_download": "Download",
+    "data_download_again": "Download again",
+    "data_preparing": "Preparing the file…",
+    "data_downloading": "Downloading… {{size}}",
+    "data_done": "Done · {{size}} · {{name}}",
+    "data_cancel": "Cancel",
+    "data_save_file": "Save the file",
+    "data_share_hint": "In the iPhone app the file is saved through Share → Save to Files.",
+    "data_rate_limited": "Too often — try again in a minute",
+    "data_restore_title": "How to restore a backup",
+    "data_restore_step_copy": "Copy the archive to the server, into the API container:",
+    "data_restore_step_check": "See what would change (nothing is written):",
+    "data_restore_step_run": "Restore — the same command without --dry-run:",
+    "data_restore_note": "A backup restores into the same account or an empty one (--user-id <uuid>); nobody else's data is touched. Restoring twice changes nothing; an archive with wrong checksums or another schema version is refused.",
+    "data_server_backups": "On top of that the server keeps an encrypted copy of the whole database every night (pg_dump + age).",
+    "data_copy": "Copy the command",
+    "data_shortcut": "iOS Shortcut: steps and active energy",
+    "data_shortcut_hint": "Token and setup in their own section",
+    "data_account": "Account",
+    "data_api": "Server",
+    "data_ai": "AI",
+    "data_ai_off": "off",
+    "data_ai_photo": "photos downscaled to {{px}} px"
   },
   "common": {
     "g": "g",
@@ -1217,7 +1253,10 @@
     "minutes_ago": "{{count}} min ago",
     "hours_ago": "{{count}} h ago",
     "days_ago": "{{count}} d ago",
-    "km": "km"
+    "km": "km",
+    "size_b": "B",
+    "size_kb": "KB",
+    "size_mb": "MB"
   },
   "errors": {
     "unauthorized": "This device is not connected",

@@ -286,3 +286,12 @@ export const IconPin = ({ filled, ...props }: IconProps & { filled?: boolean }) 
     <path d="M12 14v6" />
   </Base>
 )
+
+/** Stage 8: a file download (export, backup). */
+export const IconDownload = (props: IconProps) => (
+  <Base {...props}>
+    <path d="M12 4v11" />
+    <path d="m7.5 10.5 4.5 4.5 4.5-4.5" />
+    <path d="M5 19.5h14" />
+  </Base>
+)
