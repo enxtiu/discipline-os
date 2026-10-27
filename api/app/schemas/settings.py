@@ -9,6 +9,7 @@ from typing import Any, Literal
 from pydantic import Field, field_validator
 
 from app.schemas.common import ApiModel, ORMModel
+from app.schemas.gamification import validate_xp_weights
 
 LanguageLiteral = Literal["ru", "en"]
 SexLiteral = Literal["male", "female", "other"]
@@ -104,6 +105,12 @@ class SettingsUpdateIn(ApiModel):
     onboarding_completed: bool | None = None
     notification_prefs: dict[str, Any] | None = None
     xp_weights: dict[str, Any] | None = None
+
+    @field_validator("xp_weights")
+    @classmethod
+    def _xp_weights(cls, value: dict[str, Any] | None) -> dict[str, Any] | None:
+        """stage 8: ``score_weights`` 0..100 per score part, ``xp_multipliers`` 0..2 per category."""
+        return validate_xp_weights(value)
 
     @field_validator("timezone")
     @classmethod

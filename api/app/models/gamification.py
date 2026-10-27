@@ -59,6 +59,9 @@ class XpKind(UiEnum):
     STREAK_BONUS = "streak_bonus"
     QUEST_COMPLETED = "quest_completed"
     MANUAL = "manual"
+    # stage 8 (migration 0003)
+    STEPS_TARGET = "steps_target"
+    ACHIEVEMENT_UNLOCKED = "achievement_unlocked"
 
 
 class StreakKind(UiEnum):

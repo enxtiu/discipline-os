@@ -13,7 +13,7 @@ import { useTranslation } from 'react-i18next'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 
-import { Badge, Button, Callout, Card, EmptyState, ProgressBar, Skeleton } from '@/components/ui'
+import { Button, Callout, Card, EmptyState, ProgressBar, Skeleton } from '@/components/ui'
 import { ProgressRing } from '@/components/ui/ProgressRing'
 import {
   IconCamera,
@@ -41,6 +41,7 @@ import { SleepSheet, StepsSheet, WeightSheet } from '@/features/health/sheets'
 import { useHealthQueueRefresh, useHealthToday } from '@/features/health/useHealth'
 import { PlanTodayCard } from '@/features/plan/PlanTodayCard'
 import { TimerBar } from '@/features/plan/timer/TimerBar'
+import { DayScoreCard } from '@/features/game/DayScoreCard'
 
 const MEAL_ORDER: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack', 'other']
 
@@ -336,20 +337,7 @@ export function TodayPage() {
         <PlanTodayCard />
       </div>
 
-      <Card className="space-y-3">
-        <div className="flex items-center justify-between">
-          <span className="label">{t('today.score')}</span>
-          <Badge tone="violet">stage 8</Badge>
-        </div>
-        <div className="flex items-center gap-4">
-          <Skeleton className="h-12 w-12 rounded-full" />
-          <div className="flex-1 space-y-2">
-            <Skeleton className="h-3 w-2/3" />
-            <Skeleton className="h-3 w-1/3" />
-          </div>
-        </div>
-        <p className="text-xs muted">{t('today.coming_soon', { stage: 8 })}</p>
-      </Card>
+      <DayScoreCard />
 
       <p className="pb-2 text-center text-xs muted">
         {today()} · {number(progressPercent)}%

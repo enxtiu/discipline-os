@@ -28,6 +28,7 @@ __all__ = [
     "generate_pairing_code",
     "hash_password",
     "hash_token",
+    "hkdf_sha256",
     "hmac_sha256",
     "new_secret_token",
     "normalise_pairing_code",
@@ -92,6 +93,21 @@ def normalise_pairing_code(code: str) -> str:
 
 def hmac_sha256(value: str, key: str) -> str:
     return hmac.new(key.encode("utf-8"), value.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def hkdf_sha256(key_material: bytes, *, salt: bytes, info: bytes, length: int = 32) -> bytes:
+    """HKDF with SHA-256 (RFC 5869): a key for one purpose (``info``) derived from a
+    secret, so the secret itself is never used as that key."""
+    if not 0 < length <= 255 * hashlib.sha256().digest_size:
+        raise ValueError("HKDF-SHA256 derives 1..8160 bytes")
+    prk = hmac.new(salt or bytes(hashlib.sha256().digest_size), key_material, hashlib.sha256).digest()
+    out, block = b"", b""
+    counter = 1
+    while len(out) < length:
+        block = hmac.new(prk, block + info + bytes([counter]), hashlib.sha256).digest()
+        out += block
+        counter += 1
+    return out[:length]
 
 
 def constant_time_eq(left: str, right: str) -> bool:

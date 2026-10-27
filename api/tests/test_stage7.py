@@ -973,12 +973,14 @@ async def test_evening_review_condition(ready, db) -> None:
     assert (await reminder(db, second)).last_error == "not_needed"
 
 
-async def test_streak_category_is_kept_but_sends_nothing_yet(ready, db) -> None:
+async def test_streak_reminder_without_a_streak_sends_nothing(ready, db) -> None:
+    """Stage 8 implements the rule (tests/test_stage8_streaks.py); no streak → nothing."""
     user_id = ready["user_id"]
+    evening = utc(2026, 7, 15, 13, 0)  # 20:00 in Bangkok, the streak slot
     rid = await add_reminder(
-        db, user_id, kind=ReminderKind.STREAK, remind_at=NOON, payload={"date": "2026-07-15", "time": "20:00"}
+        db, user_id, kind=ReminderKind.STREAK, remind_at=evening, payload={"date": "2026-07-15", "time": "20:00"}
     )
-    await dispatch(NOON)
+    await dispatch(evening)
     assert ((await reminder(db, rid)).status, (await reminder(db, rid)).last_error) == (
         ReminderStatus.CANCELLED,
         "not_needed",

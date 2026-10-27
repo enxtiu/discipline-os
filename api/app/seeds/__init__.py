@@ -12,7 +12,7 @@ Stage 1 ships the **exercise library** (the training screens of stage 4 read it)
 plus the framework itself. Later stages register their data here:
 
   * stage 2 — `foods.py`   : the base food table (Russian + English names)
-  * stage 8 — `badges.py`  : achievements and their unlock rules
+  * stage 8 — `gamification.py` : levels, achievements, the quest pool
 
 Seeds never touch user data: global rows only (`user_id IS NULL` / `is_global`).
 """
@@ -43,8 +43,9 @@ class Seed:
 def _registry() -> dict[str, Seed]:
     # Imported lazily so a missing stage-2 module cannot break `seed --list`.
     from app.seeds.exercises import SEED as exercises_seed
+    from app.seeds.gamification import SEED as gamification_seed
 
-    seeds = [exercises_seed]
+    seeds = [exercises_seed, gamification_seed]
     return {seed.name: seed for seed in seeds}
 
 
