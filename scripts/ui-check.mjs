@@ -885,6 +885,15 @@ try {
         offlineMode = value
         await context.setOffline(value)
       },
+      /** Run `action` while the browser logs a 4xx the check provokes on purpose (not an app error). */
+      allowErrors: async (action) => {
+        offlineMode = true
+        try {
+          return await action()
+        } finally {
+          offlineMode = false
+        }
+      },
     })
   }
 
