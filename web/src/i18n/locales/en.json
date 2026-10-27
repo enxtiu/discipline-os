@@ -966,7 +966,7 @@
       "longest": "Best {{length}}",
       "today_met": "Today counts",
       "today_pending": "Not yet today",
-      "week_progress": "This week {{done}} of {{required}}",
+      "week_progress": "This week: {{done}}, needed {{required}}",
       "week_rest": "A planned rest week — the streak goes on",
       "freeze": "Freezes: {{count}} of {{max}}",
       "next_milestone": "{{days}} days in a row — +{{xp}} XP",

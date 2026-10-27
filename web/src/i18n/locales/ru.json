@@ -966,7 +966,7 @@
       "longest": "Рекорд {{length}}",
       "today_met": "Сегодня засчитано",
       "today_pending": "Сегодня ещё нет",
-      "week_progress": "На этой неделе {{done}} из {{required}}",
+      "week_progress": "На этой неделе: {{done}}, нужно {{required}}",
       "week_rest": "Неделя отдыха по плану — серию не прерывает",
       "freeze": "Заморозки: {{count}} из {{max}}",
       "next_milestone": "{{days}} дн. подряд — +{{xp}} XP",
