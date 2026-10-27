@@ -356,7 +356,8 @@ async def test_block_only_series_and_dst(authed: httpx.AsyncClient) -> None:
 
 async def test_completed_at_and_instance_of_instance(authed: httpx.AsyncClient) -> None:
     task = await make_task(authed, "отчёт", due_date=today().isoformat(), recurrence_rule="weekly")
-    late = datetime.now(BANGKOK).replace(hour=0, minute=30, second=0, microsecond=0)
+    # just after the local midnight (the UTC day is still yesterday) and never in the future
+    late = datetime.now(BANGKOK).replace(hour=0, minute=1, second=0, microsecond=0)
     done = await complete(authed, task["id"], completed_at=late.isoformat())
     assert done["task"]["completed_day"] == today().isoformat()
     assert datetime.fromisoformat(done["task"]["completed_at"]) == late.astimezone(UTC)
