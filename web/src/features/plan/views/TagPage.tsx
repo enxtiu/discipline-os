@@ -161,7 +161,9 @@ function TagBody({ id }: { id: string | undefined }) {
       <header className="flex items-center gap-3">
         <ColorDot color={tag.color} className="h-3 w-3" />
         <div className="min-w-0 flex-1">
-          <h2 className="h2 truncate">#{tag.name}</h2>
+          <h2 className="h2 truncate" data-testid="tag-title">
+            #{tag.name}
+          </h2>
           <p className="text-xs muted tnum">{t('plan.tag_open_count', { n: tag.open_tasks })}</p>
         </div>
         <Button variant="secondary" size="sm" className="min-h-tap" onClick={() => setEditing(true)} data-testid="tag-edit">
