@@ -5,21 +5,33 @@
  * and why, conflicts to settle, «Отправить всё сейчас». The whole 48 px square
  * is the target; the visible pill stays compact.
  */
-import { useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { AnimatePresence, MotionConfig, motion } from 'framer-motion'
 import clsx from 'clsx'
 
 import { IconCloudCheck, IconRefresh, IconWifiOff } from '@/components/ui/icons'
-import { SyncSheet } from '@/features/sync/SyncSheet'
 import { usePrefersReducedMotion, useQueueState } from '@/features/sync/useQueue'
+
+// The sheet is only needed on a tap: its own chunk, fetched while the app is idle and online
+// (so it opens offline later too; the production service worker precaches every chunk anyway).
+const loadSheet = () => import('@/features/sync/SyncSheet')
+const SyncSheet = lazy(() => loadSheet().then((module) => ({ default: module.SyncSheet })))
 
 export function SyncStatus() {
   const { t } = useTranslation()
   const state = useQueueState()
   const reduced = usePrefersReducedMotion()
   const [open, setOpen] = useState(false)
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    const idle = window.requestIdleCallback ?? ((callback: () => void) => window.setTimeout(callback, 1500))
+    idle(() => {
+      if (navigator.onLine) void loadSheet().then(() => setMounted(true))
+    })
+  }, [])
 
   const offline = !state.online
   const pending = state.pending
@@ -37,7 +49,10 @@ export function SyncStatus() {
     <MotionConfig reducedMotion={reduced ? 'always' : 'never'}>
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          setMounted(true)
+          setOpen(true)
+        }}
         className="-my-1.5 flex min-h-tap min-w-tap items-center justify-center"
         aria-label={label}
         aria-haspopup="dialog"
@@ -82,7 +97,13 @@ export function SyncStatus() {
         </span>
       </button>
       {/* the header blurs its backdrop, which would trap a fixed sheet inside it: render at the root */}
-      {createPortal(<SyncSheet open={open} onClose={() => setOpen(false)} />, document.body)}
+      {mounted &&
+        createPortal(
+          <Suspense fallback={null}>
+            <SyncSheet open={open} onClose={() => setOpen(false)} />
+          </Suspense>,
+          document.body,
+        )}
     </MotionConfig>
   )
 }

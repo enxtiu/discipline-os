@@ -15,8 +15,10 @@ import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { listEntries, onQueueState, statusOf, type QueuedRequest } from '@/lib/offlineQueue'
 import { planPaths } from './api'
 import { patchTaskInCaches, planKeys } from './queries'
-import { isPresetKey } from './tasks/rrule'
 import type { Area, Block, Counts, Project, Ref, Tag, TagRef, Task, TaskStatus } from './types'
+
+/** Preset keys the API accepts in place of an RRULE (as in `tasks/rrule.ts`, kept out of the main chunk). */
+const PRESET_KEYS = new Set(['daily', 'weekdays', 'weekly', 'biweekly', 'monthly', 'yearly'])
 
 const TASK_PATH = new RegExp(`^${planPaths.tasks}/([0-9a-f-]{36})(/complete|/reopen)?$`, 'i')
 
@@ -124,7 +126,7 @@ export function taskFieldsFromPatch(body: Record<string, unknown>, task: Task, l
     const rule = (body.recurrence_rule as string | null) || null
     out.recurrence_rule = rule
     out.is_recurring = !!rule
-    out.recurrence_preset = rule ? (isPresetKey(rule) ? rule : 'custom') : null
+    out.recurrence_preset = rule ? (PRESET_KEYS.has(rule) ? (rule as Task['recurrence_preset']) : 'custom') : null
   }
   return out
 }
