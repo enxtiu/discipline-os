@@ -161,8 +161,8 @@ Reviews run on this branch:
   English for screen readers — fixed); 48 px targets; drag also by mouse.
 - **Test-suite stability** (found while running stages in parallel on a 2-core box): the
   stage-2b search benchmark keeps the 150 ms budget per query on an idle machine, but its
-  bound grows with the load per core on a saturated one (it failed at 400–700 ms on
-  unrelated changes); the stage-2 browser check «meal appears under its type» now accepts
+  bound grows with the load per core on a saturated one and a run over budget is repeated
+  once before failing (single samples of 300–700 ms failed it on unrelated changes); the stage-2 browser check «meal appears under its type» now accepts
   a snack (the log sheet picks it after 22:00 browser time); time-sensitive stage-6 tests
   no longer fail just after midnight in Bangkok.
 - **Playwright**: `docs/screenshots/31-plan-today.png` … `39-journal.png`.
