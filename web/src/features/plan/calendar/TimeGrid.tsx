@@ -415,9 +415,16 @@ const BlocksLayer = memo(function BlocksLayer({
             left: `calc(${((dayIndex + column / span) / count) * 100}% + 1px)`,
             width: `calc(${(1 / span / count) * 100}% - 2px)`,
           }
-          // what fits: two title lines from 38 px, the time from 34 px (day) / 60 px (week)
-          const twoLines = height >= 38
-          const showTime = compact ? height >= 60 : height >= 34
+          // What fits: two title lines from 38 px, the time from 34 px (day) / 60 px (week).
+          // Side by side in a week column a block is ~20 px wide: one clipped line,
+          // never a word broken into a letter per line.
+          const narrow = compact && span > 1
+          const title = narrow
+            ? 'overflow-hidden whitespace-nowrap'
+            : height >= 38
+              ? 'line-clamp-2 hyphens-auto break-words' // no `block`: it would override the clamp's display
+              : 'block truncate'
+          const showTime = !narrow && (compact ? height >= 60 : height >= 34)
 
           if (item.kind === 'occurrence') {
             const occurrence = item.occurrence
@@ -427,8 +434,9 @@ const BlocksLayer = memo(function BlocksLayer({
                 type="button"
                 onClick={() => openTask(occurrence.task_id)}
                 className={clsx(
-                  'absolute z-10 overflow-hidden rounded-md border border-dashed border-[rgb(var(--text-muted))]/60 px-1 py-0.5 text-left leading-tight opacity-75',
+                  'absolute z-10 overflow-hidden rounded-md border border-dashed border-[rgb(var(--text-muted))]/60 py-0.5 text-left leading-tight opacity-75',
                   compact ? 'text-[10px]' : 'text-xs',
+                  narrow ? 'px-0.5' : 'px-1',
                 )}
                 style={style}
                 aria-label={t('calendar.repeat_label', {
@@ -437,9 +445,7 @@ const BlocksLayer = memo(function BlocksLayer({
                 })}
                 data-testid="cal-occurrence"
               >
-                <span className={clsx('block font-medium', twoLines ? 'line-clamp-2 hyphens-auto break-words' : 'truncate')}>
-                  {occurrence.title}
-                </span>
+                <span className={clsx('font-medium', title)}>{occurrence.title}</span>
                 {showTime && (
                   <span className="tnum block truncate muted">
                     {compact ? occurrence.block?.start : blockLabel(occurrence.block)}
@@ -461,8 +467,9 @@ const BlocksLayer = memo(function BlocksLayer({
               onClick={() => openTask(task.id)}
               {...(movable ? bind(origin) : {})}
               className={clsx(
-                'absolute z-10 overflow-hidden rounded-md border-l-[3px] px-1 py-0.5 text-left leading-tight text-[rgb(var(--text))]',
+                'absolute z-10 overflow-hidden rounded-md border-l-[3px] py-0.5 text-left leading-tight text-[rgb(var(--text))]',
                 compact ? 'text-[10px]' : 'text-xs',
+                narrow ? 'px-0.5' : 'px-1',
                 PRIORITY_TINT[task.priority],
                 !task.project?.color && PRIORITY_STYLES[task.priority].ring,
                 done && 'opacity-50',
@@ -477,15 +484,7 @@ const BlocksLayer = memo(function BlocksLayer({
               data-end={task.block?.end}
               data-date={task.block?.date}
             >
-              <span
-                className={clsx(
-                  'block font-semibold',
-                  twoLines ? 'line-clamp-2 hyphens-auto break-words' : 'truncate',
-                  done && 'line-through',
-                )}
-              >
-                {task.title}
-              </span>
+              <span className={clsx('font-semibold', title, done && 'line-through')}>{task.title}</span>
               {showTime && (
                 <span className="tnum block truncate opacity-75">{compact ? task.block?.start : blockLabel(task.block)}</span>
               )}
