@@ -5,12 +5,13 @@ training, steps, PARA tasks and planner, time tracking, gamification. Built as a
 mobile-first PWA for iPhone (iOS 17+, Safari → Add to Home Screen), dark by
 default, one-handed, every frequent action within two taps.
 
-> **Status: stages 1–6 of 10 are complete** — foundation, nutrition core,
+> **Status: stages 1–7 of 10 are complete** — foundation, nutrition core,
 > nutrition backfill, AI logging (photo/text → review → save, camera barcode
 > scanner), training (templates, weekly plan, live logger, records, burned
 > calories kept out of the food budget), health ingest (iOS Shortcut, steps,
-> weight, sleep) and the planner (PARA, tasks with repeats and reminders,
-> calendar with drag, natural-language quick add, timer, journal). The foundation is live: repository,
+> weight, sleep), the planner (PARA, tasks with repeats and reminders,
+> calendar with drag, natural-language quick add, timer, journal) and web push
+> notifications (reminders, daily nudges, quiet hours). The foundation is live: repository,
 > infrastructure, the full database schema for every entity of the whole
 > product, device-token auth with pairing, settings with target calculation, the
 > design system and app shell with bottom navigation, i18n (ru/en), PWA basics
@@ -109,28 +110,28 @@ discipline-os/
 ├── api/                     FastAPI service
 │   ├── app/
 │   │   ├── ai/              provider adapters, strict schema, runner, prompts/*.vN.md (stage 3)
-│   │   ├── api/             routers (v1: auth, devices, tokens, settings, meta, foods, nutrition, ai, training, health, planner)
+│   │   ├── api/             routers (v1: auth, devices, tokens, settings, meta, foods, nutrition, ai, training, health, planner, push, notifications)
 │   │   ├── core/            config, logging, errors, security, rate limit, tz, ids
 │   │   ├── models/          SQLAlchemy 2 models — every entity, every stage
 │   │   ├── schemas/         pydantic v2 request/response models
-│   │   ├── services/        pairing, tokens, targets, settings, scheduler, recurrence, planner/, task_parser
+│   │   ├── services/        pairing, tokens, targets, settings, scheduler, recurrence, planner/, task_parser, push, notifications
 │   │   ├── seeds/           seed framework + exercise library
 │   │   └── cli.py           server-side admin commands
 │   ├── alembic/versions/    migrations (0001 = the whole schema, 0002 = planner indexes)
 │   ├── importers/           seed (320 foods RU/EN), Open Food Facts, USDA FDC (+ RU names)
-│   └── tests/               pytest suite (920+ tests)
+│   └── tests/               pytest suite (990+ tests)
 ├── web/                     React 18 + TS + Vite PWA
 │   ├── src/api/             fetch client, types, generated OpenAPI types
 │   ├── src/components/      design system (ui/) + shell (layout/)
-│   ├── src/features/        auth, today, food (2), ai (3), train (4), health (5), plan (6), settings, placeholders
+│   ├── src/features/        auth, today, food (2), ai (3), train (4), health (5), plan (6), notifications (7), settings, placeholders
 │   ├── src/i18n/            ru.json / en.json (all strings live here)
 │   ├── src/lib/             device, offline queue, formatting, errors, targets
-│   └── public/              icons, offline.html, sw-push.js (stage 7)
+│   └── public/              icons, offline.html, sw-push.js (imported into the generated service worker)
 ├── docker/                  api.Dockerfile, caddy.Dockerfile, Caddyfile
 ├── deploy/                  install.sh, update.sh, healthcheck.sh, backup/
 ├── scripts/                 dev-api.sh, smoke.sh, check-i18n.mjs, ui-check.mjs
 ├── .github/workflows/       ci.yml, deploy.yml, backup.yml
-├── docs/                    roadmap.md, stage-1 … stage-6.md, screenshots/
+├── docs/                    roadmap.md, stage-1 … stage-7.md, screenshots/
 ├── docker-compose.yml       postgres + api + caddy (production)
 ├── docker-compose.dev.yml   overlay: published postgres, api with reload
 └── Makefile                 every developer shortcut
@@ -389,13 +390,14 @@ place. New library rows are **unverified** until the owner taps *Подтвер�
 ## Testing
 
 ```bash
-# backend: 920+ tests — calorie math, food search & ranking (incl. the 150 ms
+# backend: 990+ tests — calorie math, food search & ranking (incl. the 150 ms
 # budget on a 50k-row library), importers (seed/USDA/OFF), live barcode fallback
 # (mocked), meal logging, recipes, day boundaries, recurrence, tokens/devices,
 # AI logging (fake provider + every adapter behind httpx.MockTransport), training
 # (search, templates, plan, idempotent sets, records, burned kcal, bounds), health
 # ingest, the planner (tasks, repeats across DST, reminders, views, PARA, timer
-# races, journal) and 670 quick-add parser cases (ru + en)
+# races, journal), 670 quick-add parser cases (ru + en) and web push (a real
+# aes128gcm round-trip, VAPID, the dispatcher's quiet hours and races, SSRF guards)
 cd api
 TEST_DATABASE_URL=postgresql+psycopg://postgres:postgres@127.0.0.1:5432/dsos_test \
   SECRET_KEY=test-secret-key-please-change-0123456789 .venv/bin/pytest -q
@@ -810,5 +812,6 @@ dashboard) is delivered — see `docs/stage-2.md` — and stage 2b closed its ga
 budget) — see `docs/stage-2b.md`. Stage 3 (AI photo/text logging, barcode
 scanning, `docs/stage-3.md`), stage 4 (training, `docs/stage-4.md`) and stage 5
 (health ingest: the iOS Shortcut, steps, weight, sleep — `docs/stage-5.md`) and
-stage 6 (the planner — `docs/stage-6.md`) are delivered; stage 7 (web push
-notifications) is next.
+stage 6 (the planner — `docs/stage-6.md`) and stage 7 (web push notifications
+— `docs/stage-7.md`) are delivered; stage 8 (gamification, charts, data export)
+is next.
