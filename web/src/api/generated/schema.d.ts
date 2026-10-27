@@ -1786,7 +1786,11 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Send a test notification to your devices now (ignores quiet hours and categories) */
+        /**
+         * Send a test notification to your devices now (ignores quiet hours and categories)
+         * @description Answers within the push sender's deadline (``SEND_DEADLINE_SECONDS``) whatever the
+         *     push services do; nothing stays locked meanwhile.
+         */
         post: operations["test_api_v1_push_test_post"];
         delete?: never;
         options?: never;
