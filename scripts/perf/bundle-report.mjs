@@ -20,7 +20,8 @@
  * Usage:
  *   node scripts/perf/bundle-report.mjs [--json out.json] [--check] [--top 25]
  *     --check   exit 1 when the main chunk is above its budget (MAIN_BUDGET_KB, default 300)
- *               or when the start-up JS contains Recharts or src/features/stats code
+ *               or when the start-up JS contains Recharts, src/features/stats code or
+ *               framer-motion's animation features
  */
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -39,8 +40,14 @@ const option = (name, fallback) => {
 const TOP = Number(option('--top', '25'))
 const JSON_OUT = option('--json', '') ? resolve(option('--json', '')) : '' // before the chdir below
 const MAIN_BUDGET = Number(process.env.MAIN_BUDGET_KB ?? 300) * 1000
-// never in the start-up JS: the charts library and the stats dashboards are a lazy chunk
-const FORBIDDEN_AT_START = [/^recharts$/, /^d3-/, /^victory-vendor$/, /^src\/features\/stats(\/|$)/]
+// never in the start-up JS (module paths relative to web/): the charts library and the
+// stats dashboards are a lazy chunk; framer-motion's animation features load lazily
+// (src/lib/motion.tsx) — a `motion.*` component anywhere at start would pull them back
+const FORBIDDEN_AT_START = [
+  /^node_modules\/(recharts|victory-vendor|d3-[a-z-]+)\//,
+  /^src\/features\/stats\//,
+  /^node_modules\/framer-motion\/dist\/es\/(motion\/features\/(animations|gestures|drag|layout)|render\/dom\/features-(max|animation))\b/,
+]
 
 const { build } = await import(pathToFileURL(join(WEB, 'node_modules/vite/dist/node/index.js')).href)
 const esbuild = await import(pathToFileURL(join(WEB, 'node_modules/esbuild/lib/main.js')).href)
@@ -236,8 +243,7 @@ if (flag('--check')) {
   if (mainChunk.raw > MAIN_BUDGET) problems.push(`main chunk ${kb(mainChunk.raw)} > budget ${kb(MAIN_BUDGET)}`)
   for (const chunk of start) {
     for (const module of chunk.modules) {
-      const key = module.pkg === '(app)' ? module.folder : module.pkg
-      if (FORBIDDEN_AT_START.some((pattern) => pattern.test(key))) {
+      if (FORBIDDEN_AT_START.some((pattern) => pattern.test(module.file))) {
         problems.push(`${module.file} is loaded at start (${chunk.file})`)
       }
     }
@@ -246,5 +252,5 @@ if (flag('--check')) {
     console.log(`\nCHECK FAILED\n  ${[...new Set(problems)].slice(0, 20).join('\n  ')}`)
     process.exit(1)
   }
-  console.log(`\ncheck ok: main chunk ≤ ${kb(MAIN_BUDGET)}, no charts/stats code at start`)
+  console.log(`\ncheck ok: main chunk ≤ ${kb(MAIN_BUDGET)}; no charts, stats or motion features at start`)
 }
