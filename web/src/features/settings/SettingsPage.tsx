@@ -14,6 +14,7 @@ import {
   IconKey,
   IconPalette,
   IconPhone,
+  IconRefresh,
   IconUser,
 } from '@/components/ui/icons'
 import { useAuth } from '@/features/auth/AuthProvider'
@@ -30,6 +31,7 @@ export function SettingsPage() {
     { to: '/settings/shortcut', icon: <IconFootprints size={18} />, label: t('settings.sections.shortcut'), hint: t('settings.shortcut_hint') },
     { to: '/settings/tokens', icon: <IconKey size={18} />, label: t('settings.sections.tokens') },
     { to: '/settings/data', icon: <IconGlobe size={18} />, label: t('settings.sections.data') },
+    { to: '/settings/integrations', icon: <IconRefresh size={18} />, label: t('settings.sections.integrations'), hint: t('settings.integrations_hint') },
   ]
 
   return (

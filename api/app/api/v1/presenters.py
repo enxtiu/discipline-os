@@ -60,6 +60,15 @@ from app.schemas.health import (
     WeightOut,
     WeightSeriesOut,
 )
+from app.schemas.integrations import (
+    IntegrationPageOut,
+    IntegrationSummaryOut,
+    NotionIntegrationOut,
+    NotionKindCountsOut,
+    NotionKindOut,
+    NotionSyncOut,
+    NotionTotalsOut,
+)
 from app.schemas.notifications import (
     NotificationOut,
     NotificationPrefsOut,
@@ -148,6 +157,8 @@ from app.services.gamification.quests import QuestView
 from app.services.gamification.score import Component, DayScore
 from app.services.gamification.streaks import StreakState
 from app.services.notifications import Prefs
+from app.services.notion import sync as notion_sync
+from app.services.notion.client import NOTION_VERSION
 from app.services.planner import recur as planner_recur
 from app.services.planner.common import Clock as PlannerClock
 from app.services.planner.common import RefTuple, minutes
@@ -1337,4 +1348,110 @@ def progress_stats_out(series: stats_service.ProgressSeries) -> ProgressStatsOut
         scores=[ScorePointOut(date=day.day, score=day.score) for day in series.days],
         xp=[XpPointOut(date=day.day, xp=day.xp) for day in series.days],
         streak_calendar=[StreakDayOut(date=day.day, overall=day.overall, freeze=day.freeze) for day in series.days],
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Stage 9 — integrations (Notion). The secret is never part of a response.
+# --------------------------------------------------------------------------- #
+_NOTION_HOSTS = ("notion.so", "notion.site", "notion.com")
+_COUNT_KEYS = ("created", "updated", "trashed", "unchanged", "failed", "pending", "total")
+
+
+def _notion_url(url: Any, object_id: Any) -> str | None:
+    """Notion's own https link for the object, or one built from its id."""
+    if isinstance(url, str) and url.startswith("https://") and len(url) <= 2000:
+        from urllib.parse import urlsplit
+
+        host = (urlsplit(url).hostname or "").lower()
+        if any(host == name or host.endswith(f".{name}") for name in _NOTION_HOSTS):
+            return url
+    if isinstance(object_id, str) and object_id:
+        return f"https://www.notion.so/{object_id.replace('-', '')}"
+    return None
+
+
+def _ints(source: Any) -> dict[str, int]:
+    data = source if isinstance(source, dict) else {}
+    return {key: int(data.get(key) or 0) for key in _COUNT_KEYS}
+
+
+def _notion_running_row(row: Any) -> bool:
+    return (
+        row is not None
+        and row.run_started_at is not None
+        and (row.run_finished_at is None or row.run_finished_at < row.run_started_at)
+    )
+
+
+def notion_integration_out(row: Any, *, lock_held: bool, interval_minutes: int) -> NotionIntegrationOut:
+    """The Notion card. ``lock_held``: a run holds the user's sync lock right now — a row
+    that says "running" without it was interrupted (e.g. a restart)."""
+    active = notion_sync.is_active(row)
+    config = (row.config if row is not None else None) or {}
+    counts = (row.counts if row is not None else None) or {}
+    databases = config.get("databases") if active and isinstance(config.get("databases"), dict) else {}
+    enabled = set(notion_sync.enabled_kinds(row)) if active else set()
+    last_kinds = counts.get("kinds") if isinstance(counts.get("kinds"), dict) else {}
+    kinds: list[NotionKindOut] = []
+    for kind in notion_sync.KINDS:
+        database = databases.get(kind) if isinstance(databases.get(kind), dict) else None
+        state = "none" if not database else ("ok" if database.get("state") == "ok" else "missing")
+        last = last_kinds.get(kind)
+        url = _notion_url(database.get("url"), database.get("database_id")) if database and state == "ok" else None
+        kinds.append(
+            NotionKindOut(
+                kind=kind,
+                enabled=kind in enabled,
+                database=state,
+                url=url,
+                last_run=NotionKindCountsOut(**_ints(last), state=str(last.get("state") or "ok"))
+                if isinstance(last, dict)
+                else None,
+            )
+        )
+    running_row = active and _notion_running_row(row)
+    running = running_row and lock_held
+    result = counts.get("result") if counts.get("result") in ("ok", "partial", "error") else None
+    if running_row and not lock_held:
+        result = "interrupted"
+    page = config.get("page") if isinstance(config.get("page"), dict) else None
+    bot = config.get("bot") if isinstance(config.get("bot"), dict) else {}
+    page_url = _notion_url(page.get("url"), page.get("id")) if page else None
+    return NotionIntegrationOut(
+        status=row.status if row is not None else "disconnected",
+        connected=active,
+        secret_set=bool(row is not None and row.secret_encrypted),
+        bot_name=bot.get("name") if active else None,
+        workspace_name=bot.get("workspace") if active else None,
+        page=IntegrationPageOut(id=str(page.get("id")), title=page.get("title"), url=page_url)
+        if active and page and page_url
+        else None,
+        kinds=kinds,
+        sync=NotionSyncOut(
+            state="running" if running else "idle",
+            run_id=row.run_id if active and row is not None else None,
+            started_at=_utc(row.run_started_at) if active and row is not None else None,
+            finished_at=_utc(row.run_finished_at) if active and row is not None else None,
+            last_sync_at=_utc(row.last_sync_at) if active and row is not None else None,
+            result=result if active else None,
+            error=(counts.get("error") if isinstance(counts.get("error"), str) else None) if active else None,
+            error_kind=counts.get("error_kind") if active and counts.get("error_kind") in notion_sync.KINDS else None,
+            totals=NotionTotalsOut(**_ints(counts.get("totals"))) if active and counts.get("totals") else None,
+            requests=int(counts.get("requests") or 0) if active else 0,
+        ),
+        error=row.last_error if active and row is not None and row.status == "error" else None,
+        notion_version=NOTION_VERSION,
+        interval_minutes=interval_minutes,
+    )
+
+
+def integration_summary_out(row: Any) -> IntegrationSummaryOut:
+    active = notion_sync.is_active(row)
+    return IntegrationSummaryOut(
+        provider="notion",
+        status=row.status if row is not None else "disconnected",
+        connected=active,
+        last_sync_at=_utc(row.last_sync_at) if active and row is not None else None,
+        error=row.last_error if active and row is not None and row.status == "error" else None,
     )

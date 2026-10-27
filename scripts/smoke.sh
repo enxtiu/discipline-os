@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# End-to-end smoke test against a running API (stages 1–8).
+# End-to-end smoke test against a running API (stages 1–9).
 #
 #   API_BASE=http://127.0.0.1:8000/api scripts/smoke.sh VKT6-S6D5
 #
@@ -475,11 +475,24 @@ PY
 rm -rf "$EXPORT_DIR"
 pass "$GAME · a stats week of 7 days without burned calories · JSON, CSV (BOM) and a signed backup with a matching checksum, no secrets"
 
-step "18. device self-revoke (cleanup)"
+step "18. Notion (stage 9): the card answers without Notion, a malformed secret is refused before any request"
+split "$(api GET /v1/integrations/notion '' "$TOKEN")"
+[[ "$STATUS" == "200" ]] || fail "GET /integrations/notion returned $STATUS: $BODY"
+[[ "$(parse "$BODY" "sorted(k for k in d if 'secret' in k)")" == "['secret_set']" ]] \
+  || fail "the Notion card exposes more than secret_set: $BODY"
+NOTION_CONNECTED="$(parse "$BODY" "d['connected']")"
+split "$(api POST /v1/integrations/notion/connect '{"secret":"not a secret","page":"https://example.com/x"}' "$TOKEN")"
+[[ "$STATUS" == "422" && "$(parse "$BODY" "d['error']['code']")" == "notion_secret_invalid" ]] \
+  || fail "a malformed secret was not refused locally ($STATUS): $BODY"
+split "$(api GET /v1/integrations/notion '' "$TOKEN")"
+[[ "$(parse "$BODY" "d['connected']")" == "$NOTION_CONNECTED" ]] || fail "a refused connect changed the connection"
+pass "card ok (connected=$NOTION_CONNECTED, no secret in it) · malformed secret → 422 notion_secret_invalid, nothing changed"
+
+step "19. device self-revoke (cleanup)"
 split "$(api DELETE "/v1/devices/$DEVICE_ID" '' "$TOKEN")"
 [[ "$STATUS" == "200" ]] || fail "device revoke returned $STATUS: $BODY"
 split "$(api GET /v1/auth/session '' "$TOKEN")"
 [[ "$STATUS" == "401" ]] || fail "a revoked device token still works ($STATUS)"
 pass "smoke device revoked, its token is dead"
 
-printf '\n\033[32mAll smoke checks passed (stages 1–8).\033[0m\n'
+printf '\n\033[32mAll smoke checks passed (stages 1–9).\033[0m\n'
