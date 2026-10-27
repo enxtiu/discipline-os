@@ -14,7 +14,8 @@ Two scheduler jobs (registered in ``app/services/hooks.py``):
 Smart reminders re-check their condition **at send time**, so nobody gets a
 pointless nudge: meal (nothing logged in the window), water (behind the
 pro-rata share of the target), workout (planned today, not started), evening
-review (no journal entry yet). Meal reminders are about *logging*: no message
+review (no journal entry yet), streak at risk (stage 8: a streak of ≥ 3 days/weeks
+not counted yet today, after 18:00). Meal reminders are about *logging*: no message
 ever suggests eating less or praises skipping a meal (see ``MESSAGES``).
 """
 
@@ -78,6 +79,7 @@ DEFAULT_MEAL_TIMES: tuple[str, ...] = ("13:00", "19:30")
 DEFAULT_WATER_TIMES: tuple[str, ...] = ("12:00", "16:00", "20:00")
 DEFAULT_WORKOUT_TIME = "18:00"
 DEFAULT_EVENING_REVIEW_TIME = "21:30"
+STREAK_REMINDER_TIME = "20:00"  # stage 8: streaks are "at risk" from 18:00; one evening nudge
 
 STALE_AFTER = timedelta(minutes=60)  # a reminder more than an hour late is dropped, not sent
 MAX_ATTEMPTS = 3  # transient push failures are retried on the next runs, then `failed`
@@ -130,6 +132,24 @@ MESSAGES: dict[str, dict[str, str]] = {
         "review.body": "Как прошёл день? Заполните итоги",
         "test.title": "Проверка уведомлений",
         "test.body": "Всё работает: уведомления приходят на это устройство",
+        "streak.title": "Сохраните серию",
+        "streak.one": "{name}: {count} подряд — сегодня ещё не засчитано",
+        "streak.one_week": "{name}: {count} подряд — эта неделя ещё не засчитана",
+        "streak.many": "{names} — сегодня ещё не засчитано",
+        "streak.generic": "Серия ждёт сегодняшней отметки",
+        "streak.overall": "Счёт дня",
+        "streak.meal_logging": "Дневник питания",
+        "streak.water": "Вода",
+        "streak.steps": "Шаги",
+        "streak.tasks": "Задачи",
+        "streak.review": "Итоги дня",
+        "streak.workout": "Тренировки",
+        "unit.day.one": "{n} день",
+        "unit.day.few": "{n} дня",
+        "unit.day.many": "{n} дней",
+        "unit.week.one": "{n} неделя",
+        "unit.week.few": "{n} недели",
+        "unit.week.many": "{n} недель",
     },
     "en": {
         "task.now": "Now",
@@ -158,6 +178,24 @@ MESSAGES: dict[str, dict[str, str]] = {
         "review.body": "How did your day go? Fill in your review",
         "test.title": "Test notification",
         "test.body": "It works: notifications reach this device",
+        "streak.title": "Keep your streak",
+        "streak.one": "{name}: {count} in a row — today isn't counted yet",
+        "streak.one_week": "{name}: {count} in a row — this week isn't counted yet",
+        "streak.many": "{names} — not counted yet today",
+        "streak.generic": "Your streak is waiting for today",
+        "streak.overall": "Daily score",
+        "streak.meal_logging": "Food log",
+        "streak.water": "Water",
+        "streak.steps": "Steps",
+        "streak.tasks": "Tasks",
+        "streak.review": "Daily review",
+        "streak.workout": "Workouts",
+        "unit.day.one": "{n} day",
+        "unit.day.few": "{n} days",
+        "unit.day.many": "{n} days",
+        "unit.week.one": "{n} week",
+        "unit.week.few": "{n} weeks",
+        "unit.week.many": "{n} weeks",
     },
 }
 MONTHS = {
@@ -428,6 +466,54 @@ def test_message(lang: str) -> push.PushMessage:
     )
 
 
+STREAK_URLS: dict[str, str] = {
+    "overall": "/today",
+    "meal_logging": "/food?action=search",
+    "water": "/today",
+    "steps": "/today?action=steps",
+    "tasks": "/plan",
+    "review": "/plan/journal",
+    "workout": "/train",
+}
+STREAKS_LISTED = 3
+
+
+def _plural(n: int) -> str:
+    """Russian plural form (1 день · 2 дня · 5 дней · 21 день); English uses one/many."""
+    if n % 10 == 1 and n % 100 != 11:
+        return "one"
+    if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14:
+        return "few"
+    return "many"
+
+
+def _count_label(n: int, unit: str, lang: str) -> str:
+    form = _plural(n) if lang == "ru" else ("one" if n == 1 else "many")
+    return _t(lang, f"unit.{unit}.{form}", n=n)
+
+
+def streak_message(lang: str, streaks: list[Any]) -> push.PushMessage:
+    """Evening reminder for streaks at risk (``kind``, ``current``, ``unit``): about the
+    streak only — never about food amounts."""
+    top = streaks[0]
+    if len(streaks) == 1:
+        key = "streak.one_week" if top.unit == "week" else "streak.one"
+        body = _t(lang, key, name=_t(lang, f"streak.{top.kind.value}"), count=_count_label(top.current, top.unit, lang))
+    else:
+        names = ", ".join(
+            f"{_t(lang, f'streak.{item.kind.value}')} ({_count_label(item.current, item.unit, lang)})"
+            for item in streaks[:STREAKS_LISTED]
+        )
+        body = _t(lang, "streak.many", names=names)
+    return push.PushMessage(
+        title=_t(lang, "streak.title"),
+        body=body,
+        url=STREAK_URLS.get(top.kind.value, "/today"),
+        tag="streak",
+        kind="streak",
+    )
+
+
 def _generic_text(kind: ReminderKind, lang: str) -> tuple[str, str]:
     """Title/body stored on a planned smart reminder (history shows them if it is never sent)."""
     return {
@@ -435,6 +521,7 @@ def _generic_text(kind: ReminderKind, lang: str) -> tuple[str, str]:
         ReminderKind.WATER: (_t(lang, "water.title"), _t(lang, "water.generic")),
         ReminderKind.WORKOUT: (_t(lang, "workout.title"), _t(lang, "workout.generic")),
         ReminderKind.EVENING_REVIEW: (_t(lang, "review.title"), _t(lang, "review.body")),
+        ReminderKind.STREAK: (_t(lang, "streak.title"), _t(lang, "streak.generic")),
     }.get(kind, (_t(lang, "task.plain"), ""))
 
 
@@ -458,6 +545,8 @@ def configured_slots(kind: ReminderKind, prefs: Prefs) -> tuple[str, ...]:
         return (prefs.workout_time,)
     if kind is ReminderKind.EVENING_REVIEW:
         return (prefs.evening_review_time,)
+    if kind is ReminderKind.STREAK:
+        return (STREAK_REMINDER_TIME,)
     return ()
 
 
@@ -589,8 +678,13 @@ async def _build_review(
 async def _build_streak(
     db: AsyncSession, row: Reminder, ctx: UserContext, day: date, slot: str
 ) -> push.PushMessage | None:
-    """Stage 8 adds the streak rule (and the planner slot); until then nothing is sent."""
-    return None
+    """Stage 8: only streaks of ≥ 3 whose today's (this week's) condition is not met yet
+    and that are at risk now (after 18:00 local). The message names the streak — never
+    food amounts, never "eat less"."""
+    from app.services.gamification.streaks import NOTIFY_MIN_STREAK, at_risk
+
+    risky = await at_risk(db, ctx.user_id, ctx.now, min_count=NOTIFY_MIN_STREAK)
+    return streak_message(ctx.lang, risky) if risky else None
 
 
 SMART_BUILDERS: dict[ReminderKind, SmartBuilder] = {
@@ -766,7 +860,7 @@ async def process_reminder(db: AsyncSession, reminder_id: uuid.UUID, now: dateti
         display = task_message(task, now=now, tz=ctx.tz, lang=ctx.lang)
     elif smart:
         slot = _slot_of(row)
-        if slot is not None and configured_slots(row.kind, ctx.prefs):  # streak (stage 8) has no slots yet
+        if slot is not None and configured_slots(row.kind, ctx.prefs):
             if slot[1] not in configured_slots(row.kind, ctx.prefs):
                 return _close(row, ReminderStatus.CANCELLED, "prefs_changed")
             expected = local_instant(slot[0], _hhmm(slot[1]), ctx.tz)
@@ -903,6 +997,11 @@ async def wanted_slots(db: AsyncSession, ctx: UserContext, day: date) -> list[tu
         slots.append((ReminderKind.WORKOUT, f"workout:{day.isoformat()}", prefs.workout_time))
     if prefs.evening_review:
         slots.append((ReminderKind.EVENING_REVIEW, f"evening_review:{day.isoformat()}", prefs.evening_review_time))
+    if prefs.streak_at_risk:
+        from app.services.gamification.streaks import NOTIFY_MIN_STREAK, has_streak
+
+        if await has_streak(db, ctx.user_id, NOTIFY_MIN_STREAK):  # nothing to protect → no row
+            slots.append((ReminderKind.STREAK, f"streak:{day.isoformat()}", STREAK_REMINDER_TIME))
     return slots
 
 
