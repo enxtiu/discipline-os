@@ -1135,3 +1135,72 @@ async def test_the_secret_never_appears_in_responses_or_logs(
     from app.services.notion.client import NotionClient
 
     assert SECRET not in repr(NotionClient(SECRET))
+
+
+async def test_an_answer_without_a_usable_id_is_looked_up_next_time(authed, user_id, fake, db) -> None:
+    ids = await seed(db, user_id)
+    await connected(authed, fake)
+    original = fake._create_page
+
+    def no_id(token, body):
+        page = original(token, body)
+        return {**page, "id": "not-an-id"}
+
+    fake._create_page = no_id  # type: ignore[method-assign]
+    report = await sync_now(user_id)
+    assert report.totals()["created"] == 0 and report.totals()["pending"] > 0
+    fake._create_page = original  # type: ignore[method-assign]
+    count = len(fake.calls("POST", "/pages"))
+    report = await sync_now(user_id)
+    assert report.result == "ok" and report.totals()["pending"] == 0
+    assert len(fake.calls("POST", "/pages")) == count  # every page was found by its ID, none created again
+    assert fake.find("Задачи", ids["task"]) and fake.find("Итоги дня", TODAY.isoformat())
+
+
+async def test_an_unexpected_failure_ends_the_run_with_an_error(authed, user_id, fake, db, monkeypatch) -> None:
+    from app.services.notion import mapping
+
+    await connected(authed, fake)
+
+    async def broken(*_args, **_kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(mapping, "rows_for", broken)
+    report = await sync_now(user_id)
+    assert report.result == "error" and report.error == "notion_error"
+    card = (await authed.get(N)).json()
+    assert card["sync"]["state"] == "idle" and card["sync"]["result"] == "error"
+    assert card["sync"]["error"] == "notion_error" and card["status"] == "connected"
+
+
+async def test_control_characters_never_reach_notion(authed, user_id, fake, db) -> None:
+    from app.services.notion.mapping import split_text
+
+    assert split_text("a\x07b\x1bc\nd\te\x7f") == ["abc\nd\te"]
+    task = Task(
+        user_id=user_id, title="Звонок\x07 маме", status=TaskStatus.OPEN, priority=3, notes_md="x\x1b[31mred\x0b"
+    )
+    db.add(task)
+    await db.commit()
+    task_id = str(task.id)
+    await connected(authed, fake)
+    report = await sync_now(user_id)
+    assert report.kinds["tasks"].failed == 0
+    page = fake.find("Задачи", task_id)
+    assert fake.value(page, "Задача") == "Звонок маме" and fake.value(page, "Заметки") == "x[31mred"
+
+
+async def test_a_new_secret_during_a_run_does_not_show_an_interrupted_run(authed, user_id, fake, db) -> None:
+    from app.services.notion import sync
+
+    card = await connect(authed, fake)
+    lock = await sync.RunLock.acquire(user_id)
+    row = await integration(db, user_id)
+    row.run_id, row.run_started_at, row.run_finished_at = uuid.uuid4(), NOON, None
+    await db.commit()
+    fake.add_token(OTHER_SECRET)
+    fake.tokens[OTHER_SECRET]["shared"].add(card["page"]["id"])
+    response = await authed.post(f"{N}/connect", json={"secret": OTHER_SECRET, "page": card["page"]["id"]})
+    assert response.status_code == 201
+    await lock.release()
+    assert (await authed.get(N)).json()["sync"]["result"] != "interrupted"

@@ -280,6 +280,15 @@ class Cancelled(Exception):
     """The connection changed (disconnect, a new connect) while a run was in flight."""
 
 
+def _object_id(obj: Any) -> str:
+    """The id of an object Notion returned, normalised — an answer without a usable id is
+    treated like no answer (the next run looks the row up)."""
+    try:
+        return norm_id(str(obj["id"]))
+    except (KeyError, TypeError, ValueError):
+        raise NotionUncertain("Notion answered without a usable id") from None
+
+
 def _app_error(exc: NotionError, *, page_stage: bool = False) -> AppError:
     """A Notion failure → the API error the app translates (never Notion's own text)."""
     if isinstance(exc, NotionUnauthorized):
@@ -342,6 +351,8 @@ async def connect(db: AsyncSession, *, user_id: uuid.UUID, secret_raw: str, page
         row.counts = {}
         row.last_sync_at = None
         row.run_id = row.run_started_at = row.run_finished_at = None
+    elif row.run_started_at is not None and (row.run_finished_at is None or row.run_finished_at < row.run_started_at):
+        row.run_finished_at = utcnow()  # a run in flight stops at its next write (new generation)
     row.config = {
         "page": {"id": page_id, "title": page_title(page), "url": page.get("url")},
         "bot": {
@@ -456,10 +467,11 @@ class Schema:
             if not exc.committed_id:
                 raise
             created = await self.client.retrieve_database(exc.committed_id)  # Notion saved it after all
+        database_id = _object_id(created)
         sources = created.get("data_sources") or []
-        if not sources or not isinstance(sources[0], dict) or not sources[0].get("id"):
+        if not sources or not isinstance(sources[0], dict):
             raise NotionUnavailable("the new database has no data source")
-        data_source_id = norm_id(str(sources[0]["id"]))
+        data_source_id = _object_id(sources[0])
         data_source = await self.client.retrieve_data_source(data_source_id)
         by_name = self._ids_by_name(data_source)
         props: dict[str, str] = {}
@@ -468,7 +480,7 @@ class Schema:
             if found is not None and (prop.type != "relation" or prop.key in relations):
                 props[prop.key] = found[0]
         self.databases[kind] = {
-            "database_id": norm_id(str(created["id"])),
+            "database_id": database_id,
             "data_source_id": data_source_id,
             "url": created.get("url"),
             "lang": lang,
@@ -975,11 +987,13 @@ class Engine:
             )
         except (NotionNotFound, NotionForbidden):
             await self._missing(kind)
-        ids = [
-            norm_id(str(item["id"]))
-            for item in found.get("results") or []
-            if isinstance(item, dict) and item.get("id") and not item.get("in_trash")
-        ]
+        ids: list[str] = []
+        for item in found.get("results") or []:
+            if isinstance(item, dict) and not item.get("in_trash"):
+                try:
+                    ids.append(_object_id(item))
+                except NotionUncertain:
+                    continue
         for duplicate in ids[1:]:
             await self.client.update_page(duplicate, in_trash=True)
         return ids[0] if ids else None
@@ -1007,12 +1021,15 @@ class Engine:
         for attempt in (1, 2):
             try:
                 page = await self.client.create_page(database["data_source_id"], payload)
-                page_id = str(page["id"])
+                page_id = _object_id(page)
                 break
             except NotionUncertain as exc:
                 if exc.committed_id:  # Notion said it saved the page
-                    page_id = exc.committed_id
-                    break
+                    try:
+                        page_id = norm_id(exc.committed_id)
+                        break
+                    except ValueError:
+                        pass
                 counts.pending += 1  # stays announced: the next run looks it up
                 return
             except NotionValidation:
@@ -1034,7 +1051,6 @@ class Engine:
                 await self._write(entity_type, row.entity_id, drop=True)
                 raise
         assert page_id is not None
-        page_id = norm_id(page_id)
         await self._write(entity_type, row.entity_id, external_id=page_id, content_hash=digest)
         self.pages.setdefault(kind, {})[row.entity_id] = page_id
         counts.created += 1
@@ -1210,6 +1226,9 @@ async def _run_locked(user_id: uuid.UUID, run_id: uuid.UUID, budget: int | None)
         except NotionError as exc:
             report.result = "error"
             report.error = "notion_unavailable" if isinstance(exc, NotionUnavailable) else exc.code
+        except Exception as exc:  # a bug or the database: logged, and the card says the run failed
+            log.exception("notion_sync_crashed", error=type(exc).__name__)
+            report.result, report.error = "error", "notion_error"
         finally:
             report.requests = client.requests
         for counts in report.kinds.values():

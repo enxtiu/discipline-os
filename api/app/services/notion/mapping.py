@@ -70,9 +70,14 @@ def utf16_len(text: str) -> int:
     return sum(2 if ord(ch) > 0xFFFF else 1 for ch in text)
 
 
+_CONTROL: dict[int, None] = dict.fromkeys((*range(0x00, 0x09), 0x0B, 0x0C, *range(0x0E, 0x20), 0x7F))
+
+
 def split_text(text: str | None, *, limit: int = TEXT_LIMIT, max_chunks: int = NOTES_MAX_CHUNKS) -> list[str]:
     """``text`` as chunks of at most ``limit`` UTF-16 units (never splitting a
-    character); beyond ``max_chunks`` chunks the text is cut and ends with "…"."""
+    character); beyond ``max_chunks`` chunks the text is cut and ends with "…". Control
+    characters other than newlines and tabs are dropped."""
+    text = (text or "").translate(_CONTROL)
     if not text:
         return []
     chunks: list[str] = []
