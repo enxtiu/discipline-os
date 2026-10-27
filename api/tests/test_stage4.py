@@ -324,11 +324,23 @@ async def test_empty_finish_discard_and_validation(gym: httpx.AsyncClient) -> No
 
 
 async def test_quick_cardio_kcal_distance_record_and_budget(gym: httpx.AsyncClient) -> None:
+    from zoneinfo import ZoneInfo
+
     run = await _ex(gym, "Outdoor running")
     day_before = (await gym.get("/api/v1/nutrition/day")).json()
+    # Pin both sessions to the user's today: without started_at a run "just finished"
+    # at 00:10 started yesterday (sessions belong to their start day), so the test
+    # used to fail during the first half hour after local midnight.
+    today_local = datetime.now(ZoneInfo("Asia/Bangkok")).date().isoformat()
     first = await gym.post(
         f"{API}/workouts/quick",
-        json={"id": str(uuid.uuid4()), "exercise_id": run["id"], "duration_s": 1800, "distance_m": 5000},
+        json={
+            "id": str(uuid.uuid4()),
+            "exercise_id": run["id"],
+            "duration_s": 1800,
+            "distance_m": 5000,
+            "started_at": f"{today_local}T00:01:00",
+        },
     )
     assert first.status_code == 201, first.text
     body = first.json()
@@ -336,7 +348,13 @@ async def test_quick_cardio_kcal_distance_record_and_budget(gym: httpx.AsyncClie
     assert (body["status"], body["kcal_burned"], body["title"]) == ("completed", 352, "Бег на улице")
     second = await gym.post(
         f"{API}/workouts/quick",
-        json={"id": str(uuid.uuid4()), "exercise_id": run["id"], "duration_s": 1500, "distance_m": 5500},
+        json={
+            "id": str(uuid.uuid4()),
+            "exercise_id": run["id"],
+            "duration_s": 1500,
+            "distance_m": 5500,
+            "started_at": f"{today_local}T00:02:00",
+        },
     )
     assert [(r["kind"], r["value"]) for r in second.json()["records"]] == [("distance", 5500.0)]
 
