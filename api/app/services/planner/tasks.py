@@ -16,7 +16,13 @@
 * **Reminders.** Relative (``lead_minutes`` before the due time, the block start
   or 09:00 of the due day) or absolute (a local date and time); stored in
   ``reminders`` for the stage-7 scheduler. Closing a task cancels them,
-  reopening restores them.
+  reopening restores them. One that already fired (sent, suppressed, failed)
+  follows later edits — never twice, never lost: re-sending it, or moving its
+  time to another past instant, keeps it as it is; a time moved into the future
+  arms it again in a new row (new id and ``dedupe_key``, so the notifications
+  log stays unique), and the fired row stays — the log refers to it — marked
+  ``_rearmed``. An armed one moved back onto an instant it already fired at ends
+  suppressed. Removing an armed one deletes it; its fired rows never re-arm.
 * **Tags** are created on the fly and matched case-insensitively.
 """
 
@@ -311,6 +317,13 @@ async def set_task_tags(db: AsyncSession, user_id: uuid.UUID, task_id: uuid.UUID
 # Reminders
 # --------------------------------------------------------------------------- #
 ReminderKey = tuple[Any, ...]
+# The stage-7 dispatcher is done with a row in these states: it went out, or was dropped or failed for good.
+FIRED = (ReminderStatus.SENT, ReminderStatus.SUPPRESSED, ReminderStatus.FAILED)
+# ``payload`` key of a fired row whose reminder was armed again in a newer row (that row's id): history only.
+REARMED = "_rearmed"
+# ``last_error`` of an arming dropped because its reminder already fired at that very instant.
+ALREADY_FIRED = "already_fired"
+DEFINITION = ("lead_minutes", "date", "time")
 
 
 def reminder_defs(items: Iterable[Any]) -> list[dict[str, Any]]:
@@ -344,6 +357,11 @@ def _reminder_key(payload: dict[str, Any]) -> ReminderKey:
     return ("at", str(payload.get("date")), str(payload.get("time")))
 
 
+def _definition(payload: dict[str, Any] | None) -> dict[str, Any]:
+    """The reminder a row stores, without bookkeeping (``REARMED``, the stage-7 dispatcher's lease)."""
+    return {key: value for key, value in (payload or {}).items() if key in DEFINITION}
+
+
 def _no_anchor() -> Unprocessable:
     return Unprocessable("A reminder before the due time needs a due date or a block", code="invalid_reminder")
 
@@ -356,7 +374,10 @@ def remind_at(task: Task, payload: dict[str, Any], clock: Clock, anchor: datetim
     return clock.at(date.fromisoformat(payload["date"]), parse_hhmm(payload["time"]))
 
 
-def _reminder_row(task: Task, payload: dict[str, Any], at: datetime, status: ReminderStatus) -> dict[str, Any]:
+def _reminder_row(
+    task: Task, payload: dict[str, Any], at: datetime, status: ReminderStatus, last_error: str | None = None
+) -> dict[str, Any]:
+    """One arming of a reminder: a new id, hence a new ``dedupe_key`` (and a new notifications_log key)."""
     reminder_id = new_id()
     return {
         "id": reminder_id,
@@ -368,6 +389,7 @@ def _reminder_row(task: Task, payload: dict[str, Any], at: datetime, status: Rem
         "remind_at": at,
         "lead_minutes": int(payload.get("lead_minutes", 0)),
         "status": status,
+        "last_error": last_error,
         "dedupe_key": f"task:{task.id}:{reminder_id}",
     }
 
@@ -377,53 +399,115 @@ def _active_status(task: Task) -> ReminderStatus:
     return ReminderStatus.PENDING if is_open(task) else ReminderStatus.CANCELLED
 
 
+def _arming(task: Task, payload: dict[str, Any], at: datetime, fired_at: set[datetime]) -> dict[str, Any]:
+    """A new row arming a reminder — dropped from the start on an instant it already fired at."""
+    if at in fired_at:
+        return _reminder_row(task, payload, at, ReminderStatus.SUPPRESSED, ALREADY_FIRED)
+    return _reminder_row(task, payload, at, _active_status(task))
+
+
+async def _task_reminders(
+    db: AsyncSession, task: Task
+) -> tuple[dict[ReminderKey, Reminder], dict[ReminderKey, set[datetime]]]:
+    """Per reminder (definition): its live row — the armed one (pending; cancelled while the task is
+    closed), else the row it last fired from — and the instants it already fired at. Rows marked
+    ``REARMED`` are history; rows the dispatcher cancelled wait for a reopen, as before."""
+    state = _active_status(task)
+    rows = await db.scalars(
+        select(Reminder).where(Reminder.task_id == task.id, Reminder.user_id == task.user_id).order_by(Reminder.id)
+    )
+    live: dict[ReminderKey, Reminder] = {}
+    fired_at: dict[ReminderKey, set[datetime]] = {}
+    for row in rows:
+        key = _reminder_key(row.payload or {})
+        if row.status in FIRED:
+            fired_at.setdefault(key, set()).add(row.remind_at)
+            if REARMED in (row.payload or {}):
+                continue
+        elif row.status != state:
+            continue
+        if key not in live or live[key].status in FIRED:  # the armed row wins, else the latest that fired
+            live[key] = row
+    return live, fired_at
+
+
+def _follow(
+    task: Task, row: Reminder, at: datetime, fired_at: set[datetime], clock: Clock, armings: list[dict[str, Any]]
+) -> bool:
+    """A reminder's live row follows its new time ``at``; ``True`` when anything changed.
+
+    An armed row moves, unless ``at`` is an instant this reminder already fired at: then it ends as
+    suppressed (never sent twice). A fired row stays as it is while ``at`` is unchanged or past (or the
+    task is closed — the reopen recomputes); a future ``at`` arms the reminder again in a new row
+    (``armings``) and marks the fired row ``REARMED`` — it stays, the notifications log refers to it."""
+    if row.status in FIRED:
+        if at == row.remind_at or at <= clock.now or not is_open(task):
+            return False
+        arming = _arming(task, _definition(row.payload), at, fired_at)
+        row.payload = {**(row.payload or {}), REARMED: str(arming["id"])}
+        armings.append(arming)
+        return True
+    changed = row.remind_at != at
+    if at in fired_at:
+        row.status, row.last_error, changed = ReminderStatus.SUPPRESSED, ALREADY_FIRED, True
+    row.remind_at = at
+    row.title = task.title[:200]
+    return changed
+
+
 async def replace_reminders(db: AsyncSession, task: Task, defs: list[dict[str, Any]], clock: Clock) -> bool:
-    """The task's active reminders become exactly ``defs`` (sent ones stay as history);
-    ``True`` when anything changed."""
+    """The task's armed reminders become exactly ``defs``; ``True`` when anything changed.
+
+    A wanted reminder keeps its live row — armed, or the one it fired from — and follows the new time
+    (``_follow``): re-sending one that fired never arms it again for the same instant. An armed one no
+    longer wanted is deleted. Fired ones stay and follow the new time even when not listed: clients
+    send the pending ones only (``reminders`` replaces the pending ones)."""
     anchor = reminder_anchor(task, clock)
     if anchor is None and any("lead_minutes" in item for item in defs):
         raise _no_anchor()
-    state = _active_status(task)
-    current = (await db.scalars(select(Reminder).where(Reminder.task_id == task.id, Reminder.status == state))).all()
-    by_key = {_reminder_key(row.payload or {}): row for row in current}
+    live, fired_at = await _task_reminders(db, task)
     wanted = {_reminder_key(item): item for item in defs}
-    stale = [row.id for key, row in by_key.items() if key not in wanted]
+    stale = [row.id for key, row in live.items() if key not in wanted and row.status not in FIRED]
     if stale:
         await db.execute(delete(Reminder).where(Reminder.id.in_(stale)))
-    rows = []
     changed = bool(stale)
+    armings: list[dict[str, Any]] = []
+    for key, row in live.items():
+        if key in wanted or row.status in FIRED:
+            at = remind_at(task, row.payload or {}, clock, anchor)
+            if at is not None:  # a fired relative reminder without an anchor stays as it is
+                changed = _follow(task, row, at, fired_at.get(key, set()), clock, armings) or changed
     for key, payload in wanted.items():
-        at = remind_at(task, payload, clock, anchor)
-        assert at is not None  # checked above
-        if key in by_key:
-            changed = changed or by_key[key].remind_at != at
-            by_key[key].remind_at = at
-            by_key[key].title = task.title[:200]
-        else:
-            rows.append(_reminder_row(task, payload, at, state))
-    if rows:
+        if key not in live:
+            at = remind_at(task, payload, clock, anchor)
+            assert at is not None  # checked above
+            armings.append(_arming(task, payload, at, fired_at.get(key, set())))
+    if armings:
         changed = True
-        await db.execute(pg_insert(Reminder).values(rows))
+        await db.execute(pg_insert(Reminder).values(armings))
     await db.flush()
     return changed
 
 
 async def recompute_reminders(db: AsyncSession, task: Task, clock: Clock, *, strict: bool = True) -> None:
-    """After a due/block/title change: pending reminders follow (relative ones need an anchor)."""
-    pending = (
-        await db.scalars(select(Reminder).where(Reminder.task_id == task.id, Reminder.status == ReminderStatus.PENDING))
-    ).all()
-    if not pending:
+    """After a due/block/title change: every reminder follows (``_follow``; armed relative ones need an
+    anchor). A closed task's reminders wait for the reopen, which recomputes them."""
+    if not is_open(task):
+        return
+    live, fired_at = await _task_reminders(db, task)
+    if not live:
         return
     anchor = reminder_anchor(task, clock)
-    for row in pending:
+    armings: list[dict[str, Any]] = []
+    for key, row in live.items():
         at = remind_at(task, row.payload or {}, clock, anchor)
         if at is None:
-            if strict:
+            if strict and row.status not in FIRED:
                 raise _no_anchor()
             continue
-        row.remind_at = at
-        row.title = task.title[:200]
+        _follow(task, row, at, fired_at.get(key, set()), clock, armings)
+    if armings:
+        await db.execute(pg_insert(Reminder).values(armings))
     await db.flush()
 
 
@@ -437,8 +521,10 @@ async def _copy_reminders(
     out: list[dict[str, Any]] = []
     seen: set[tuple[uuid.UUID, ReminderKey]] = set()
     for row in rows:
+        if REARMED in (row.payload or {}):
+            continue  # history: the reminder lives on in a newer row
         target = tasks[sources[row.task_id]]
-        payload = dict(row.payload or {})
+        payload = _definition(row.payload)
         if "lead_minutes" not in payload and "date" in payload:
             shifted = date.fromisoformat(payload["date"]) + shift
             if shifted > LATEST_DATE:
