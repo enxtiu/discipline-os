@@ -544,6 +544,8 @@ export async function run(ctx) {
   } finally {
     // ---- clean up everything this run created ------------------------------------
     await setOffline(false)
+    // the next module starts from the dark theme even if a step above failed in light
+    await page.evaluate(() => window.localStorage.setItem('dsos.theme', 'dark')).catch(() => {})
     const sweep = async () => {
       const found = (await api(`${P}/search?q=${stamp}&include_done=true`)).body
       return found ?? { tasks: [], projects: [], areas: [], resources: [] }
