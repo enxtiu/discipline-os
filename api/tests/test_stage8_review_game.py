@@ -21,7 +21,7 @@ import os
 import subprocess
 import sys
 import uuid
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -50,6 +50,10 @@ from app.services.day_metrics import week_start_for
 from app.services.gamification import quests, score
 from app.services.gamification.context import build_context
 from app.services.planner.containers import week_start_for as planner_week_start_for
+from tests.stage7_helpers import (  # noqa: F401  (the stage-7 push doubles: fixtures vapid, push_service)
+    push_service_fixture,
+    vapid_fixture,
+)
 from tests.stage8_helpers import (
     NOON,
     TODAY,
@@ -877,3 +881,94 @@ async def test_cli_backfill_scores(owner, db) -> None:
     assert final == 128
     again = backfill_cli()
     assert again.returncode == 0 and f"{uid}: 0 day(s) finalised" in again.stdout
+
+
+# --------------------------------------------------------------------------- #
+# Note — the streak reminder slot avoids the quiet hours
+# --------------------------------------------------------------------------- #
+def test_the_streak_slot_is_the_first_minute_from_18_outside_the_quiet_hours() -> None:
+    from datetime import time
+
+    from app.services.notifications import QuietHours, streak_slot
+
+    def slot(enabled: bool, start: str, end: str) -> str | None:
+        return streak_slot(QuietHours(enabled, time.fromisoformat(start), time.fromisoformat(end)))
+
+    assert slot(False, "17:00", "23:00") == "18:00"  # quiet hours off
+    assert slot(True, "23:00", "07:00") == "18:00"  # the default night
+    assert slot(True, "19:00", "07:00") == "18:00"  # the reviewer's case: before, never sent
+    assert slot(True, "17:00", "19:30") == "19:30"
+    assert slot(True, "12:00", "18:01") == "18:01"
+    assert slot(True, "17:30", "23:59") == "23:59"
+    assert slot(True, "18:00", "07:00") is None  # the whole evening is quiet: no streak reminder
+    assert slot(True, "08:00", "08:00") == "18:00"  # equal bounds = no quiet hours
+
+
+@pytest.fixture
+async def pushing_owner(authed: httpx.AsyncClient, vapid, push_service, db) -> dict:
+    from app.models import Reminder
+    from tests.stage7_helpers import BrowserKeys, endpoint, subscribe
+
+    user_id = await owner_id(db)
+    await configure(db, user_id, quiet_hours_enabled=True, quiet_hours_start=time(19, 0), quiet_hours_end=time(7, 0))
+    keys = BrowserKeys.new()
+    url = endpoint("slot")
+    assert (await subscribe(authed, url, keys)).status_code == 201
+    await db.execute(sa.delete(Reminder))  # rows planned on subscribe (real clock) are not under test
+    await db.commit()
+    for back in range(1, 5):  # a meal-logging streak of 4 days, not counted today yet
+        await meal(db, user_id, TODAY - timedelta(days=back), 500)
+    await run(db, user_id, MORNING, ("days", "streaks"))
+    return {"user_id": user_id, "keys": keys, "url": url, "push": push_service}
+
+
+MORNING = datetime(2026, 7, 15, 1, 0, tzinfo=UTC)  # 08:00 in Bangkok
+
+
+async def streak_rows(db, user_id) -> dict[str, Any]:
+    from app.models import Reminder, ReminderKind
+
+    db.expire_all()
+    rows = (
+        await db.scalars(select(Reminder).where(Reminder.user_id == user_id, Reminder.kind == ReminderKind.STREAK))
+    ).all()
+    return {row.dedupe_key: (row.remind_at, row.payload.get("time"), row.status, row.last_error) for row in rows}
+
+
+async def test_quiet_evenings_still_get_the_streak_reminder(pushing_owner, db) -> None:
+    """Quiet hours 19:00–07:00 used to swallow the fixed 20:00 slot: the reminder now
+    comes at 18:00 (once a day, only for a streak of ≥ 3) and names the streak."""
+    from app.models import ReminderStatus
+    from app.services.notifications import plan_daily_reminders
+    from tests.stage7_helpers import dispatch
+    from tests.stage8_helpers import local
+
+    user_id, fake = pushing_owner["user_id"], pushing_owner["push"]
+    await plan_daily_reminders(MORNING)
+    await plan_daily_reminders(MORNING + timedelta(minutes=15))  # idempotent: one a day
+    assert await streak_rows(db, user_id) == {
+        "streak:2026-07-15": (local(TODAY, 18), "18:00", ReminderStatus.PENDING, None)
+    }
+    assert (await dispatch(local(TODAY, 18))).get("sent") == 1
+    payload = pushing_owner["keys"].decrypt(fake.to(pushing_owner["url"])[0].data)
+    assert payload["body"] == "Дневник питания: 4 дня подряд — сегодня ещё не засчитано"
+
+    await configure(db, user_id, quiet_hours_start=time(18, 0))  # the whole evening quiet now
+    await plan_daily_reminders(MORNING + timedelta(days=1))
+    assert "streak:2026-07-16" not in await streak_rows(db, user_id)
+
+
+async def test_a_streak_reminder_follows_quiet_hours_changed_after_planning(pushing_owner, db) -> None:
+    from app.models import ReminderStatus
+    from app.services.notifications import plan_daily_reminders
+    from tests.stage7_helpers import dispatch
+    from tests.stage8_helpers import local
+
+    user_id = pushing_owner["user_id"]
+    await plan_daily_reminders(MORNING)  # 18:00 (quiet from 19:00)
+    await configure(db, user_id, quiet_hours_start=time(17, 0), quiet_hours_end=time(19, 30))
+    assert (await dispatch(local(TODAY, 18))).get("rescheduled") == 1  # moved, not dropped as "prefs changed"
+    assert await streak_rows(db, user_id) == {
+        "streak:2026-07-15": (local(TODAY, 19, 30), "19:30", ReminderStatus.PENDING, None)
+    }
+    assert (await dispatch(local(TODAY, 19, 30))).get("sent") == 1
