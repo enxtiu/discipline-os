@@ -114,7 +114,11 @@ export function OnboardingWizard({ onDone }: { onDone: () => void }) {
             {step + 1} / 4
           </Badge>
           {step > 0 && (
-            <button type="button" className="text-sm muted" onClick={() => setStep((step - 1) as Step)}>
+            <button
+              type="button"
+              className="-my-3 -mr-3 min-h-tap rounded-xl px-3 text-sm muted"
+              onClick={() => setStep((step - 1) as Step)}
+            >
               {t('app.back')}
             </button>
           )}
@@ -342,7 +346,7 @@ export function OnboardingWizard({ onDone }: { onDone: () => void }) {
             {t('onboarding.complete')}
           </Button>
         )}
-        <button type="button" className="mt-3 w-full text-center text-xs muted" onClick={onDone}>
+        <button type="button" className="mt-1 min-h-tap w-full rounded-xl text-center text-xs muted" onClick={onDone}>
           {t('app.skip')}
         </button>
       </footer>

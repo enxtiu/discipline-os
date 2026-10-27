@@ -6,9 +6,12 @@
     "device_revoke": "Disconnect the device {{name}}",
     "token_revoke": "Revoke the token {{name}}",
     "open_time_log": "Open the time log",
-    "score_open_provisional": "Day score {{score}} of 100 {{provisional}} — what it is made of",
     "nothing_planned": "nothing planned",
-    "done": "done"
+    "done": "done",
+    "delete_meal": "Delete: {{name}}",
+    "nav_main": "App sections",
+    "score_before": "Day score",
+    "score_after": "— what it is made of"
   },
   "app": {
     "name": "DisciplineOS",

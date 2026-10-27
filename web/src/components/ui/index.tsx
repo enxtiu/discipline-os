@@ -163,7 +163,7 @@ export function IconButton({
       title={label}
       className={clsx(
         `btn-${variant}`,
-        'h-tap w-tap min-h-tap rounded-2xl p-0',
+        'h-tap w-tap min-h-tap shrink-0 rounded-2xl p-0',
         className,
       )}
       {...rest}
@@ -395,22 +395,27 @@ export function Toggle({
       aria-label={label}
       disabled={disabled}
       onClick={() => onChange(!checked)}
-      className={clsx(
-        'relative h-7 w-12 shrink-0 rounded-pill border transition-colors duration-200',
-        checked
-          ? 'border-transparent bg-[rgb(var(--accent))]'
-          : 'border-[rgb(var(--border))] bg-[rgb(var(--bg-sunken))]',
-        disabled && 'opacity-50',
-      )}
+      className="-mx-1 -my-2.5 inline-flex h-tap w-14 shrink-0 items-center justify-center rounded-2xl"
     >
-      <motion.span
-        layout
-        transition={{ type: 'spring', stiffness: 700, damping: 34 }}
+      <span
         className={clsx(
-          'absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-sm',
-          checked ? 'left-[1.55rem]' : 'left-0.5',
+          'relative h-7 w-12 shrink-0 rounded-pill border transition-colors duration-200',
+          checked
+            ? 'border-transparent bg-[rgb(var(--accent))]'
+            : 'border-[rgb(var(--border))] bg-[rgb(var(--bg-sunken))]',
+          disabled && 'opacity-50',
         )}
-      />
+        aria-hidden="true"
+      >
+        <motion.span
+          layout
+          transition={{ type: 'spring', stiffness: 700, damping: 34 }}
+          className={clsx(
+            'absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-sm',
+            checked ? 'left-[1.55rem]' : 'left-0.5',
+          )}
+        />
+      </span>
     </button>
   )
 }

@@ -541,7 +541,7 @@ function ExerciseCard({
   return (
     <Card className="space-y-3 p-3.5" data-testid="workout-exercise">
       <div className="flex items-start gap-2">
-        <button type="button" onClick={onOpenHistory} className="min-w-0 flex-1 text-left">
+        <button type="button" onClick={onOpenHistory} className="min-h-tap min-w-0 flex-1 text-left">
           <span className="block truncate text-[15px] font-semibold">{exerciseName(entry.exercise)}</span>
           {targetText && <span className="block text-xs muted">{t('train.target', { value: targetText })}</span>}
           {previous.length > 0 ? (

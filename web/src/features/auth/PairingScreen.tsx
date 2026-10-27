@@ -111,7 +111,8 @@ export function PairingScreen() {
           <button
             type="button"
             onClick={() => setShowAdvanced((value) => !value)}
-            className="mx-auto text-xs muted underline-offset-4 hover:underline"
+            aria-expanded={showAdvanced}
+            className="mx-auto -my-2 min-h-tap rounded-xl px-3 text-xs muted underline-offset-4 hover:underline"
           >
             {showAdvanced ? t('app.close') : `${t('auth.device_name')}: ${deviceName}`}
           </button>
@@ -132,7 +133,8 @@ export function PairingScreen() {
           <button
             type="button"
             onClick={() => setShowHelp((value) => !value)}
-            className="flex w-full items-center justify-between rounded-2xl border border-[rgb(var(--border))] px-4 py-3 text-left text-sm"
+            aria-expanded={showHelp}
+            className="flex min-h-tap w-full items-center justify-between rounded-2xl border border-[rgb(var(--border))] px-4 py-3 text-left text-sm"
           >
             <span className="flex items-center gap-2">
               <span className="text-[rgb(var(--text-muted))]">

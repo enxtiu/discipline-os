@@ -304,8 +304,8 @@ export function TodayPage() {
                   <span className="tnum shrink-0 text-sm">{number(meal.kcal)}</span>
                   <button
                     type="button"
-                    className="muted"
-                    aria-label={t('app.delete')}
+                    className="-my-3.5 -mr-3 flex h-tap w-tap shrink-0 items-center justify-center rounded-2xl muted"
+                    aria-label={t('a11y.delete_meal', { name: (meal.items ?? []).map((item) => item.name).join(', ') })}
                     onClick={() => deleteMeal.mutate(meal.id, { onError: (error) => toast.error(errorMessage(error)) })}
                   >
                     <IconTrash size={16} />

@@ -187,8 +187,9 @@
   .btn-danger {
     @apply btn border border-rose-500/40 bg-rose-500/10 text-rose-400 hover:bg-rose-500/20;
   }
+  /* compact text, still a 48 px target (stage 9: was 36 px) */
   .btn-sm {
-    @apply min-h-[2.25rem] rounded-xl px-3 text-sm;
+    @apply min-h-tap rounded-xl px-3 text-sm;
   }
 
   .input {
@@ -208,13 +209,18 @@
   .chip-active {
     @apply border-[rgb(var(--accent))]/50 bg-[rgb(var(--accent))]/10 text-[rgb(var(--accent))];
   }
+  /* a chip you can press is a 48 px target; label chips (spans) keep their size */
+  button.chip,
+  a.chip {
+    @apply min-h-tap min-w-tap justify-center;
+  }
 
   /* segmented control */
   .segmented {
     @apply flex gap-1 rounded-2xl border border-[rgb(var(--border))] bg-[rgb(var(--bg-sunken))] p-1;
   }
   .segmented > button {
-    @apply min-h-[2.5rem] flex-1 rounded-xl px-3 text-sm font-medium text-[rgb(var(--text-muted))]
+    @apply min-h-tap flex-1 rounded-xl px-3 text-sm font-medium text-[rgb(var(--text-muted))]
       transition-colors;
   }
   /* five or more options (meal types) must fit a 390 px screen */
@@ -286,12 +292,13 @@
   .chart-sleep {
     background-color: rgb(var(--chart-sleep));
   }
+  /* clear of the bar and of the quick-add button floating 3 rem above it (stage 9) */
   .above-tabbar {
-    bottom: calc(4.75rem + env(safe-area-inset-bottom, 0px));
+    bottom: calc(7rem + env(safe-area-inset-bottom, 0px));
   }
 
-  /* space for the fixed tab bar */
+  /* space for the fixed tab bar and the floating quick-add button */
   .pb-tabbar {
-    padding-bottom: calc(6.5rem + env(safe-area-inset-bottom, 0px));
+    padding-bottom: calc(7rem + env(safe-area-inset-bottom, 0px));
   }
 }

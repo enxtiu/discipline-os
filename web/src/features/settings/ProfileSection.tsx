@@ -277,7 +277,7 @@ export function ProfileSection() {
         onConfirm={setFloorConfirm}
       />
 
-      <div className="sticky bottom-20 z-10">
+      <div className="sticky bottom-28 z-10">
         <Button block loading={saveMutation.isPending} onClick={save}>
           {t('app.save')}
         </Button>

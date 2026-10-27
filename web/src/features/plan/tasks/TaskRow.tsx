@@ -177,7 +177,7 @@ export function TaskRow({ task, today, day, showContainer = true, children }: Ta
         <button
           type="button"
           onClick={() => openTask(task.id)}
-          className="min-w-0 flex-1 py-3 pr-4 text-left transition-colors active:bg-[rgb(var(--border))]/30"
+          className="min-h-tap min-w-0 flex-1 py-3 pr-4 text-left transition-colors active:bg-[rgb(var(--border))]/30"
         >
           {task.parent_title && (
             <span className="mb-0.5 block truncate text-xs muted">{t('task.parent_prefix', { title: task.parent_title })}</span>

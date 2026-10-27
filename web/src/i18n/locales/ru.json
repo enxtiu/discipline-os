@@ -6,9 +6,12 @@
     "device_revoke": "Отключить устройство {{name}}",
     "token_revoke": "Отозвать токен {{name}}",
     "open_time_log": "Открыть журнал времени",
-    "score_open_provisional": "Оценка дня {{score}} из 100 {{provisional}} — из чего она складывается",
     "nothing_planned": "ничего не запланировано",
-    "done": "выполнено"
+    "done": "выполнено",
+    "delete_meal": "Удалить: {{name}}",
+    "nav_main": "Разделы приложения",
+    "score_before": "Оценка дня",
+    "score_after": "— из чего она складывается"
   },
   "app": {
     "name": "DisciplineOS",

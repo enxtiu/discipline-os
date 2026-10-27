@@ -120,7 +120,7 @@ function TitleInput({
       aria-invalid={invalid || undefined}
       placeholder={t('task.title_placeholder')}
       enterKeyHint="done"
-      className="block w-full resize-none overflow-hidden border-b border-[rgb(var(--border))] bg-transparent py-2.5 text-lg font-semibold leading-snug placeholder:text-[rgb(var(--text-muted))]/70 focus:border-[rgb(var(--accent))] focus:outline-none"
+      className="block min-h-tap w-full resize-none overflow-hidden border-b border-[rgb(var(--border))] bg-transparent py-2.5 text-lg font-semibold leading-snug placeholder:text-[rgb(var(--text-muted))]/70 focus:border-[rgb(var(--accent))] focus:outline-none"
       onChange={(event) => onChange(event.target.value.replace(/[\r\n]+/g, ' '))}
       onKeyDown={(event) => {
         if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
