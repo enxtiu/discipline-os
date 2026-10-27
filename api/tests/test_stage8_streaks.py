@@ -18,6 +18,14 @@ from app.services.gamification.streaks import (
     simulate_daily,
     simulate_weekly,
 )
+from tests.stage7_helpers import (  # noqa: F401  (the stage-7 push doubles; fixtures: vapid, push_service)
+    BrowserKeys,
+    dispatch,
+    endpoint,
+    push_service_fixture,
+    subscribe,
+    vapid_fixture,
+)
 from tests.stage8_helpers import (
     NOON,
     TODAY,
@@ -36,15 +44,7 @@ from tests.stage8_helpers import (
     workout,
     xp_rows,
 )
-from tests.test_stage7 import (  # the stage-7 push doubles (fixtures included)
-    FORBIDDEN,
-    BrowserKeys,
-    dispatch,
-    endpoint,
-    push_service,  # noqa: F401
-    subscribe,
-    vapid,  # noqa: F401
-)
+from tests.test_stage7 import FORBIDDEN
 
 pytestmark = pytest.mark.anyio
 
@@ -257,7 +257,7 @@ EVENING = datetime(2026, 7, 15, 13, 0, tzinfo=UTC)  # 20:00 in Bangkok
 
 
 @pytest.fixture
-async def pushing(authed, vapid, push_service, db):  # noqa: F811
+async def pushing(authed, vapid, push_service, db):
     from tests.stage8_helpers import owner_id
 
     user_id = await owner_id(db)

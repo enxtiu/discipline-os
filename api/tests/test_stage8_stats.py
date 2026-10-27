@@ -411,9 +411,10 @@ async def _entry(db, user_id, day: date, minutes: int, *, area_id=None, running:
 async def test_planner_days_areas_and_projects(player, db) -> None:
     client, user_id = player["client"], player["user_id"]
     mon, tue = WEEK, WEEK + timedelta(days=1)
-    health = Area(user_id=user_id, name="Здоровье", weekly_target_minutes=120, sort_order=1)
-    work = Area(user_id=user_id, name="Работа", sort_order=2)
-    idle = Area(user_id=user_id, name="Дом", weekly_target_minutes=60, sort_order=3)
+    # names apart from the owner's default areas (Здоровье, Работа, Дом… are created with the account)
+    health = Area(user_id=user_id, name="Спорт", weekly_target_minutes=120, sort_order=1)
+    work = Area(user_id=user_id, name="Учёба", sort_order=2)
+    idle = Area(user_id=user_id, name="Сад", weekly_target_minutes=60, sort_order=3)
     archived = Area(user_id=user_id, name="Архив", weekly_target_minutes=60, is_archived=True)
     db.add_all([health, work, idle, archived])
     await db.commit()
@@ -454,7 +455,7 @@ async def test_planner_days_areas_and_projects(player, db) -> None:
         (item["area"]["name"] if item["area"] else None, item["minutes"], item["target_minutes"])
         for item in body["by_area"]
     ]
-    assert areas == [("Здоровье", 50, 120), ("Работа", 25, None), (None, 10, None), ("Дом", 0, 60)]
+    assert areas == [("Спорт", 50, 120), ("Учёба", 25, None), (None, 10, None), ("Сад", 0, 60)]
     projects = [
         (item["project"]["name"], item["done"], item["total"], item["done_in_period"]) for item in body["projects"]
     ]
