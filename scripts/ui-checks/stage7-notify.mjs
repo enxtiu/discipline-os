@@ -9,7 +9,12 @@
  * Everything this module changes is put back at the end.
  */
 import { createDecipheriv, createECDH, createHmac, randomBytes, randomUUID } from 'node:crypto'
+import { existsSync, readFileSync } from 'node:fs'
 import { createServer } from 'node:http'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const DIST = join(resolve(dirname(fileURLToPath(import.meta.url)), '..', '..'), 'web', 'dist')
 
 const b64url = (buffer) => Buffer.from(buffer).toString('base64url')
 
@@ -105,6 +110,14 @@ export async function run(ctx) {
       action(),
     ])
     return response
+  }
+
+  // the generated Workbox SW must load the push handlers (vite.config.ts → workbox.importScripts)
+  if (existsSync(join(DIST, 'sw.js'))) {
+    check(readFileSync(join(DIST, 'sw.js'), 'utf8').includes('importScripts("sw-push.js")'), 'built dist/sw.js imports sw-push.js')
+    check(existsSync(join(DIST, 'sw-push.js')), 'dist/sw-push.js is emitted next to it')
+  } else {
+    ok('dist/ not built in this run — the service-worker import is checked after `npm run build`')
   }
 
   const config = (await apiFetch('/v1/push/config')).body
