@@ -1,8 +1,17 @@
-/** Stage 6 — owned by the calendar/time/journal workstream (placeholder until it lands). */
-import { useTranslation } from 'react-i18next'
-import { EmptyState } from '@/components/ui'
+/**
+ * /plan/calendar. The calendar (time grid, month, drag) is its own lazy chunk
+ * inside the /plan chunk, loaded on the first visit; the skeleton stays here.
+ */
+import { lazy, Suspense } from 'react'
+
+import { CalendarSkeleton } from './CalendarSkeleton'
+
+const CalendarScreen = lazy(() => import('./CalendarScreen'))
 
 export function CalendarPage() {
-  const { t } = useTranslation()
-  return <EmptyState title={t('plan.calendar')} />
+  return (
+    <Suspense fallback={<CalendarSkeleton />}>
+      <CalendarScreen />
+    </Suspense>
+  )
 }

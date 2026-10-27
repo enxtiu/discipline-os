@@ -8,10 +8,12 @@ writes limited per user (``planner:{user_id}``, 240/min).
 from __future__ import annotations
 
 import uuid
+from collections.abc import AsyncIterator
 from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Path, Query, Response
+from sqlalchemy.exc import DBAPIError
 
 from app.api.deps import CurrentPrincipal, DbSession, require_device
 from app.api.v1.presenters import area_out as planner_area_out
@@ -26,7 +28,8 @@ from app.api.v1.presenters import (
     task_detail_out,
     task_out,
 )
-from app.core.errors import RateLimited
+from app.core.errors import Conflict, RateLimited
+from app.core.logging import get_logger
 from app.core.rate_limit import limiter
 from app.schemas.planner import (
     EARLIEST_DATE,
@@ -60,19 +63,33 @@ from app.services.planner.common import Clock, validation_error
 from app.services.planner.time_tracking import running_entry
 
 router = APIRouter(prefix="/planner", tags=["planner"], dependencies=[Depends(require_device)])
+log = get_logger(__name__)
 
 # writes per user and minute: a busy planning session is a few per second at most;
 # this only stops a runaway client or a replay loop
 WRITES_PER_MINUTE = 240
+# deadlock_detected, serialization_failure: PostgreSQL aborted the transaction, a retry succeeds
+RETRYABLE_SQLSTATES = frozenset({"40P01", "40001"})
 
 
-async def _write_limit(principal: CurrentPrincipal) -> None:
+async def _planner_write(principal: CurrentPrincipal) -> AsyncIterator[None]:
+    """Every planner write: the per-user rate limit, and a transaction PostgreSQL aborted to
+    break a deadlock answers a retryable ``409 conflict`` (``details.retryable``) instead of a 500."""
     allowed, retry_after = await limiter.hit(f"planner:{principal.user_id}", WRITES_PER_MINUTE)
     if not allowed:
         raise RateLimited(retry_after, "Too many planner changes, please slow down")
+    try:
+        yield
+    except DBAPIError as exc:
+        if getattr(exc.orig, "sqlstate", None) not in RETRYABLE_SQLSTATES:
+            raise
+        log.warning("planner_write_retryable", sqlstate=exc.orig.sqlstate)
+        raise Conflict(
+            "A concurrent change got in the way, please retry", code="conflict", details={"retryable": True}
+        ) from None
 
 
-Write = [Depends(_write_limit)]
+Write = [Depends(_planner_write)]
 TaskId = Annotated[uuid.UUID, Path(alias="id", description="task id")]
 
 

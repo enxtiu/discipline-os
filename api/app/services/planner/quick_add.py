@@ -8,27 +8,31 @@ This module maps its result onto a normal task create (``source = quick_add``):
   date takes the default date (the day the user is looking at) when there is one;
 * a recurrence without a date starts on its first occurrence on/after today;
 * a quick add never loses the line: parsed values outside the task bounds are
-  dropped, and an empty title falls back to the raw text.
+  dropped — a date past the supported days («через 100 лет») with its time, a
+  block on such a day or one the wall clock skips (a DST gap), a rule with no
+  occurrence in range, an out-of-range priority, estimate or lead time — and
+  an empty title falls back to the raw text. ``/parse`` still previews what it
+  read.
 """
 
 from __future__ import annotations
 
 import uuid
 from dataclasses import replace
-from datetime import datetime, timedelta
+from datetime import date, datetime, time, timedelta
 
 from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import AppError, Unprocessable
+from app.core.errors import AppError
 from app.core.logging import get_logger
 from app.models import Area, Project, Task
-from app.schemas.planner import TaskIn
+from app.schemas.planner import EARLIEST_DATE, LATEST_DATE, TaskIn
 from app.services.planner import recur
 from app.services.planner.common import MAX_TAGS, Clock, normalize_tag, validation_error
 from app.services.planner.containers import OPEN_PROJECT
-from app.services.planner.tasks import create_task
+from app.services.planner.tasks import block_instants, create_task
 from app.services.task_parser import KnownContainer, ParsedTask, parse_task_text
 
 log = get_logger(__name__)
@@ -111,8 +115,23 @@ def _rule(parsed: ParsedTask) -> recur.Rule | None:
         return None
 
 
+def _supported(day: date) -> bool:
+    return EARLIEST_DATE <= day <= LATEST_DATE
+
+
+def _block_fits(day: date, start: time, end: time, clock: Clock) -> bool:
+    """A block a task can hold: on a supported day and present on the wall clock (not in a DST gap)."""
+    if not _supported(day):
+        return False
+    try:
+        block_instants(day, start.strftime("%H:%M"), end.strftime("%H:%M"), clock)
+    except AppError:
+        return False
+    return True
+
+
 def task_fields(parsed: ParsedTask, text: str, payload, clock: Clock) -> dict:
-    """``ParsedTask`` + the client's defaults → ``TaskIn`` fields."""
+    """``ParsedTask`` + the client's defaults → ``TaskIn`` fields (only values a task can hold)."""
     defaults = payload.defaults
     kinds = {token.kind for token in parsed.tokens}
     rule = _rule(parsed)
@@ -147,17 +166,21 @@ def task_fields(parsed: ParsedTask, text: str, payload, clock: Clock) -> dict:
         if first is not None:
             due_date = first if due_time is not None else None
             block_date = block_date or first
-    if due_date is not None:
+    if due_date is not None and _supported(due_date):  # «через 100 лет»: the date goes, with its time
         data["due_date"] = due_date
         if due_time is not None:
             data["due_time"] = due_time.strftime("%H:%M")
     if has_block and block_date is not None:
         assert parsed.block_start is not None and parsed.block_end is not None
-        data["block"] = {
-            "date": block_date,
-            "start": parsed.block_start.strftime("%H:%M"),
-            "end": parsed.block_end.strftime("%H:%M"),
-        }
+        if _block_fits(block_date, parsed.block_start, parsed.block_end, clock):
+            data["block"] = {
+                "date": block_date,
+                "start": parsed.block_start.strftime("%H:%M"),
+                "end": parsed.block_end.strftime("%H:%M"),
+            }
+    undated = "due_date" not in data and "block" not in data
+    if rule is not None and undated and recur.first_on_or_after(rule, clock.today) is None:
+        rule = None  # no occurrence within the supported days: a task cannot hold it
     if parsed.estimate_minutes is not None and 1 <= parsed.estimate_minutes <= 1440:
         data["estimate_minutes"] = parsed.estimate_minutes
     if parsed.priority is not None and 1 <= parsed.priority <= 4:
@@ -184,12 +207,11 @@ async def quick_add(
     data = task_fields(parsed, payload.text, payload, clock)
     try:
         task_in = TaskIn.model_validate(data)
-    except ValidationError as exc:
-        raise Unprocessable(
-            "The parsed task is invalid",
-            code="validation_error",
-            details={"errors": [{"loc": list(map(str, error["loc"])), "msg": error["msg"]} for error in exc.errors()]},
-        ) from None
+    except ValidationError as exc:  # task_fields keeps values in bounds; should one slip through, keep the line
+        log.warning("quick_add_fields_dropped", errors=[".".join(map(str, error["loc"])) for error in exc.errors()])
+        kept = ("id", "title", "project_id", "area_id", "parent_id")
+        data = {key: value for key, value in data.items() if key in kept}
+        task_in = TaskIn.model_validate(data)
     if "reminders" in data and "due_date" not in data and "block" not in data and not task_in.recurrence_rule:
         task_in = task_in.model_copy(update={"reminders": []})  # a lead time needs a date: keep the task, drop it
     task = await create_task(db, user_id=user_id, clock=clock, payload=task_in, source="quick_add")

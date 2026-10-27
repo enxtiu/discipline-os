@@ -33,7 +33,14 @@ DEFAULT_AREAS: tuple[dict[str, Any], ...] = (
     {"name": "Growth", "name_ru": "Развитие", "icon": "sprout", "color": "#fb923c", "sort_order": 7},
 )
 
-DEFAULT_TAGS: tuple[str, ...] = ("deep-work", "quick", "errand", "call", "health", "idea")
+DEFAULT_TAGS: tuple[dict[str, str], ...] = (
+    {"name": "deep-work", "name_ru": "фокус"},
+    {"name": "quick", "name_ru": "быстро"},
+    {"name": "errand", "name_ru": "поручение"},
+    {"name": "call", "name_ru": "звонок"},
+    {"name": "health", "name_ru": "здоровье"},
+    {"name": "idea", "name_ru": "идея"},
+)
 
 DEFAULT_NOTIFICATION_PREFS: dict[str, Any] = {
     "task_reminders": True,
@@ -125,17 +132,31 @@ async def create_owner(
 
 
 async def ensure_defaults(db: AsyncSession, user: User) -> None:
-    """Create the rows a brand-new user is expected to have."""
+    """Create the rows a brand-new user is expected to have.
+
+    Default areas and tags are named in the user's language (Russian unless the
+    settings say English) — they are the user's own rows from then on, so a later
+    language switch does not rename them. A default already present under either
+    name (any case) is not created again.
+    """
+    language = (await get_or_create_settings(db, user)).language
+    russian = getattr(language, "value", language) != "en"
+
+    def _name(spec: dict[str, Any]) -> str:
+        return spec["name_ru"] if russian else spec["name"]
+
+    def _present(spec: dict[str, Any], have: set[str]) -> bool:
+        return spec["name"].casefold() in have or spec["name_ru"].casefold() in have
+
     existing_areas = (await db.execute(select(Area.name).where(Area.user_id == user.id))).scalars().all()
-    have = set(existing_areas)
+    have = {name.casefold() for name in existing_areas}
     for spec in DEFAULT_AREAS:
-        if spec["name"] in have:
+        if _present(spec, have):
             continue
         db.add(
             Area(
                 user_id=user.id,
-                name=spec["name"],
-                description=spec.get("name_ru"),
+                name=_name(spec),
                 icon=spec.get("icon"),
                 color=spec.get("color"),
                 sort_order=spec.get("sort_order", 0),
@@ -143,10 +164,10 @@ async def ensure_defaults(db: AsyncSession, user: User) -> None:
         )
 
     existing_tags = (await db.execute(select(Tag.name).where(Tag.user_id == user.id))).scalars().all()
-    have_tags = set(existing_tags)
-    for name in DEFAULT_TAGS:
-        if name not in have_tags:
-            db.add(Tag(user_id=user.id, name=name))
+    have_tags = {name.casefold() for name in existing_tags}
+    for spec in DEFAULT_TAGS:
+        if not _present(spec, have_tags):
+            db.add(Tag(user_id=user.id, name=_name(spec)))
 
     existing_streaks = (await db.execute(select(Streak.kind).where(Streak.user_id == user.id))).scalars().all()
     have_streaks = set(existing_streaks)

@@ -259,8 +259,16 @@ interface WriteRequest {
   clientUuid?: string
 }
 
-export function invalidatePlanner(queryClient: QueryClient) {
-  return queryClient.invalidateQueries({ queryKey: planKeys.all })
+/**
+ * Refetch every planner screen. `gone` is the key prefix of a row just
+ * deleted: its own detail query is still mounted until the screen closes, and
+ * refetching it would only answer 404.
+ */
+export function invalidatePlanner(queryClient: QueryClient, gone?: readonly unknown[]) {
+  return queryClient.invalidateQueries({
+    queryKey: planKeys.all,
+    predicate: gone ? (query) => !gone.every((part, index) => query.queryKey[index] === part) : undefined,
+  })
 }
 
 /** Refresh planner screens once queued writes have been sent (mount once per screen tree). */
@@ -275,7 +283,11 @@ export function usePlannerQueueRefresh() {
   }, [queryClient])
 }
 
-function usePlanWrite<TVars, TData>(build: (vars: TVars) => WriteRequest) {
+function usePlanWrite<TVars, TData>(
+  build: (vars: TVars) => WriteRequest,
+  /** For deletes: the deleted row's own query key (not refetched, see `invalidatePlanner`). */
+  goneOf?: (vars: TVars) => readonly unknown[],
+) {
   const queryClient = useQueryClient()
   return useMutation({
     networkMode: 'always', // offline writes go to the queue instead of pausing
@@ -289,8 +301,8 @@ function usePlanWrite<TVars, TData>(build: (vars: TVars) => WriteRequest) {
       })
       return result.queued ? { queued: true, clientUuid: result.clientUuid } : { queued: false, data: result.data }
     },
-    onSuccess: (result) => {
-      if (!result.queued) void invalidatePlanner(queryClient)
+    onSuccess: (result, vars) => {
+      if (!result.queued) void invalidatePlanner(queryClient, goneOf?.(vars))
     },
   })
 }
@@ -346,7 +358,10 @@ export function useReopenTask() {
 }
 
 export function useDeleteTask() {
-  return usePlanWrite<{ id: string }, void>(({ id }) => ({ path: planPaths.task(id), method: 'DELETE' }))
+  return usePlanWrite<{ id: string }, void>(
+    ({ id }) => ({ path: planPaths.task(id), method: 'DELETE' }),
+    ({ id }) => planKeys.task(id),
+  )
 }
 
 /**
@@ -390,7 +405,10 @@ export function useUpdateArea() {
   }))
 }
 export function useDeleteArea() {
-  return usePlanWrite<{ id: string }, void>(({ id }) => ({ path: planPaths.area(id), method: 'DELETE' }))
+  return usePlanWrite<{ id: string }, void>(
+    ({ id }) => ({ path: planPaths.area(id), method: 'DELETE' }),
+    ({ id }) => planKeys.area(id),
+  )
 }
 export function useReorderAreas() {
   return usePlanWrite<string[], { ok: boolean }>((ids) => ({ path: planPaths.reorderAreas, method: 'POST', body: { ids } }))
@@ -410,7 +428,10 @@ export function useUpdateProject() {
   }))
 }
 export function useDeleteProject() {
-  return usePlanWrite<{ id: string }, void>(({ id }) => ({ path: planPaths.project(id), method: 'DELETE' }))
+  return usePlanWrite<{ id: string }, void>(
+    ({ id }) => ({ path: planPaths.project(id), method: 'DELETE' }),
+    ({ id }) => planKeys.project(id),
+  )
 }
 export function useReorderProjects() {
   return usePlanWrite<string[], { ok: boolean }>((ids) => ({
@@ -451,7 +472,10 @@ export function useUpdateTag() {
   }))
 }
 export function useDeleteTag() {
-  return usePlanWrite<{ id: string }, void>(({ id }) => ({ path: planPaths.tag(id), method: 'DELETE' }))
+  return usePlanWrite<{ id: string }, void>(
+    ({ id }) => ({ path: planPaths.tag(id), method: 'DELETE' }),
+    ({ id }) => ['planner', 'tag', id],
+  )
 }
 
 // ---- time tracking -----------------------------------------------------------

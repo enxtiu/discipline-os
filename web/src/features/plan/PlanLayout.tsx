@@ -29,11 +29,27 @@ export function PlanLayout() {
     setParams(next, { replace: true })
   }, [params, setParams])
 
+  const overdue = counts.data?.overdue ?? 0
+  const inbox = counts.data?.inbox ?? 0
   const primary = [
-    { to: '/plan', label: t('plan.today'), end: true, badge: counts.data?.overdue ? counts.data.overdue : undefined },
-    { to: '/plan/inbox', label: t('plan.inbox'), end: false, badge: counts.data?.inbox || undefined },
-    { to: '/plan/upcoming', label: t('plan.upcoming'), end: false, badge: undefined },
-    { to: '/plan/calendar', label: t('plan.calendar'), end: false, badge: undefined },
+    {
+      to: '/plan',
+      label: t('plan.today'),
+      end: true,
+      badge: overdue || undefined,
+      badgeLabel: t('plan.badge_overdue', { n: overdue }),
+      danger: true,
+    },
+    {
+      to: '/plan/inbox',
+      label: t('plan.inbox'),
+      end: false,
+      badge: inbox || undefined,
+      badgeLabel: t('plan.badge_inbox', { n: inbox }),
+      danger: false,
+    },
+    { to: '/plan/upcoming', label: t('plan.upcoming'), end: false, badge: undefined, badgeLabel: '', danger: false },
+    { to: '/plan/calendar', label: t('plan.calendar'), end: false, badge: undefined, badgeLabel: '', danger: false },
   ]
   const secondary = [
     { to: '/plan/projects', label: t('plan.projects') },
@@ -61,26 +77,37 @@ export function PlanLayout() {
 
       <TimerBar />
 
-      <nav className="segmented" aria-label={t('plan.views')}>
+      <nav className="segmented" aria-label={t('plan.views')} data-testid="plan-views">
         {primary.map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
             end={item.end}
+            // tabs size to their labels (equal widths truncate «Предстоящие» on a
+            // 390 px screen); the count floats in the corner instead of taking width
             className={({ isActive }) =>
               clsx(
-                'relative flex min-h-[2.5rem] flex-1 items-center justify-center gap-1 rounded-xl px-1 text-[13px] font-medium transition-colors',
+                'relative flex min-h-tap flex-auto items-center justify-center whitespace-nowrap rounded-xl px-2 text-[13px] font-medium transition-colors',
                 isActive
                   ? 'bg-[rgb(var(--bg-elevated))] text-[rgb(var(--text))] shadow-card'
                   : 'text-[rgb(var(--text-muted))]',
               )
             }
           >
-            <span className="truncate">{item.label}</span>
+            {item.label}
             {item.badge ? (
-              <span className="tnum rounded-pill bg-[rgb(var(--accent))]/15 px-1.5 text-[11px] text-[rgb(var(--accent))]">
-                {item.badge}
-              </span>
+              <>
+                <span
+                  aria-hidden="true"
+                  className={clsx(
+                    'tnum absolute -top-1.5 right-0 min-w-[1.125rem] rounded-pill px-1 text-center text-[10px] font-semibold leading-[1.125rem]',
+                    item.danger ? 'bg-rose-500 text-white' : 'bg-[rgb(var(--accent))] text-ink-950',
+                  )}
+                >
+                  {item.badge}
+                </span>
+                <span className="sr-only">{item.badgeLabel}</span>
+              </>
             ) : null}
           </NavLink>
         ))}
