@@ -152,9 +152,18 @@ export async function run(ctx) {
     await page.locator('[data-testid="subtask-row"]').filter({ hasText: `шаг ${stamp}` }).waitFor({ timeout: 8000 }).catch(() => {})
     await shot('41-plan-editor')
     const saved = await act(new RegExp(`/tasks/${edited.id}$`), 'PATCH', () => page.locator('[data-testid="task-save"]').click())
+    // stage 9: `base` carries the values the changed fields started from (compare-and-set)
+    const sentFields = Object.keys(saved.sent ?? {}).filter((key) => key !== 'base').sort().join(',')
+    const base = saved.sent?.base ?? {}
     check(
-      Object.keys(saved.sent ?? {}).sort().join(',') === 'due_date,priority,recurrence_rule,tags',
-      'the editor PATCH carries only the changed fields',
+      sentFields === 'due_date,priority,recurrence_rule,tags' &&
+        Object.keys(base).sort().join(',') === sentFields &&
+        base.priority === 4 &&
+        base.due_date === null &&
+        base.recurrence_rule === null &&
+        Array.isArray(base.tags) &&
+        base.tags.length === 0,
+      'the editor PATCH carries only the changed fields, with the values they started from as base',
       Object.keys(saved.sent ?? {}).join(', '),
     )
     const afterEdit = await getTask(edited.id)

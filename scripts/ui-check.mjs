@@ -82,7 +82,8 @@ page.on('requestfailed', (request) => {
   }
 })
 page.on('response', (response) => {
-  if (response.url().includes('/api/') && response.status() >= 500) {
+  // a 5xx a check provokes on purpose (stage 9: a failing server, inside `allowErrors`) is not an app error
+  if (response.url().includes('/api/') && response.status() >= 500 && !offlineMode) {
     requestErrors.push(`${response.status()} ${response.url()}`)
   }
 })
@@ -876,7 +877,7 @@ try {
   // 8. Reload keeps the session (token persisted).
   // Stage 6+: feature checks live in scripts/ui-checks/<module>.mjs, one module
   // per workstream, each exporting `run(ctx)` with the helpers below.
-  for (const module of ['stage6-plan', 'stage6-calendar', 'stage7-notify', 'stage8-game', 'stage8-stats']) {
+  for (const module of ['stage6-plan', 'stage6-calendar', 'stage7-notify', 'stage8-game', 'stage8-stats', 'stage9-offline']) {
     const { run } = await import(`./ui-checks/${module}.mjs`)
     await run({
       page,
@@ -893,7 +894,7 @@ try {
         offlineMode = value
         await context.setOffline(value)
       },
-      /** Run `action` while the browser logs a 4xx the check provokes on purpose (not an app error). */
+      /** Run `action` while the browser logs a 4xx/5xx the check provokes on purpose (not an app error). */
       allowErrors: async (action) => {
         offlineMode = true
         try {

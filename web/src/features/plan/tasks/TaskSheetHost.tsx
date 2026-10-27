@@ -2,11 +2,13 @@
  * Mounted once in the app shell: listens to `openTask` / `newTask` /
  * `quickAdd` (see `../events.ts`) from any screen and shows the matching sheet.
  * The sheets load on first use, so the Today chunk stays light. It also hosts
- * the planner toasts (undo / open actions, see `./toast.tsx`).
+ * the planner toasts (undo / open actions, see `./toast.tsx`) and keeps task
+ * edits waiting in the offline queue visible in every cache (`../pending.ts`).
  */
 import { lazy, Suspense, useEffect, useState } from 'react'
 
 import { onNewTask, onOpenTask, onQuickAdd, type QuickAddRequest } from '../events'
+import { usePlannerPendingEdits } from '../pending'
 import type { TaskIn } from '../types'
 import { PlanToastHost } from './toast'
 
@@ -22,6 +24,7 @@ type State =
 const NO_REQUEST: QuickAddRequest = {}
 
 export function TaskSheetHost() {
+  usePlannerPendingEdits() // stage 9: edits waiting in the offline queue show at once everywhere
   const [state, setState] = useState<State>({ kind: 'none' })
   // remember which sheets were ever opened so their close animation can play
   const [loaded, setLoaded] = useState({ task: false, quick: false })

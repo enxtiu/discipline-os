@@ -44,12 +44,11 @@ def has_note(entry: JournalEntry) -> bool:
     return any((getattr(entry, name) or "").strip() for name in TEXT_FIELDS)
 
 
-async def get_entry(db: AsyncSession, user_id: uuid.UUID, day: date) -> JournalEntry | None:
-    return await db.scalar(
-        select(JournalEntry)
-        .where(JournalEntry.user_id == user_id, JournalEntry.entry_date == day)
-        .execution_options(populate_existing=True)
-    )
+async def get_entry(db: AsyncSession, user_id: uuid.UUID, day: date, *, lock: bool = False) -> JournalEntry | None:
+    stmt = select(JournalEntry).where(JournalEntry.user_id == user_id, JournalEntry.entry_date == day)
+    if lock:
+        stmt = stmt.with_for_update()
+    return await db.scalar(stmt.execution_options(populate_existing=True))
 
 
 async def upsert(db: AsyncSession, *, user_id: uuid.UUID, clock: Clock, day: date, payload) -> JournalEntry:
