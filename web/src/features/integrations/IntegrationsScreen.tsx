@@ -455,7 +455,7 @@ function KindRow({ item, onToggle }: { item: NotionKindInfo; onToggle: (next: bo
             id={hintId}
             className={clsx(
               'mt-0.5 block text-xs',
-              item.database === 'missing' ? 'text-amber-300' : 'text-[rgb(var(--text-muted))]',
+              item.database === 'missing' ? 'text-[rgb(var(--warn))]' : 'text-[rgb(var(--text-muted))]',
             )}
           >
             {hint}
@@ -509,9 +509,9 @@ function SyncSummary({ data, running }: { data: NotionIntegration; running: bool
       {run.result === 'partial' && !run.error ? <p className="muted">{t('integrations.notion.partial')}</p> : null}
       {totals && totals.pending > 0 ? <p className="muted">{t('integrations.notion.pending', { count: totals.pending })}</p> : null}
       {totals && totals.failed > 0 ? (
-        <p className="text-amber-300">{t('integrations.notion.failed_rows', { count: totals.failed })}</p>
+        <p className="text-[rgb(var(--warn))]">{t('integrations.notion.failed_rows', { count: totals.failed })}</p>
       ) : null}
-      {run.result === 'interrupted' ? <p className="text-amber-300">{t('integrations.notion.interrupted')}</p> : null}
+      {run.result === 'interrupted' ? <p className="text-[rgb(var(--warn))]">{t('integrations.notion.interrupted')}</p> : null}
       {run.error && data.status !== 'error' ? (
         <div role="status">
           <Callout tone={run.result === 'error' ? 'danger' : 'warn'}>{notionErrorText(run.error)}</Callout>
