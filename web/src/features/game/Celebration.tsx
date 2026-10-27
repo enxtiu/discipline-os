@@ -5,8 +5,8 @@
  * never shown again.
  *
  * The sheet opens by itself where it cannot get in the way: on the
- * achievements screen right away, on Today once the score card has been
- * scrolled into view (the card also shows a pill that opens it). Each
+ * achievements screen right away, on Today once the score has been on screen
+ * for a moment (the card also shows a pill that opens it any time). Each
  * achievement is offered automatically once per app session; reduced motion
  * turns the badge animation and the sheet's slide off.
  */

@@ -80,7 +80,13 @@ export default function AchievementsPage() {
           <LevelCard xp={profile.data.xp} levels={profile.data.levels} />
           <XpCard days={profile.data.xp.last_30_days} />
           <StreaksCard streaks={profile.data.streaks} />
-          <QuestsCard quests={today.data?.quests} onClaim={claim} pendingId={pendingId} />
+          <QuestsCard
+            quests={today.data?.quests}
+            failed={today.isError && !today.data}
+            onRetry={() => void today.refetch()}
+            onClaim={claim}
+            pendingId={pendingId}
+          />
           <AchievementsGrid achievements={profile.data.achievements} onOpen={setDetail} />
           <XpRulesCard levels={profile.data.levels} />
         </>
@@ -347,10 +353,14 @@ function StreakRow({ streak }: { streak: Streak }) {
 // --------------------------------------------------------------------------- //
 function QuestsCard({
   quests,
+  failed,
+  onRetry,
   onClaim,
   pendingId,
 }: {
   quests: UserQuest[] | undefined
+  failed: boolean
+  onRetry: () => void
   onClaim: (quest: UserQuest) => void
   pendingId?: string
 }) {
@@ -360,7 +370,9 @@ function QuestsCard({
   return (
     <Card className="space-y-3" data-testid="quests-card">
       <h2 className="h2">{t('game.page.quests')}</h2>
-      {!quests ? (
+      {failed ? (
+        <ErrorState message={t('game.page.quests_error')} onRetry={onRetry} retryLabel={t('app.retry')} />
+      ) : !quests ? (
         <div className="space-y-2">
           <div className="skeleton h-12" />
           <div className="skeleton h-12" />
@@ -502,27 +514,45 @@ function AchievementSheet({ item, onClose }: { item: Achievement | null; onClose
 function XpRulesCard({ levels }: { levels: Level[] }) {
   const { t } = useTranslation()
   const r = XP_RULES
-  const rows = [
-    t('game.rules.meal', { points: r.meal.points, count: r.meal.perDay }),
-    t('game.rules.protein', { points: r.protein }),
-    t('game.rules.fiber', { points: r.fiber }),
-    t('game.rules.water', { points: r.water }),
-    t('game.rules.kcal_zone', { points: r.kcalZone }),
-    t('game.rules.steps', { points: r.steps }),
-    t('game.rules.workout', { points: r.workout.points, count: r.workout.perDay }),
-    t('game.rules.record', { points: r.record.points, count: r.record.perDay }),
-    t('game.rules.task', { ...r.task }),
-    t('game.rules.project', { points: r.project }),
-    t('game.rules.timer', { minutes: r.timer.minutes, cap: r.timer.cap }),
-    t('game.rules.review', { points: r.review }),
-    t('game.rules.sleep', { points: r.sleep }),
-    t('game.rules.weight', { points: r.weight }),
-    t('game.rules.streak', {
-      list: STREAK_MILESTONES.map(([days, xp]) => t('game.rules.streak_item', { days, xp })).join(' · '),
-    }),
-    t('game.rules.quests'),
-    t('game.rules.achievements'),
-  ]
+  const groups = [
+    {
+      key: 'nutrition',
+      text: t('game.rules.nutrition', {
+        meal: r.meal.points,
+        meals: r.meal.perDay,
+        protein: r.protein,
+        fiber: r.fiber,
+        water: r.water,
+        kcal: r.kcalZone,
+      }),
+    },
+    {
+      key: 'movement',
+      text: t('game.rules.movement', {
+        steps: r.steps,
+        workout: r.workout.points,
+        workouts: r.workout.perDay,
+        record: r.record.points,
+        records: r.record.perDay,
+      }),
+    },
+    {
+      key: 'planner',
+      text: t('game.rules.planner', {
+        ...r.task,
+        project: r.project,
+        minutes: r.timer.minutes,
+        timerCap: r.timer.cap,
+      }),
+    },
+    { key: 'review', text: t('game.rules.review', { review: r.review, sleep: r.sleep, weight: r.weight }) },
+    {
+      key: 'bonus',
+      text: t('game.rules.bonus', {
+        list: STREAK_MILESTONES.map(([days, xp]) => t('game.rules.streak_item', { days, xp })).join(', '),
+      }),
+    },
+  ] as const
   const ladder = levels.length
     ? `${levels
         .slice(0, 5)
@@ -533,14 +563,14 @@ function XpRulesCard({ levels }: { levels: Level[] }) {
     <Card className="space-y-3" data-testid="xp-rules">
       <h2 className="h2">{t('game.page.how_xp')}</h2>
       <p className="text-sm leading-relaxed muted">{t('game.rules.intro')}</p>
-      <ul className="space-y-1.5 text-sm">
-        {rows.map((row) => (
-          <li key={row} className="flex gap-2.5">
-            <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[rgb(var(--accent-2))]" />
-            <span className="leading-relaxed">{row}</span>
-          </li>
+      <dl className="space-y-2.5">
+        {groups.map((group) => (
+          <div key={group.key} data-testid="xp-rule" data-group={group.key}>
+            <dt className="label">{t(`game.rules.group.${group.key}`)}</dt>
+            <dd className="tnum mt-0.5 text-sm leading-relaxed">{group.text}</dd>
+          </div>
         ))}
-      </ul>
+      </dl>
       {ladder && <p className="tnum text-sm leading-relaxed">{t('game.rules.levels', { count: levels.length, list: ladder })}</p>}
       <div className="space-y-2 text-xs leading-relaxed muted">
         <p>{t('game.rules.floor_note')}</p>

@@ -30,6 +30,9 @@ function Base({ size = 24, children, ...rest }: IconProps & { children: ReactNod
 }
 
 const STAR = 'm12 4 2.5 5 5.5.8-4 3.9.9 5.4L12 16.6 7.1 19.1l1-5.4-4-3.9L9.5 9 12 4Z'
+/** A flame with an inner tongue — reads as fire even at 16 px (a plain drop looked like water). */
+const FLAME_OUTER = 'M12 2.5c.7 3.6 4.9 5.8 5.9 10 .2.8.3 1.5.3 2.2a6.2 6.2 0 0 1-12.4 0c0-2.2 1-4 2.3-5.4.2 1.5 1 2.6 2.1 3.1-.3-3.6.7-6.9 1.8-9.9Z'
+const FLAME_INNER = 'M12 20.9a2.6 2.6 0 0 1-2.6-2.6c0-1.6 1.2-2.6 2.6-4.3 1.4 1.7 2.6 2.7 2.6 4.3a2.6 2.6 0 0 1-2.6 2.6Z'
 
 /** name → the shapes inside the 24×24 box */
 const SHAPES: Record<string, ReactNode> = {
@@ -179,8 +182,8 @@ const SHAPES: Record<string, ReactNode> = {
   ),
   flame: (
     <>
-      <path d="M12 3s4.5 4 4.5 8.5A4.5 4.5 0 0 1 12 16a4.5 4.5 0 0 1-4.5-4.5C7.5 7 12 3 12 3Z" />
-      <path d="M9.5 20h5" />
+      <path d={FLAME_OUTER} />
+      <path d={FLAME_INNER} />
     </>
   ),
   crown: (
@@ -252,12 +255,8 @@ export function GameIcon({ icon, ...props }: IconProps & { icon: string | null |
 export function IconFlameLit({ lit, ...props }: IconProps & { lit?: boolean }) {
   return (
     <Base {...props}>
-      <path
-        d="M12 3s4.5 4 4.5 8.5A4.5 4.5 0 0 1 12 16a4.5 4.5 0 0 1-4.5-4.5C7.5 7 12 3 12 3Z"
-        fill={lit ? 'currentColor' : 'none'}
-        fillOpacity={lit ? 0.35 : 0}
-      />
-      <path d="M9.5 20h5" />
+      <path d={FLAME_OUTER} fill={lit ? 'currentColor' : 'none'} fillOpacity={lit ? 0.3 : 0} />
+      <path d={FLAME_INNER} fill={lit ? 'currentColor' : 'none'} fillOpacity={lit ? 0.6 : 0} />
     </Base>
   )
 }

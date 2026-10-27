@@ -1077,6 +1077,7 @@
       "today": "today",
       "streaks": "Streaks",
       "quests": "Quests",
+      "quests_error": "Could not load the quests",
       "achievements": "Achievements",
       "achievements_count": "{{unlocked}} of {{total}} unlocked",
       "category_count": "{{unlocked}} of {{total}}",
@@ -1089,28 +1090,23 @@
     },
     "rules": {
       "intro": "XP comes from logging and from the day's targets — it only ever goes up. Default values:",
-      "meal": "Logging a meal — {{points}} XP, up to {{count}} a day: for logging, never for restricting",
-      "protein": "Protein target — {{points}} XP*",
-      "fiber": "Fiber target — {{points}} XP*",
-      "water": "Water target — {{points}} XP",
-      "kcal_zone": "Calories in the zone — {{points}} XP per finished day",
-      "steps": "Step target — {{points}} XP",
-      "workout": "Workout — {{points}} XP, up to {{count}} a day",
-      "record": "Personal record — {{points}} XP, up to {{count}} a day",
-      "task": "Task — P1 {{p1}} · P2 {{p2}} · P3 {{p3}} · P4 {{p4}}, subtask {{subtask}} XP; up to {{cap}} a day",
-      "project": "Project completed — {{points}} XP",
-      "timer": "Timer — 1 XP per {{minutes}} min, up to {{cap}} a day",
-      "review": "Daily review — {{points}} XP",
-      "sleep": "Sleep logged — {{points}} XP",
-      "weight": "Weigh-in — {{points}} XP",
-      "streak": "“Score 60+” streak, XP for days in a row: {{list}}",
+      "group": {
+        "nutrition": "Nutrition",
+        "movement": "Movement",
+        "planner": "Planner",
+        "review": "Reviews and check-ins",
+        "bonus": "Bonuses"
+      },
+      "nutrition": "meal logged +{{meal}} (up to {{meals}} a day — for logging, never for restricting) · protein target +{{protein}}* · fiber target +{{fiber}}* · water target +{{water}} · calories in the zone +{{kcal}} per finished day",
+      "movement": "step target +{{steps}} · workout +{{workout}} (up to {{workouts}} a day) · personal record +{{record}} (up to {{records}} a day)",
+      "planner": "task P1 +{{p1}} · P2 +{{p2}} · P3 +{{p3}} · P4 +{{p4}}, subtask +{{subtask}} (up to {{cap}} a day) · project completed +{{project}} · timer +1 per {{minutes}} min (up to {{timerCap}} a day)",
+      "review": "daily review +{{review}} · sleep logged +{{sleep}} · weigh-in +{{weight}}",
+      "bonus": "“Score 60+” streak — {{list}} · quests — their reward once you claim it · achievements — their reward, once",
       "streak_item": "{{days}} d +{{xp}}",
-      "quests": "Quests — their reward, once you claim it",
-      "achievements": "Achievements — their reward, once",
+      "levels": "{{count}} levels, the threshold grows: {{list}} XP",
       "floor_note": "* Only when the day's intake is at or above the safe floor. Eating below the floor or not logging never brings XP, score points or streaks.",
       "burned_note": "Burned calories never become food budget.",
-      "window_note": "Today's and yesterday's XP is recalculated: delete an entry and its XP goes too. Quest, achievement and streak rewards stay for good.",
-      "levels": "{{count}} levels, the threshold grows: {{list}} XP"
+      "window_note": "Today's and yesterday's XP is recalculated: delete an entry and its XP goes too. Quest, achievement and streak rewards stay for good."
     }
   }
 }

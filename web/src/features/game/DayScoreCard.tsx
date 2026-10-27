@@ -32,10 +32,11 @@ export function DayScoreCard() {
   const data = query.data
   const { claim, pendingId } = useQuestClaimer()
   const [sheetOpen, setSheetOpen] = useState(false)
-  // new achievements are celebrated once the card itself is on screen — never over the top of Today
-  const end = useRef<HTMLDivElement>(null)
-  const atCard = useInView(end, !!data)
-  const celebration = useCelebration(data?.celebrate, atCard)
+  // new achievements are celebrated once the score itself has been on screen for a moment —
+  // never over the meals and quick actions at the top of Today (the pill opens them any time)
+  const scoreRow = useRef<HTMLDivElement>(null)
+  const atScore = useDwellInView(scoreRow, !!data)
+  const celebration = useCelebration(data?.celebrate, atScore)
 
   if (!data) {
     if (query.isError) {
@@ -69,7 +70,7 @@ export function DayScoreCard() {
 
         <CelebrationPill items={celebration.pending} onOpen={celebration.open} />
 
-        <div className="flex items-center gap-4">
+        <div ref={scoreRow} className="flex items-center gap-4">
           <button
             type="button"
             onClick={() => setSheetOpen(true)}
@@ -122,7 +123,6 @@ export function DayScoreCard() {
             <p className="pt-2 text-sm muted">{t('game.quests_none')}</p>
           )}
         </section>
-        <div ref={end} className="h-px" aria-hidden="true" />
       </Card>
 
       <ScoreSheet score={score} open={sheetOpen} onClose={() => setSheetOpen(false)} />
@@ -260,17 +260,30 @@ function ScoreCardSkeleton({ offline }: { offline: boolean }) {
   )
 }
 
-/** Is the element on screen (above the tab bar)? */
-function useInView(ref: RefObject<Element>, enabled: boolean): boolean {
+/**
+ * Has the element been on screen (above the tab bar, mostly visible) for a
+ * moment? Goes false again when it leaves, so a celebration that arrives
+ * while the user is elsewhere on Today waits until they come back to the card.
+ */
+function useDwellInView(ref: RefObject<Element>, enabled: boolean, dwellMs = 700): boolean {
   const [inView, setInView] = useState(false)
   useEffect(() => {
     const element = ref.current
     if (!enabled || !element || typeof IntersectionObserver === 'undefined') return
-    const observer = new IntersectionObserver(([entry]) => setInView(!!entry?.isIntersecting), {
-      rootMargin: '0px 0px -96px 0px',
-    })
+    let timer: number | undefined
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        window.clearTimeout(timer)
+        if (entry?.isIntersecting) timer = window.setTimeout(() => setInView(true), dwellMs)
+        else setInView(false)
+      },
+      { rootMargin: '0px 0px -96px 0px', threshold: 0.6 },
+    )
     observer.observe(element)
-    return () => observer.disconnect()
-  }, [ref, enabled])
+    return () => {
+      window.clearTimeout(timer)
+      observer.disconnect()
+    }
+  }, [ref, enabled, dwellMs])
   return inView
 }
