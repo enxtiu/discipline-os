@@ -28,10 +28,34 @@ const MIN_TARGET = 48
 const THEMES = ['dark', 'light']
 
 /**
- * Targets that may stay under 48 px, each with the WCAG 2.5.8 exception that applies.
+ * Targets that may stay under 48 px, each with the reason. All of them still meet WCAG 2.5.8
+ * (AA: 24 × 24 px or spaced 24 px apart); the project's 48 px rule yields where the size of
+ * the target carries the data (a day column of a chart, a time block as tall as its duration)
+ * and the same thing can be done from a full-size control elsewhere.
  * Matched with `Element.closest()`; inline links inside a sentence are excepted in code.
  */
-const TARGET_EXCEPTIONS = []
+const TARGET_EXCEPTIONS = [
+  {
+    selector: '[data-testid="burned-chart"] li > button, [data-testid="time-summary"] li > button',
+    reason: 'chart bar: 7 days (or a month) side by side on a 390 px card — ≥ 24 px wide and 100+ px tall; its value is its spoken name and shows on tap',
+  },
+  {
+    selector: '[data-testid="steps-chart"] [role="listitem"] > button',
+    reason: 'chart bar: 14 days side by side (24 px wide, 130 px tall); its value is its spoken name and shows on tap',
+  },
+  {
+    selector: '[data-testid="cal-day-header"]',
+    reason: 'week grid column header: 7 columns beside the hour gutter (45 px wide, 48 px tall); the day view arrows reach the same days',
+  },
+  {
+    selector: '[data-testid="cal-grid"][data-view="week"] [data-testid="cal-allday-task"], [data-testid="cal-grid"][data-view="week"] [data-testid="cal-occurrence"]',
+    reason: 'compact chip in a week column; the day view shows the same task as a 48 px chip',
+  },
+  {
+    selector: '[data-testid="cal-block"], [data-testid="cal-continuation"], [data-testid="cal-layer"] [data-testid="cal-occurrence"], [data-testid="cal-resize"]',
+    reason: 'time block: as tall as its duration (essential); the same task opens from the day list and Plan › Сегодня at 48 px',
+  },
+]
 
 function loadAxe() {
   try {
@@ -343,7 +367,16 @@ export async function run(ctx) {
     }
   }
 
+  /** Unseen achievements open a celebration sheet on Today and the achievements screen. */
+  const unseen = async () => (await apiFetch('/v1/gamification/today')).body?.celebrate ?? []
+  const markSeen = async () => {
+    const items = await unseen()
+    if (items.length) {
+      await apiFetch('/v1/gamification/achievements/seen', { method: 'POST', body: JSON.stringify({ ids: items.map((item) => item.id) }) })
+    }
+  }
   const goto = async (path, ready) => {
+    if (/^\/(today|stats)/.test(path)) await markSeen().catch(() => {})
     await page.goto(`${WEB_URL}${path}`, { waitUntil: 'networkidle' })
     if (ready) await page.locator(ready).first().waitFor({ timeout: 15_000 })
     // skeletons gone
@@ -478,6 +511,33 @@ export async function run(ctx) {
     remember(await apiFetch('/v1/planner/tasks', { method: 'POST', body: JSON.stringify({ id: tomorrowTask, title: 'A11y завтра (ui-check)', due_date: tomorrow, priority: 3 }) }), created.tasks, tomorrowTask)
     const inboxTask = randomUUID()
     remember(await apiFetch('/v1/planner/tasks', { method: 'POST', body: JSON.stringify({ id: inboxTask, title: 'A11y идея (ui-check)' }) }), created.tasks, inboxTask)
+    // a finished task (dimmed in lists and the calendar) and a daily repeat (future occurrences)
+    const doneTask = randomUUID()
+    remember(
+      await apiFetch('/v1/planner/tasks', {
+        method: 'POST',
+        body: JSON.stringify({ id: doneTask, title: 'A11y готово (ui-check)', due_date: T, block: { date: T, start: '07:00', end: '07:30' }, project_id: project }),
+      }),
+      created.tasks,
+      doneTask,
+    )
+    statuses.push((await apiFetch(`/v1/planner/tasks/${doneTask}/complete`, { method: 'POST', body: '{}' })).status)
+    const repeatTask = randomUUID()
+    remember(
+      await apiFetch('/v1/planner/tasks', {
+        method: 'POST',
+        body: JSON.stringify({
+          id: repeatTask,
+          title: 'A11y зарядка (ui-check)',
+          due_date: T,
+          block: { date: T, start: '18:00', end: '18:30' },
+          recurrence_rule: 'FREQ=DAILY',
+          priority: 3,
+        }),
+      }),
+      created.tasks,
+      repeatTask,
+    )
     const entryId = randomUUID()
     remember(
       await apiFetch('/v1/planner/time-entries', { method: 'POST', body: JSON.stringify({ id: entryId, area_id: areaId, date: yesterday, start: '08:00', end: '09:15', description: 'A11y (ui-check)' }) }),
@@ -497,12 +557,39 @@ export async function run(ctx) {
     // ---------------------------------------------------------------------- //
     // 1. axe + targets on every screen and sheet, dark and light
     // ---------------------------------------------------------------------- //
+    await audit(
+      'celebration sheet',
+      async () => {
+        if (!(await unseen()).length) return false
+        await page.goto(`${WEB_URL}/stats/achievements`, { waitUntil: 'networkidle' })
+        return topDialog()
+          .waitFor({ timeout: 8000 })
+          .then(() => true)
+          .catch(() => false)
+      },
+      { scope: 'dialog', optional: true },
+    )
+    await markSeen()
     await audit('Today (with data)', async () => goto('/today', '[data-testid="burned-today"]'), { screenshot: '90-a11y-today' })
     await audit('quick-add sheet', async () => {
       await goto('/today', '[data-testid="burned-today"]')
       return openQuickAdd()
     }, { scope: 'dialog' })
+    await audit('score sheet', async () => {
+      await goto('/today', '[data-testid="burned-today"]')
+      await page.locator('[data-testid="day-score-button"]').click()
+      return waitDialog()
+    }, { scope: 'dialog' })
+    await audit('steps sheet', async () => {
+      await goto('/today?action=steps', '[data-testid="burned-today"]')
+      return waitDialog()
+    }, { scope: 'dialog' })
     await audit('Food', async () => goto('/food', 'input[placeholder*="Поиск"]'))
+    await audit('recipe sheet', async () => {
+      await goto('/food?action=recipe', 'main')
+      await page.locator('#recipe-name').waitFor({ timeout: 8000 })
+      return true
+    }, { scope: 'dialog' })
     await audit('log sheet', async () => {
       await goto('/food', 'input[placeholder*="Поиск"]')
       await page.locator('input[placeholder*="Поиск"]').first().fill('гречка отварная')
@@ -550,6 +637,12 @@ export async function run(ctx) {
     }, { scope: 'dialog' })
     await audit('projects', async () => goto('/plan/projects', '[data-testid="projects-page"]'))
     await audit('project page', async () => goto(`/plan/projects/${project}`, '[data-testid="project-progress"]'))
+    await audit('project sheet', async () => {
+      await goto('/plan/projects', '[data-testid="projects-page"]')
+      await page.locator('[data-testid="project-new"]').click()
+      await page.locator('[data-testid="project-name"]').waitFor({ timeout: 8000 })
+      return true
+    }, { scope: 'dialog' })
     await audit('areas', async () => goto('/plan/areas', '[data-testid="areas-page"]'))
     await audit('resources', async () => goto('/plan/resources', '[data-testid="resources-page"]'))
     await audit('journal', async () => goto('/plan/journal', '[data-testid="journal-page"]'))
@@ -569,6 +662,11 @@ export async function run(ctx) {
       return true
     }, { screenshot: '91-a11y-stats' })
     await audit('achievements', async () => goto('/stats/achievements', '[data-testid="achievements-page"]'))
+    await audit('achievement sheet', async () => {
+      await goto('/stats/achievements', '[data-testid="achievements-page"]')
+      await page.locator('[data-testid="achievement-tile"], [data-testid="achievements-grid"] button').first().click()
+      return waitDialog()
+    }, { scope: 'dialog' })
     await audit('Settings', async () => goto('/settings', 'main h1'))
     for (const section of ['profile', 'appearance', 'notifications', 'data', 'devices', 'tokens', 'shortcut']) {
       await audit(`Settings · ${section}`, async () => goto(`/settings/${section}`, 'main'))
@@ -788,10 +886,12 @@ export async function run(ctx) {
  * Escape.
  */
 async function keyboardPass({ page, WEB_URL, check, report, settle, inject, editTask }) {
+  /** The unfocused look of every control not seen yet (run before each Tab: new ones appear as you go). */
   const snapshotFocusables = () =>
     page.evaluate(() => {
-      window.__a11yBase = new Map()
+      window.__a11yBase ??= new Map()
       for (const el of document.querySelectorAll('a[href], button, input, select, textarea, [tabindex], [role="button"]')) {
+        if (window.__a11yBase.has(el) || el === document.activeElement) continue
         const style = getComputedStyle(el)
         window.__a11yBase.set(el, [style.outlineStyle, style.outlineWidth, style.boxShadow, style.borderColor, style.backgroundColor].join('|'))
       }
@@ -811,7 +911,11 @@ async function keyboardPass({ page, WEB_URL, check, report, settle, inject, edit
       const hit = document.elementFromPoint(x, y)
       const inView = rect.bottom > 0 && rect.top < window.innerHeight
       const covered = !inView || !(hit && (hit === el || el.contains(hit) || hit.contains(el)))
+      // every stop is numbered once: meeting a numbered element again means Tab came round
+      const seen = el.hasAttribute('data-a11y-stop')
+      if (!seen) el.setAttribute('data-a11y-stop', String(document.querySelectorAll('[data-a11y-stop]').length))
       return {
+        seen,
         selector: window.__a11yDescribe(el),
         name: window.__a11yName(el),
         visible: outline || changed,
@@ -833,15 +937,13 @@ async function keyboardPass({ page, WEB_URL, check, report, settle, inject, edit
       window.scrollTo(0, 0)
     })
     const stops = []
-    const seen = new Set()
-    for (let index = 0; index < 120; index += 1) {
+    for (let index = 0; index < 150; index += 1) {
+      await snapshotFocusables()
       await page.keyboard.press('Tab')
       await page.waitForTimeout(60)
       const info = await focusInfo()
       if (!info) continue
-      const key = `${info.selector}|${info.name}`
-      if (seen.has(key) && stops.length > 3) break
-      seen.add(key)
+      if (info.seen) break
       stops.push(info)
     }
     report.keyboard.push({ screen: 'Today', stops })
@@ -888,6 +990,7 @@ async function keyboardPass({ page, WEB_URL, check, report, settle, inject, edit
       let escaped = 0
       let invisible = []
       for (let index = 0; index < count + 3; index += 1) {
+        await snapshotFocusables()
         await page.keyboard.press('Tab')
         await page.waitForTimeout(50)
         const info = await focusInfo()
@@ -919,6 +1022,6 @@ async function keyboardPass({ page, WEB_URL, check, report, settle, inject, edit
     'task editor',
     '/plan',
     '[data-testid="plan-today"]',
-    `[data-testid="task-row"][data-task-id="${editTask}"] [data-testid="task-title"]`,
+    `[data-testid="task-row"][data-task-id="${editTask}"] button:has([data-testid="task-title"])`,
   )
 }
