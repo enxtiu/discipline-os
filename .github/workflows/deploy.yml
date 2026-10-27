@@ -13,6 +13,10 @@ name: build & deploy
 #
 # GHCR uses the built-in GITHUB_TOKEN — no extra secret. Images are published
 # as ghcr.io/<owner>/disciplineos-api and …/disciplineos-web.
+#
+# Off until a server exists: set the repository variable DEPLOY_ENABLED=true
+# (Settings → Secrets and variables → Actions → Variables) once the secrets
+# above are in place. Without it, pushes to main only run the CI workflow.
 
 on:
   push:
@@ -40,6 +44,7 @@ env:
 jobs:
   build:
     name: build & push images
+    if: ${{ vars.DEPLOY_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -98,7 +103,7 @@ jobs:
   deploy:
     name: deploy over ssh
     needs: build
-    if: ${{ !inputs.skip_deploy }}
+    if: ${{ vars.DEPLOY_ENABLED == 'true' && !inputs.skip_deploy }}
     runs-on: ubuntu-latest
     environment:
       name: production

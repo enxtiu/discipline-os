@@ -9,6 +9,8 @@ name: nightly backup
 # something breaks, and keeps the log in the run summary.
 #
 # Required secrets: SSH_HOST, SSH_USER, SSH_KEY, DEPLOY_PATH (same as deploy).
+# Off until a server exists: runs only when the repository variable
+# DEPLOY_ENABLED is "true" (same switch as the deploy workflow).
 # Optional variable: BACKUP_WARN_HOURS (default 36).
 
 on:
@@ -23,6 +25,7 @@ concurrency:
 jobs:
   backup:
     name: encrypted pg_dump → private repo
+    if: ${{ vars.DEPLOY_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: configure ssh

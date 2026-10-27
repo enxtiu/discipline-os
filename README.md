@@ -440,7 +440,10 @@ rollback). Repository secrets:
 | `SSH_PORT` | Optional, default 22 |
 | `DEPLOY_PATH` | Checkout path, e.g. `/opt/disciplineos` |
 
-Add `DOMAIN` as a repository **variable** for the post-deploy smoke URL.
+Add `DOMAIN` as a repository **variable** for the post-deploy smoke URL, and
+`DEPLOY_ENABLED=true` once the secrets are in place — until then pushes to `main`
+only run CI (tests, lint, build); image builds, the rollout and the nightly backup
+workflow stay off.
 
 ### 4. Manual deploy / rollback
 
