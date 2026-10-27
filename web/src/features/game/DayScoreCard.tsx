@@ -31,7 +31,7 @@ export function DayScoreCard() {
   useGameAutoRefresh()
   const query = useGameToday()
   const data = query.data
-  const { claim, pendingId } = useQuestClaimer()
+  const { claim, claimedIds, pendingId } = useQuestClaimer()
   const [sheetOpen, setSheetOpen] = useState(false)
   // new achievements are celebrated once the score itself has been on screen for a moment —
   // never over the meals and quick actions at the top of Today (the pill opens them any time)
@@ -51,7 +51,10 @@ export function DayScoreCard() {
   }
 
   const { score } = data
-  const quests = data.quests.filter((quest) => quest.kind === 'daily' || quest.status === 'completed')
+  // today's quests, plus a weekly one while it waits for its claim (and once claimed here, as «Получено»)
+  const quests = data.quests.filter(
+    (quest) => quest.kind === 'daily' || quest.status === 'completed' || claimedIds.includes(quest.id),
+  )
   const scoreLabel = number(Math.round(score.value))
 
   return (

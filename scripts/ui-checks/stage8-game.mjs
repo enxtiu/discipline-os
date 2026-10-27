@@ -83,6 +83,18 @@ export async function run(ctx) {
       .locator('[data-testid="today-quests"] [data-testid="quest-row"]')
       .evaluateAll((els) => els.map((el) => `${el.getAttribute('data-quest')}:${el.getAttribute('data-status')}`)),
   })
+  /**
+   * Data this module logs can unlock more achievements after the celebration was
+   * checked (step 3); they would rightly pop up over later steps, so they are
+   * marked seen through the API.
+   */
+  const settleCelebrations = async () => {
+    const ids = ((await game()).celebrate ?? []).map((item) => item.id)
+    if (ids.length) {
+      await apiFetch('/v1/gamification/achievements/seen', { method: 'POST', body: JSON.stringify({ ids }) })
+      console.log(`  ·    ${ids.length} more achievement(s) unlocked by this module's data — marked seen`)
+    }
+  }
   const sameRings = (shown, api) => api.rings.every((ring) => Math.abs((shown[ring.key] ?? -1) - ring.value) < 1e-9)
   const cardQuests = (api) =>
     api.quests.filter((quest) => quest.kind === 'daily' || quest.status === 'completed').map((q) => `${q.code}:${q.status}`)
@@ -344,6 +356,7 @@ export async function run(ctx) {
           notDone.code,
         )
       }
+      await settleCelebrations()
       await openToday()
       const row = card.locator(`[data-testid="quest-row"][data-quest="${quest.code}"]`)
       await row.scrollIntoViewIfNeeded()
@@ -380,6 +393,7 @@ export async function run(ctx) {
     }
 
     // 6. /stats/achievements from the card: level, XP bars, streaks, quests, achievements
+    await settleCelebrations()
     await openToday()
     await card.locator('[data-testid="day-score-more"]').click()
     await page.waitForURL(/\/stats\/achievements$/, { timeout: 8000 })

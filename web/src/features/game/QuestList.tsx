@@ -3,6 +3,7 @@
  * quests) and on the achievements screen (daily + weekly). Progress and status
  * come from the server; claiming is idempotent there (a repeated claim → 0 XP).
  */
+import { useState } from 'react'
 import clsx from 'clsx'
 import { useTranslation } from 'react-i18next'
 import { useQueryClient } from '@tanstack/react-query'
@@ -19,15 +20,21 @@ import type { UserQuest } from './types'
 
 const CLAIM_ERRORS = new Set(['quest_not_completed', 'quest_expired', 'quest_not_found'])
 
-/** Claim with toasts: «+20 XP» on success, an honest note for a repeated claim. */
+/**
+ * Claim with toasts: «+20 XP» on success, an honest note for a repeated claim.
+ * `claimedIds` — quests claimed on this screen, so a list that only shows quests
+ * waiting for a claim (weekly ones on Today) can keep them as «Получено».
+ */
 export function useQuestClaimer() {
   const { t } = useTranslation()
   const toast = useToast()
   const queryClient = useQueryClient()
   const mutation = useClaimQuest()
+  const [claimedIds, setClaimedIds] = useState<string[]>([])
   const claim = (quest: UserQuest) =>
     mutation.mutate(quest, {
       onSuccess: (result) => {
+        setClaimedIds((ids) => (ids.includes(result.quest.id) ? ids : [...ids, result.quest.id]))
         if (result.xp_awarded > 0) {
           toast.success(t('game.claim_toast', { xp: result.xp_awarded, title: questTitle(result.quest) }))
         } else {
@@ -41,7 +48,7 @@ export function useQuestClaimer() {
         void queryClient.invalidateQueries({ queryKey: gameKeys.all }) // the quest moved on: show where it is
       },
     })
-  return { claim, pendingId: mutation.isPending ? mutation.variables?.id : undefined }
+  return { claim, claimedIds, pendingId: mutation.isPending ? mutation.variables?.id : undefined }
 }
 
 export function QuestList({
