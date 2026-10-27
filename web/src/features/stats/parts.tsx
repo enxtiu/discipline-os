@@ -135,7 +135,7 @@ export function Tiles({ items }: { items: Tile[] }) {
 // --------------------------------------------------------------------------- //
 // Legend (identity never by colour alone: a mark beside a text label)
 // --------------------------------------------------------------------------- //
-export type LegendMark = 'bar' | 'line' | 'dash' | 'dot' | 'band' | 'ghost' | 'cell' | 'empty'
+export type LegendMark = 'bar' | 'line' | 'dash' | 'dot' | 'band' | 'ghost' | 'cell' | 'empty' | 'outline' | 'ring'
 
 export interface LegendItem {
   mark: LegendMark
@@ -172,6 +172,10 @@ function LegendSwatch({ mark, color }: { mark: LegendMark; color: string }) {
       return <span aria-hidden="true" className="inline-block h-2.5 w-3.5 rounded-[2px] opacity-40" style={{ backgroundColor: color }} />
     case 'ghost':
       return <span aria-hidden="true" className="inline-block h-2.5 w-2.5 rounded-[3px] border border-dashed" style={{ borderColor: color }} />
+    case 'outline':
+      return <span aria-hidden="true" className="inline-block h-2.5 w-2.5 rounded-[3px] border-[1.5px]" style={{ borderColor: color }} />
+    case 'ring':
+      return <span aria-hidden="true" className="inline-block h-2 w-2 rounded-full border-[1.5px]" style={{ borderColor: color }} />
     case 'empty':
       return <span aria-hidden="true" className="inline-block h-2.5 w-2.5 rounded-[3px] border border-[rgb(var(--border))] bg-[rgb(var(--bg-sunken))]" />
   }

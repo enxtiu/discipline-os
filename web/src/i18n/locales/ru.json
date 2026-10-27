@@ -1001,7 +1001,8 @@
       "legend_counted": "засчитан",
       "legend_freeze": "заморозка",
       "legend_missed": "не засчитан",
-      "to_achievements": "Серии, уровни и достижения"
+      "to_achievements": "Серии, уровни и достижения",
+      "legend_provisional": "сегодня, предварительно"
     },
     "of_m": "из {{m}}"
   },

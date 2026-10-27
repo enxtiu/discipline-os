@@ -66,7 +66,7 @@ function KcalCard({ stats, dimmed }: { stats: NutritionStats; dimmed: boolean })
   const colour = (day: NutritionDay) => {
     const status = dayStatus(day, stats)
     if (status === 'in_zone') return theme.food
-    if (status === 'today') return theme.alpha(theme.food, 0.45)
+    if (status === 'today') return theme.alpha(theme.food, 0.3)
     return theme.rest
   }
 
@@ -151,7 +151,17 @@ function KcalCard({ stats, dimmed }: { stats: NutritionStats; dimmed: boolean })
         summary={summary}
         testId="chart-kcal"
         formatY={(value) => number(value)}
-        series={[{ key: 'kcal', value: (day) => day.kcal, color: theme.food, colorOf: colour, ghost: true, denseKind: 'dots' }]}
+        series={[
+          {
+            key: 'kcal',
+            value: (day) => day.kcal,
+            color: theme.food,
+            colorOf: colour,
+            outlineOf: (day) => (dayStatus(day, stats) === 'today' ? theme.food : undefined),
+            ghost: true,
+            denseKind: 'dots',
+          },
+        ]}
         target={target != null ? { value: target } : undefined}
         band={zone ?? undefined}
         tooltip={tooltip}
@@ -160,7 +170,7 @@ function KcalCard({ stats, dimmed }: { stats: NutritionStats; dimmed: boolean })
         items={[
           { mark, color: theme.food, label: t('stats.nutrition.legend_in_zone') },
           { mark, color: theme.rest, label: t('stats.nutrition.legend_other') },
-          { mark, color: theme.alpha(theme.food, 0.45), label: t('stats.legend_today') },
+          { mark: mark === 'dot' ? 'ring' : 'outline', color: theme.food, label: t('stats.legend_today') },
           ...(mark === 'bar' ? [{ mark: 'ghost' as const, color: theme.muted, label: t('stats.legend_no_records') }] : []),
           ...(target != null ? [{ mark: 'dash' as const, color: theme.ink, label: t('stats.nutrition.legend_target', { kcal: number(target) }) }] : []),
           ...(zone ? [{ mark: 'band' as const, color: theme.food, label: t('stats.nutrition.legend_zone', { low: number(zone.low), high: number(zone.high) }) }] : []),

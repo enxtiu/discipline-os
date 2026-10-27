@@ -57,7 +57,7 @@ function StepsCard({ stats, dimmed }: { stats: ActivityStats; dimmed: boolean })
   const mark = isDense(stats.days) ? 'dot' : 'bar'
 
   const colour = (day: ActivityDay) => {
-    if (day.date === stats.today && !day.on_target) return theme.alpha(theme.move, 0.45)
+    if (day.date === stats.today && !day.on_target) return theme.alpha(theme.move, 0.3)
     return day.on_target ? theme.move : theme.rest
   }
   const tooltip = (day: ActivityDay): TooltipLine[] =>
@@ -115,7 +115,17 @@ function StepsCard({ stats, dimmed }: { stats: ActivityStats; dimmed: boolean })
               target: target ? number(target) : '—',
             })}
             formatY={compactAxis}
-            series={[{ key: 'steps', value: (day) => day.steps, color: theme.move, colorOf: colour, ghost: true, denseKind: 'dots' }]}
+            series={[
+              {
+                key: 'steps',
+                value: (day) => day.steps,
+                color: theme.move,
+                colorOf: colour,
+                outlineOf: (day) => (day.date === stats.today && !day.on_target ? theme.move : undefined),
+                ghost: true,
+                denseKind: 'dots',
+              },
+            ]}
             target={target ? { value: target } : undefined}
             tooltip={tooltip}
           />
@@ -123,7 +133,7 @@ function StepsCard({ stats, dimmed }: { stats: ActivityStats; dimmed: boolean })
             items={[
               { mark, color: theme.move, label: t('stats.activity.legend_on_target') },
               { mark, color: theme.rest, label: t('stats.activity.legend_below') },
-              { mark, color: theme.alpha(theme.move, 0.45), label: t('stats.legend_today') },
+              { mark: mark === 'dot' ? 'ring' : 'outline', color: theme.move, label: t('stats.legend_today') },
               ...(mark === 'bar' ? [{ mark: 'ghost' as const, color: theme.muted, label: t('stats.legend_no_data') }] : []),
               ...(target ? [{ mark: 'dash' as const, color: theme.ink, label: t('stats.activity.legend_target', { steps: number(target) }) }] : []),
             ]}

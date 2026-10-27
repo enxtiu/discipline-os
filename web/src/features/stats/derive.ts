@@ -114,12 +114,15 @@ export function plannerTotals(stats: PlannerStats) {
   }
 }
 
+/** Anything happened in the period (projects are all-time progress and do not count). */
 export function hasPlanner(stats: PlannerStats): boolean {
-  return (
-    stats.days.some((day) => day.done > 0 || day.created > 0 || day.tracked_minutes > 0) ||
-    stats.by_area.some((area) => area.minutes > 0) ||
-    stats.projects.length > 0
-  )
+  return stats.days.some((day) => day.done > 0 || day.created > 0 || day.tracked_minutes > 0) || stats.by_area.some((area) => area.minutes > 0)
+}
+
+/** Areas are worth a card when time was tracked, or in the current period (targets still to reach). */
+export function showAreas(stats: PlannerStats): boolean {
+  const current = stats.from <= stats.today && stats.today <= stats.to
+  return stats.by_area.length > 0 && (current || stats.by_area.some((area) => area.minutes > 0))
 }
 
 // --------------------------------------------------------------------------- //

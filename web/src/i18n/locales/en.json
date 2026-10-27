@@ -1001,7 +1001,8 @@
       "legend_counted": "counted",
       "legend_freeze": "freeze",
       "legend_missed": "did not count",
-      "to_achievements": "Streaks, levels and achievements"
+      "to_achievements": "Streaks, levels and achievements",
+      "legend_provisional": "today, provisional"
     },
     "of_m": "of {{m}}"
   },

@@ -41,6 +41,8 @@ export interface ChartSeries<Row> {
   color: string
   /** per-day colour (emphasis: in the zone vs not); default `color` */
   colorOf?: (row: Row) => string
+  /** a day drawn hollow (in progress): its outline colour — a translucent fill alone would be too faint */
+  outlineOf?: (row: Row) => string | undefined
   /** the mark up to a month (default: bars) */
   kind?: SeriesKind
   /** the mark for a quarter or a year (default: a line) */
@@ -256,7 +258,18 @@ export function DailyChart<Row extends { date: string }>({
                   animationDuration={350}
                   className={`stats-bar stats-bar-${item.key}`}
                 >
-                  {item.colorOf && rows.map((row) => <Cell key={row.date} fill={item.colorOf?.(row) ?? item.color} />)}
+                  {(item.colorOf || item.outlineOf) &&
+                    rows.map((row) => {
+                      const outline = item.outlineOf?.(row)
+                      return (
+                        <Cell
+                          key={row.date}
+                          fill={item.colorOf?.(row) ?? item.color}
+                          stroke={outline ?? 'none'}
+                          strokeWidth={outline ? 1.5 : 0}
+                        />
+                      )
+                    })}
                 </Bar>,
                 item.ghost ? (
                   <Bar
@@ -295,6 +308,7 @@ export function DailyChart<Row extends { date: string }>({
                     {...props}
                     dataKey={item.key}
                     color={item.colorOf ? item.colorOf((props.payload as Datum).__row as Row) : item.color}
+                    outline={item.outlineOf?.((props.payload as Datum).__row as Row)}
                     surface={theme.surface}
                     radius={dotRadius}
                     ring={!dense}
@@ -399,25 +413,29 @@ function SeriesDot({
   payload,
   dataKey,
   color,
+  outline,
   surface,
   radius,
   ring,
   always,
-}: DotProps & { dataKey: string; color: string; surface: string; radius: number; ring: boolean; always: boolean }) {
+}: DotProps & {
+  dataKey: string
+  color: string
+  outline?: string
+  surface: string
+  radius: number
+  ring: boolean
+  always: boolean
+}) {
   if (value == null || cx == null || cy == null) return null
   const alone = Boolean((payload as Record<string, unknown> | undefined)?.[`${dataKey}__alone`])
-  if (!always && !alone) return null
-  return (
-    <circle
-      cx={cx}
-      cy={cy}
-      r={always ? radius : Math.max(radius, 2.5)}
-      fill={color}
-      stroke={ring ? surface : 'none'}
-      strokeWidth={ring ? 2 : 0}
-      className="stats-dot"
-    />
-  )
+  if (!always && !alone && !outline) return null
+  const r = always ? radius : Math.max(radius, 2.5)
+  if (outline) {
+    // hollow: the day is still in progress
+    return <circle cx={cx} cy={cy} r={Math.max(r, 3)} fill={surface} stroke={outline} strokeWidth={2} className="stats-dot stats-dot-open" />
+  }
+  return <circle cx={cx} cy={cy} r={r} fill={color} stroke={ring ? surface : 'none'} strokeWidth={ring ? 2 : 0} className="stats-dot" />
 }
 
 function TipLines({ day, lines, theme }: { day: string; lines: TooltipLine[]; theme: ChartTheme }) {

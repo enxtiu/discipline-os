@@ -36,7 +36,7 @@ function ScoreCard({ stats, dimmed }: { stats: ProgressStats; dimmed: boolean })
   const totals = progressTotals(stats)
   const counted = new Map(stats.streak_calendar.map((day) => [day.date, day]))
   const best = stats.scores.reduce<ScorePoint | null>((top, day) => (day.score != null && (top?.score == null || day.score > top.score) ? day : top), null)
-  const colour = (day: ScorePoint) => (day.date === stats.today ? theme.alpha(theme.food, 0.5) : theme.food)
+  const colour = () => theme.food
   const tooltip = (day: ScorePoint): TooltipLine[] => {
     if (day.score == null) return [{ label: '', value: t('stats.no_data'), mark: 'none' }]
     const flag = counted.get(day.date)
@@ -48,7 +48,7 @@ function ScoreCard({ stats, dimmed }: { stats: ProgressStats; dimmed: boolean })
           : flag?.overall
             ? t('stats.progress.cell.overall')
             : t('stats.progress.cell.missed')
-    return [{ label: note, value: t('stats.progress.score_value', { score: number(day.score) }), color: colour(day) }]
+    return [{ label: note, value: t('stats.progress.score_value', { score: number(day.score) }), color: colour() }]
   }
   return (
     <StatCard title={t('stats.progress.score_title')} hint={t('stats.progress.score_hint', { min: OVERALL_MIN_SCORE })} testId="stats-score-card" dimmed={dimmed}>
@@ -92,7 +92,7 @@ function ScoreCard({ stats, dimmed }: { stats: ProgressStats; dimmed: boolean })
             key: 'score',
             value: (day) => day.score,
             color: theme.food,
-            colorOf: colour,
+            outlineOf: (day) => (day.date === stats.today ? theme.food : undefined),
             kind: 'line',
             denseKind: 'line',
             dots: stats.scores.length <= DENSE_AFTER,
@@ -104,6 +104,9 @@ function ScoreCard({ stats, dimmed }: { stats: ProgressStats; dimmed: boolean })
       <Legend
         items={[
           { mark: 'line', color: theme.food, label: t('stats.progress.legend_score') },
+          ...(stats.scores.some((day) => day.date === stats.today && day.score != null)
+            ? [{ mark: 'ring' as const, color: theme.food, label: t('stats.progress.legend_provisional') }]
+            : []),
           { mark: 'dash', color: theme.ink, label: t('stats.progress.legend_streak', { min: OVERALL_MIN_SCORE }) },
         ]}
       />

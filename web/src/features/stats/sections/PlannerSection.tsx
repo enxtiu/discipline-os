@@ -12,7 +12,7 @@ import { ColorDot } from '@/features/plan/tasks/ColorDot'
 import { BarList } from '../charts/BarList'
 import { DailyChart, isDense, type TooltipLine } from '../charts/DailyChart'
 import { useChartTheme } from '../charts/theme'
-import { hasPlanner, plannerTotals } from '../derive'
+import { hasPlanner, plannerTotals, showAreas } from '../derive'
 import { hoursMinutes, periodLabel, shortDay } from '../format'
 import { CardEmpty, DataTable, Legend, StatCard, Tiles } from '../parts'
 import type { PlannerDay, PlannerStats } from '../types'
@@ -20,21 +20,21 @@ import type { PlannerDay, PlannerStats } from '../types'
 export function PlannerSection({ stats, dimmed }: { stats: PlannerStats; dimmed: boolean }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  if (!hasPlanner(stats)) {
-    return (
-      <StatCard title={t('stats.planner.tasks_title')} testId="stats-tasks-card" dimmed={dimmed}>
-        <CardEmpty
-          title={t('stats.planner.empty')}
-          description={t('stats.planner.empty_hint')}
-          action={{ label: t('stats.planner.empty_action'), onClick: () => navigate('/plan') }}
-        />
-      </StatCard>
-    )
-  }
   return (
     <>
-      <TasksCard stats={stats} dimmed={dimmed} />
-      {stats.by_area.length > 0 && <AreasCard stats={stats} dimmed={dimmed} />}
+      {hasPlanner(stats) ? (
+        <TasksCard stats={stats} dimmed={dimmed} />
+      ) : (
+        <StatCard title={t('stats.planner.tasks_title')} testId="stats-tasks-card" dimmed={dimmed}>
+          <CardEmpty
+            title={t('stats.planner.empty')}
+            description={t('stats.planner.empty_hint')}
+            action={{ label: t('stats.planner.empty_action'), onClick: () => navigate('/plan') }}
+          />
+        </StatCard>
+      )}
+      {showAreas(stats) && <AreasCard stats={stats} dimmed={dimmed} />}
+      {/* project progress is all-time: shown even when the period itself is empty */}
       {stats.projects.length > 0 && <ProjectsCard stats={stats} dimmed={dimmed} />}
     </>
   )
