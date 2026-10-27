@@ -21,7 +21,7 @@ from sqlalchemy import func, select
 from app.db import SessionLocal
 from app.models import Task
 from app.services.task_parser import KnownContainer, ParsedTask, Token
-from tests.stage6_helpers import API, BANGKOK, code, make_task, today, uid
+from tests.stage6_helpers import API, BANGKOK, code, make_task, set_timezone, today, uid
 
 pytestmark = pytest.mark.anyio
 
@@ -159,6 +159,31 @@ async def test_quick_add_recurrence_keeps_the_typed_time(authed: httpx.AsyncClie
     run = await _quick(authed, "в 18 на 1.5 ч бег", captured_at=at(now, 10))
     assert run["task"]["block"]["date"] == now.isoformat() and run["task"]["block"]["minutes"] == 90
     assert run["task"]["estimate_minutes"] is None and run["task"]["title"] == "бег"
+
+
+async def test_quick_add_far_relative_dates_keep_the_line(authed: httpx.AsyncClient) -> None:
+    """«через 100 лет» lies past the supported days: the task is created, the date dropped like any value
+    outside the task bounds (before: 422, and the offline queue dropped the line)."""
+    now = today()
+    for text, title in (
+        ("ремонт через 100 лет", "ремонт"),
+        ("renew passport in 100 years", "renew passport"),
+        ("отпуск через 9999 недель", "отпуск"),
+        ("встреча через 80 лет в 10:00", "встреча"),
+        ("через 75 лет 18:00-19:00 бег", "бег"),
+    ):
+        task = (await _quick(authed, text, captured_at=at(now, 10)))["task"]
+        assert (task["title"], task["due_date"], task["due_time"], task["block"], task["status"]) == (
+            title,
+            None,
+            None,
+            None,
+            "inbox",
+        ), text
+        preview = await authed.post(f"{API}/parse", json={"text": text, "captured_at": at(now, 10)})
+        assert preview.status_code == 200 and preview.json()["title"] == title  # the preview shows what was read
+    near = await _quick(authed, "check in 9999 days", captured_at=at(now, 10))
+    assert near["task"]["due_date"] == (now + timedelta(days=9999)).isoformat()  # still in range: kept
 
 
 async def test_parse_endpoint(authed: httpx.AsyncClient) -> None:
@@ -324,6 +349,37 @@ async def test_mapping_defaults_fallbacks_and_replays(authed: httpx.AsyncClient,
     assert first["task"]["id"] == again["task"]["id"] == quick_id
     async with SessionLocal() as session:
         assert await session.scalar(select(func.count()).select_from(Task).where(Task.id == uuid.UUID(quick_id))) == 1
+
+
+async def test_values_a_task_cannot_hold_are_dropped(authed: httpx.AsyncClient, fake_parser) -> None:
+    """Every parsed value a task would refuse is dropped and the line is kept."""
+    _, result = fake_parser
+    await set_timezone(authed, "Europe/Berlin")
+    in_range = date(2027, 3, 27)
+    # 02:30-03:00 does not exist on the spring-forward night (2027-03-28 in Berlin)
+    result["value"] = ParsedTask(
+        title="ночью", block_date=date(2027, 3, 28), block_start=time(2, 30), block_end=time(3)
+    )
+    gap = (await _quick(authed, "ночью"))["task"]
+    assert (gap["title"], gap["block"], gap["status"]) == ("ночью", None, "inbox")
+    # a block past the supported days next to a due date that fits: the date stays, the block goes
+    result["value"] = ParsedTask(
+        title="забег", due_date=in_range, block_date=date(2101, 1, 1), block_start=time(9), block_end=time(10)
+    )
+    split = (await _quick(authed, "забег"))["task"]
+    assert (split["due_date"], split["block"]) == (in_range.isoformat(), None)
+    # a date before the supported days, with its time
+    result["value"] = ParsedTask(title="старое", due_date=date(1999, 12, 31), due_time=time(9))
+    old = (await _quick(authed, "старое"))["task"]
+    assert (old["title"], old["due_date"], old["due_time"]) == ("старое", None, None)
+    # a rule with no occurrence in the supported range (the next 29 February 999 years apart is in 4024)
+    result["value"] = ParsedTask(title="високосный", recurrence_rule="FREQ=YEARLY;INTERVAL=999;BYMONTH=2;BYMONTHDAY=29")
+    leap = (await _quick(authed, "високосный"))["task"]
+    assert (leap["title"], leap["is_recurring"], leap["due_date"]) == ("високосный", False, None)
+    # a time typed with a dropped date leaves nothing to remind of: the reminder goes too, the task stays
+    result["value"] = ParsedTask(title="звонок", due_date=date(2126, 10, 28), due_time=time(9), reminder_leads=[15])
+    call = (await _quick(authed, "звонок"))["task"]
+    assert (call["title"], call["due_date"], call["reminders"]) == ("звонок", None, [])
 
 
 async def test_unparsable_rule_digits_never_cost_the_line(authed: httpx.AsyncClient, fake_parser) -> None:
