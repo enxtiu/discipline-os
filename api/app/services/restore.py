@@ -17,8 +17,9 @@
   forgery from real history; the records can). "Empty" means holding none of the
   user's own records — what a new account starts with (settings, the default areas
   and tags, streak rows, today's score and quests) is fine: the backup's rows take
-  their place; rows of this very backup are fine too (the same restore run again
-  changes nothing).
+  their place. For a signed backup rows of this very backup are fine too (the same
+  restore run again changes nothing); an unsigned one is taken by a truly empty
+  account only (a second run is refused).
 * **Values are checked, never trusted** (signed or not). Every value must have its
   column's type; JSON columns their shape; settings the API's bounds and its safety
   rule — a safe floor below the default, or a calorie target below the floor, without
@@ -598,10 +599,12 @@ async def restore(
 
 
 async def _records_held(db: AsyncSession, user_id: uuid.UUID, backup: Backup) -> list[str]:
-    """Sections in which the account holds records of its own — rows that are not rows
-    of this very backup (an account that took this backup before may take it again:
-    restoring twice changes nothing). One query, then the ids of the sections that
-    have rows at all."""
+    """Sections in which the account holds records of its own — for a signed backup,
+    rows that are not rows of this very backup (an account that took this backup before
+    may take it again: restoring twice changes nothing). For a backup this server did
+    not sign every record counts: whoever made it may know the account's row ids, so
+    only a truly empty account takes it (running it twice is refused the second time).
+    One query, then the ids of the sections that have rows at all."""
     checks = []
     candidates: dict[str, Section] = {}
     for section in SECTIONS:
@@ -613,6 +616,9 @@ async def _records_held(db: AsyncSession, user_id: uuid.UUID, backup: Backup) ->
     held = []
     for name, has_rows in row._mapping.items():
         if not has_rows:
+            continue
+        if not backup.signed:
+            held.append(name)
             continue
         section = candidates[name]
         stmt = select(*section.primary_key).where(_owned_by(section, user_id))

@@ -1,5 +1,14 @@
 """Stage-8 review fixes on the restore side (review 8: M2, M3, L1, L2).
 
+M3 — the manifest is signed (HMAC-SHA256, key by HKDF from ``BACKUP_SIGNING_KEY`` or
+``SECRET_KEY``) over everything in it. A signed backup restores as before; any other
+(edited, another server, a changed key) only into an empty account named with
+``--user-id`` — the manifest's ``user_id`` never chooses an account — and the engine
+rebuilds its XP, scores, streaks, achievements and quests from the records. Values
+are re-checked in every case: the settings API's bounds and safety rule (an
+unconfirmed floor or target below the floor is put back to the floor), and derived
+rows of a signed backup within what the engine awards.
+
 M2 — after remapping, every foreign key of a backup row points at a row of the
 target account (rows of the backup restored before are the target's by now) or a
 library row; a row of another account aborts the restore before anything is written.
@@ -16,6 +25,7 @@ archive never turns into hundreds of MiB of memory.
 
 from __future__ import annotations
 
+import copy
 import io
 import struct
 import tracemalloc
@@ -26,18 +36,32 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
+import orjson
 import pytest
 import sqlalchemy as sa
 from sqlalchemy import select
 
 from app.core.config import get_settings
-from app.models import MealItem, MealLog, Recipe, Task, User
-from app.services import media
+from app.core.security import hkdf_sha256
+from app.models import MealItem, MealLog, Recipe, Streak, Task, User, UserSettings
+from app.services import export, media, restore
 from app.services.export import SECTIONS
-from app.services.restore import RestoreError, _foreign_keys, read_backup
+from app.services.restore import RestoreError, Signature, _foreign_keys, check_signature, read_backup
 from tests.stage6_helpers import other_user
-from tests.stage8_helpers import _fresh_seed_cache, configure, local  # noqa: F401  (autouse fixture)
-from tests.test_stage8_export import counts, populate, restore_file, rewrite_backup, save_backup, wipe
+from tests.stage8_helpers import (
+    NOON,
+    TODAY,
+    YESTERDAY,
+    _fresh_seed_cache,  # noqa: F401  (autouse fixture)
+    configure,
+    eat_day,
+    local,
+    meal,
+    run,
+    xp_rows,
+    xp_total,
+)
+from tests.test_stage8_export import cli, counts, populate, restore_file, rewrite_backup, save_backup, wipe
 
 pytestmark = pytest.mark.anyio
 MiB = 1 << 20
@@ -321,3 +345,273 @@ async def test_a_thumbnail_survives_a_restore_only_where_its_file_is(owner, db, 
     rows = (await db.scalars(select(MealLog).where(MealLog.user_id == owner.id))).all()
     assert len(rows) == 2 and all(row.photo_thumb_path is None for row in rows)
     assert media.path_of(media.meal_thumb_relpath(b_id, with_file)) is not None  # nobody's file was touched
+
+
+# --------------------------------------------------------------------------- #
+# M3 — a signed manifest; values re-checked, never trusted
+# --------------------------------------------------------------------------- #
+def test_hkdf_sha256_matches_rfc_5869() -> None:
+    ikm = bytes.fromhex("0b" * 22)
+    case_1 = hkdf_sha256(ikm, salt=bytes(range(13)), info=bytes(range(0xF0, 0xFA)), length=42)
+    assert case_1.hex() == ("3cb25f25faacd57a90434f64d0362f2a2d2d0a90cf1a5a4c5db02d56ecc4c5bf34007208d5b887185865")
+    case_3 = hkdf_sha256(ikm, salt=b"", info=b"", length=42)  # no salt: HashLen zeros
+    assert case_3.hex() == ("8da4e775a563c18f715f802a063c5a31b8a11f5c5ee1879ec3454e5f3c738d2d9d201395faa4b61a96c8")
+
+
+async def test_the_signature_covers_the_whole_manifest(authed, tmp_path) -> None:
+    path = await save_backup(authed, tmp_path / "a.zip")
+    manifest = orjson.loads(zipfile.ZipFile(path).read("manifest.json"))
+    assert check_signature(manifest) == Signature(True)
+    assert get_settings().secret_key not in str(manifest) and export.signing_key().hex() not in str(manifest)
+    for change in (
+        lambda m: m.update(user_id=str(uuid.uuid4())),
+        lambda m: m.update(schema_version="0002"),
+        lambda m: m.update(created_at="2020-01-01T00:00:00+00:00"),
+        lambda m: m["files"]["data.json"].update(sha256="0" * 64),
+        lambda m: m["files"]["data.json"].update(bytes=1),
+        lambda m: m["counts"].update(meal_logs=5),
+        lambda m: m.update(timezone="UTC", app_version="9.9.9"),
+        lambda m: m.update(extra=True),
+    ):
+        edited = copy.deepcopy(manifest)
+        change(edited)
+        assert check_signature(edited) == Signature(
+            False, "its signature does not match: it was changed after it was made"
+        )
+    unsigned = {key: value for key, value in manifest.items() if key != "signature"}
+    assert check_signature(unsigned) == Signature(False, "it carries no signature")
+    for signature in ({**manifest["signature"], "alg": "none"}, "deadbeef", {"alg": "HMAC-SHA256"}):
+        assert "not one this server knows" in str(check_signature({**manifest, "signature": signature}).problem)
+
+
+async def test_backup_signing_key_secret_key_and_another_server(authed, owner, db, tmp_path, monkeypatch) -> None:
+    """BACKUP_SIGNING_KEY signs when set (a SECRET_KEY rotation leaves its backups valid);
+    a backup signed with another key counts as unsigned: refused without --user-id."""
+    settings = get_settings()
+    by_secret = await save_backup(authed, tmp_path / "secret.zip")
+    monkeypatch.setattr(settings, "backup_signing_key", "backup-key-shared-by-both-servers-0123")
+    shared = await save_backup(authed, tmp_path / "shared.zip")
+    assert read_backup(shared).signed and not read_backup(by_secret).signed
+    assert (
+        read_backup(by_secret).signature.problem == "it was signed by another server, or before the signing key changed"
+    )
+
+    monkeypatch.setattr(settings, "secret_key", "a-rotated-secret-key-0123456789-abcdef")
+    assert read_backup(shared).signed  # the backup key did not change
+
+    monkeypatch.setattr(settings, "backup_signing_key", "the-key-of-another-server-0123456789")
+    elsewhere = read_backup(shared)
+    assert not elsewhere.signed and "another server" in str(elsewhere.signature.problem)
+    with pytest.raises(RestoreError, match="this server did not sign the backup \\(it was signed by another server"):
+        await restore_file(shared)
+
+    monkeypatch.setattr(settings, "backup_signing_key", "backup-key-shared-by-both-servers-0123")
+    report = await restore_file(shared)  # the same key again: a backup of this server
+    assert report.signed and report.rebuilt == 0 and report.inserted == 0
+
+
+async def _b_with_history(db, b_id: uuid.UUID) -> None:
+    await configure(db, b_id)  # a man: target 2000 kcal, safe floor = the default 1500
+    for day in (YESTERDAY, TODAY):
+        await eat_day(db, b_id, day)
+    await run(db, b_id, NOON)
+
+
+def _gift(document: dict[str, Any], manifest: dict[str, Any]) -> None:
+    gift = dict(document["tables"]["xp_events"][0])
+    gift.update(id=str(uuid.uuid4()), kind="manual", points=10**9, dedupe_key="gift", reason="gift")
+    document["tables"]["xp_events"].append(gift)
+    manifest["counts"]["xp_events"] += 1
+
+
+def _low_floor(document: dict[str, Any], manifest: dict[str, Any]) -> None:
+    document["tables"]["settings"][0].update(
+        safe_floor_kcal=1000, target_kcal=1000, targets_manual=True, safe_floor_confirmed_at=None
+    )
+
+
+async def _settings_of(db, user_id: uuid.UUID) -> tuple[Any, ...]:
+    db.expire_all()
+    row = (await db.scalars(select(UserSettings).where(UserSettings.user_id == user_id))).one()
+    return row.target_kcal, row.safe_floor_kcal, row.safe_floor_confirmed_at, row.timezone
+
+
+async def test_probe_x2_an_edited_backup_is_refused_and_a_signed_one_is_checked(owner, db, tmp_path) -> None:
+    """Probe X2: 10^9 XP and an unconfirmed 1 000 kcal floor. Edited: refused. Signed
+    with those values (a key holder, a bug): the XP is refused by its bound; the floor
+    and the target are put back to the default floor (1 500 kcal for a man), reported —
+    and kept only when confirmed, as the settings API does."""
+    async with other_user() as b_client:
+        b_id = await _b_id(db)
+        await _b_with_history(db, b_id)
+        original = await save_backup(b_client, tmp_path / "b.zip")
+    before = (await xp_total(db, b_id), await _settings_of(db, b_id))
+    assert before[1][:3] == (2000, None, None)
+
+    def both(document: dict[str, Any], manifest: dict[str, Any]) -> None:
+        _gift(document, manifest)
+        _low_floor(document, manifest)
+
+    with pytest.raises(RestoreError, match="this server did not sign the backup"):
+        await restore_file(rewrite_backup(original, tmp_path / "edited.zip", both))
+    with pytest.raises(RestoreError, match=r"xp_events\.points: 1000000000 is outside 0\.\.1000 "):
+        await restore_file(rewrite_backup(original, tmp_path / "gift.zip", both, sign=True))
+    assert (await xp_total(db, b_id), await _settings_of(db, b_id)) == before
+
+    report = await restore_file(rewrite_backup(original, tmp_path / "floor.zip", _low_floor, sign=True))
+    assert (await _settings_of(db, b_id))[:3] == (1500, None, None)
+    assert report.notes == [
+        "settings: a safe floor of 1000 kcal, below the default 1500 kcal, was never confirmed — the default applies",
+        "settings: a calorie target of 1000 kcal, below the safe floor 1500 kcal, was never confirmed — set to 1500 kcal",
+    ]
+
+    def confirmed(document: dict[str, Any], manifest: dict[str, Any]) -> None:
+        _low_floor(document, manifest)
+        document["tables"]["settings"][0]["safe_floor_confirmed_at"] = "2026-07-01T10:00:00+00:00"
+
+    report = await restore_file(rewrite_backup(original, tmp_path / "confirmed.zip", confirmed, sign=True))
+    assert report.notes == [] and (await _settings_of(db, b_id))[:2] == (1000, 1000)
+    assert await xp_total(db, b_id) == before[0]
+
+
+async def test_probe_x2b_the_manifest_never_chooses_the_account(owner, db, tmp_path) -> None:
+    """Probe X2b: B's backup with A's id in the manifest (and fresh row ids) — without
+    --user-id refused; into A, which holds records of its own, refused too."""
+    await configure(db, owner.id)  # A: Bangkok, target 2000, floor = the default
+    async with other_user() as b_client:
+        original = await save_backup(b_client, tmp_path / "b.zip")
+
+    def retarget(document: dict[str, Any], manifest: dict[str, Any]) -> None:
+        for name in list(document["tables"]):
+            if name != "settings":
+                document["tables"][name] = []
+                manifest["counts"][name] = 0
+        document["tables"]["settings"][0].update(
+            id=str(uuid.uuid4()), safe_floor_kcal=1000, target_kcal=1000, targets_manual=True, timezone="America/Adak"
+        )
+        document["user_id"] = manifest["user_id"] = str(owner.id)
+
+    crafted = rewrite_backup(original, tmp_path / "retarget.zip", retarget)
+    with pytest.raises(RestoreError, match=r"this server did not sign the backup .* named with --user-id"):
+        await restore_file(crafted)
+    await meal(db, owner.id, TODAY, 600)
+    with pytest.raises(RestoreError, match=rf"account {owner.id} is not empty \(meal_logs\): a backup this server"):
+        await restore_file(crafted, user_id=owner.id)
+    assert await _settings_of(db, owner.id) == (2000, None, None, "Asia/Bangkok")
+
+
+async def test_an_unsigned_backup_goes_into_an_empty_account_and_the_engine_rebuilds_the_rest(
+    owner, db, tmp_path
+) -> None:
+    """An edited backup (a forged 10^9 XP row and a 500-day streak): not into its own
+    account, even with --user-id; into an empty one with --user-id the records go in,
+    the derived rows do not — and the engine's next run rebuilds exactly the XP the
+    source account had, without the forgeries."""
+    async with other_user() as b_client:
+        b_id = await _b_id(db)
+        await _b_with_history(db, b_id)
+        original = await save_backup(b_client, tmp_path / "b.zip")
+    source_xp = {key: row.points for key, row in (await xp_rows(db, b_id)).items()}
+    source_counts = await counts(db, b_id)
+    assert source_xp and source_counts["xp_events"] == len(source_xp)
+
+    def forged(document: dict[str, Any], manifest: dict[str, Any]) -> None:
+        _gift(document, manifest)
+        for row in document["tables"]["streaks"]:
+            row.update(current_count=500, longest_count=500)
+
+    unsigned = rewrite_backup(original, tmp_path / "unsigned.zip", forged)
+    with pytest.raises(RestoreError, match=rf"account {b_id} is not empty .* did not sign"):
+        await restore_file(unsigned, user_id=b_id)
+
+    await db.execute(sa.delete(User).where(User.id == b_id))  # B gone (another server): A, empty, takes it
+    await db.commit()
+    dry = cli(str(unsigned), "--user-id", str(owner.id), "--dry-run")
+    assert dry.returncode == 0, dry.stdout + dry.stderr
+    assert "signature: not valid here — its signature does not match" in dry.stdout
+    assert "rebuilt by the engine" in dry.stdout and "left to the engine" in dry.stdout
+    assert "the gamification engine rebuilds them from the restored records" in dry.stdout
+
+    report = await restore_file(unsigned, user_id=owner.id)
+    assert (
+        not report.signed
+        and report.signature_problem == "its signature does not match: it was changed after it was made"
+    )
+    derived = [section.name for section in SECTIONS if section.derived]
+    assert {name: report.tables[name].rebuilt for name in derived} == {
+        name: source_counts[name] + (name == "xp_events") for name in derived
+    }
+    assert all(report.tables[name].changed == 0 for name in derived)
+    restored = await counts(db, owner.id)
+    records = [section.name for section in SECTIONS if section.restore and not section.in_empty_account]
+    assert {name: restored[name] for name in records} == {name: source_counts[name] for name in records}
+    assert await xp_total(db, owner.id) == 0  # nothing derived was taken from the file
+    assert 500 not in (await db.scalars(select(Streak.current_count).where(Streak.user_id == owner.id))).all()
+
+    await run(db, owner.id, NOON)  # the engine's next run: the same history gives the same XP
+    rebuilt = {key: row.points for key, row in (await xp_rows(db, owner.id)).items()}
+    assert rebuilt == source_xp and "gift" not in rebuilt
+    assert max((await db.scalars(select(Streak.current_count).where(Streak.user_id == owner.id))).all()) < 10
+    with pytest.raises(RestoreError, match=rf"account {owner.id} is not empty"):  # A holds records now
+        await restore_file(unsigned, user_id=owner.id)
+
+
+@pytest.mark.parametrize(
+    ("column", "value", "message"),
+    [
+        ("target_kcal", 500, r"settings\.target_kcal: 500 is outside 1000\.\.20000"),
+        ("safe_floor_kcal", 900, r"settings\.safe_floor_kcal: 900 is outside 1000\.\.3500"),
+        ("week_start", 9, r"settings\.week_start: 9 is outside 0\.\.6"),
+        ("weight_kg", 1000, r"settings\.weight_kg: 1000 is outside 20\.\.400"),
+        ("target_water_ml", -5, r"settings\.target_water_ml: -5 is outside 0\.\.20000"),
+        ("units", "imperial", r"settings\.units: 'imperial' — the app is metric only"),
+        ("xp_weights", {"score_weights": {"kcal": 500}}, r"settings\.xp_weights: score weight kcal must be"),
+        ("xp_weights", {"xp_multipliers": {"nutrition": 50}}, r"settings\.xp_weights: XP multiplier nutrition"),
+        ("xp_weights", [], r"settings\.xp_weights: an object is required"),
+    ],
+)
+async def test_settings_the_app_never_stores_are_refused(authed, db, tmp_path, column, value, message) -> None:
+    path = await save_backup(authed, tmp_path / "a.zip")
+
+    def change(document: dict[str, Any], manifest: dict[str, Any]) -> None:
+        document["tables"]["settings"][0][column] = value
+
+    with pytest.raises(RestoreError, match=message):
+        await restore_file(rewrite_backup(path, tmp_path / "changed.zip", change, sign=True))
+
+
+@pytest.mark.parametrize(
+    ("table", "values", "message"),
+    [
+        ("xp_events", {"points": -1}, r"xp_events\.points: -1 is outside 0\.\.1000"),
+        ("daily_scores", {"xp_earned": 2_000_000_000}, r"daily_scores\.xp_earned: 2000000000 is outside"),
+        ("daily_scores", {"score": 101}, r"daily_scores\.score: 101 is outside 0\.\.100"),
+        ("streaks", {"current_count": 10**6}, r"streaks\.current_count: 1000000 is outside 0\.\.100000"),
+        ("streaks", {"freeze_tokens": 7}, r"streaks\.freeze_tokens: 7 is outside 0\.\.2"),
+        ("user_quests", {"period_end": "2026-07-01"}, r"user_quests: period 2026-07-1\d\.\.2026-07-01 ends before"),
+        ("xp_events", {"kind": "free_points"}, r"xp_events\.kind: bad value 'free_points'"),
+    ],
+)
+async def test_derived_rows_of_a_signed_backup_are_checked(owner, db, tmp_path, table, values, message) -> None:
+    async with other_user() as b_client:
+        await _b_with_history(db, await _b_id(db))
+        path = await save_backup(b_client, tmp_path / "b.zip")
+
+    def change(document: dict[str, Any], manifest: dict[str, Any]) -> None:
+        document["tables"][table][0].update(values)
+
+    with pytest.raises(RestoreError, match=message):
+        await restore_file(rewrite_backup(path, tmp_path / "changed.zip", change, sign=True))
+
+
+def test_the_bounds_cover_every_award_the_engine_makes() -> None:
+    """An honest signed backup never trips them: they sit at or above the engine's maxima."""
+    from app.schemas.gamification import MAX_XP_MULTIPLIER
+    from app.seeds.gamification import ACHIEVEMENTS, QUESTS
+    from app.services.gamification.streaks import MAX_FREEZE_TOKENS, OVERALL_MILESTONES
+
+    largest = max(
+        [points for _, points in OVERALL_MILESTONES] + [item.xp for item in ACHIEVEMENTS] + [item.xp for item in QUESTS]
+    )
+    assert largest * MAX_XP_MULTIPLIER <= restore.MAX_EVENT_POINTS
+    assert restore.MAX_FREEZE_TOKENS == MAX_FREEZE_TOKENS
