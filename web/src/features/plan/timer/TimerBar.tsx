@@ -3,9 +3,12 @@
  *
  * Running: what is timed, the elapsed time ticking from the server's
  * `elapsed_s` (never the device clock, see `useElapsed`), a 48 px stop button;
- * the bar opens the time log. After 12 h it warns; a timer over 24 h cannot be
- * stopped without saying how long it ran (the server answers
- * `409 timer_too_long`), so the stop button asks first.
+ * the bar opens the time log. Stopping sends `ended_at` = start + that
+ * elapsed time, so a phone with a wrong clock still records what it showed.
+ * After 12 h it warns; an entry is at most 24 h, so a timer over a day cannot
+ * be stopped without saying how long it ran: the stop button asks first, and
+ * when the server refuses anyway (`422 invalid_time_entry` for the `ended_at`
+ * we send, `409 timer_too_long` without one) the same question opens.
  * Idle: `variant="plan"` offers «Запустить таймер», `variant="today"` renders
  * nothing. Start/stop work offline (queued with the tap instant). The sheets
  * load on first use, so Today stays light.
@@ -22,7 +25,7 @@ import { errorMessage } from '@/lib/errors'
 import { formatDuration, formatMinutes } from '../format'
 import { IconPlay, IconStop } from '../icons'
 import { useElapsed, useTimer } from '../queries'
-import { describeEntry } from './entry'
+import { describeEntry, instantAfter } from './entry'
 import type { LongTimer } from './TimerSheets'
 import { useStopTimer } from './useTimerActions'
 
@@ -67,11 +70,11 @@ export function TimerBar({ variant = 'plan' }: { variant?: 'plan' | 'today' }) {
     }
     setStopping(true)
     try {
-      const result = await stop({ entryId: entry.id })
+      const result = await stop({ entryId: entry.id, endedAt: instantAfter(entry.started_at, elapsed) ?? undefined })
       if (result.queued) toast.info(t('timer.stop_queued'))
       else toast.success(t('timer.stopped', { duration: formatMinutes((result.data.stopped?.duration_s ?? elapsed) / 60) }))
     } catch (error) {
-      if (error instanceof ApiError && error.code === 'timer_too_long') {
+      if (error instanceof ApiError && (error.code === 'timer_too_long' || error.code === 'invalid_time_entry')) {
         const startedAt = error.details?.started_at
         askDuration(typeof startedAt === 'string' ? startedAt : entry.started_at)
       } else {

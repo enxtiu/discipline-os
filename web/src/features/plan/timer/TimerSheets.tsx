@@ -16,6 +16,7 @@ import { dayMonth } from '../calendar/dates'
 import { formatMinutes } from '../format'
 import { IconPlay, IconStop } from '../icons'
 import type { Ref, TaskRef } from '../types'
+import { instantAfter } from './entry'
 import { AreaSelect, ProjectSelect, TaskSelect } from './pickers'
 import { useStartTimer, useStopTimer } from './useTimerActions'
 
@@ -122,13 +123,13 @@ export function TimerDurationSheet({ open, onClose, timer }: { open: boolean; on
   const h = wholeNumber(hours)
   const m = wholeNumber(minutes)
   const total = h !== null && m !== null ? h * 60 + m : 0
-  const valid = h !== null && m !== null && m < 60 && total >= 1 && total <= 24 * 60 && !Number.isNaN(Date.parse(timer.startedAt))
+  const endedAt = instantAfter(timer.startedAt, total * 60)
+  const valid = h !== null && m !== null && m < 60 && total >= 1 && total <= 24 * 60 && endedAt !== null
 
   const submit = async () => {
-    if (!valid || busy) return
+    if (!valid || !endedAt || busy) return
     setBusy(true)
     try {
-      const endedAt = new Date(Date.parse(timer.startedAt) + total * 60_000).toISOString()
       const result = await stop({ entryId: timer.entryId, endedAt })
       if (result.queued) toast.info(t('timer.stop_queued'))
       else toast.success(t('timer.stopped', { duration: formatMinutes(total) }))

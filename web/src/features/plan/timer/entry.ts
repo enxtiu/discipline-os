@@ -27,3 +27,27 @@ export function entryTimes(entry: Pick<TimeEntry, 'start' | 'end' | 'ends_next_d
 export function entryMinutes(entry: Pick<TimeEntry, 'duration_s'>): number {
   return Math.round((entry.duration_s ?? 0) / 60)
 }
+
+/**
+ * Milliseconds of an ISO instant from the server ("…:35.266843Z",
+ * "…+07:00"). The six fraction digits Python writes are outside the format
+ * every engine must parse, so they become milliseconds — rounded up, so that
+ * start + 2 h 30 min is never a microsecond short of 2 h 30 min on the server
+ * (which floors the seconds). NaN when unreadable.
+ */
+export function instantMs(iso: string): number {
+  const fraction = /\.(\d{3})(\d+)/.exec(iso)
+  if (!fraction) return Date.parse(iso)
+  const ms = Date.parse(iso.replace(fraction[0], `.${fraction[1]}`))
+  return /[1-9]/.test(fraction[2]) ? ms + 1 : ms
+}
+
+/**
+ * The instant `seconds` after `startedAt`: when a timer is stopped (start +
+ * the server's elapsed time) or how long it really ran (the duration sheet).
+ * Plain instant arithmetic — no timezone, no device clock reading.
+ */
+export function instantAfter(startedAt: string, seconds: number): string | null {
+  const start = instantMs(startedAt)
+  return Number.isNaN(start) ? null : new Date(start + Math.max(0, Math.floor(seconds)) * 1000).toISOString()
+}
