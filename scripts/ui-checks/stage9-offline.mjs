@@ -246,9 +246,9 @@ export async function run(ctx) {
       'sync sheet offline: grouped by kind with human labels and when they were made',
       groups.join(', '),
     )
-    await shot('60-sync-sheet-offline')
+    await shot('9o-sync-sheet-offline')
     await closeDialog()
-    await shot('61-today-offline-pending')
+    await shot('9o-today-offline-pending')
 
     // a meal logged offline and deleted before it was sent never reaches the server
     await tab('/food')
@@ -344,7 +344,7 @@ export async function run(ctx) {
     await row(page, ticked.id).first().locator('[data-testid="task-check"]').click()
     await sleep(600)
     check((await row(page, ticked.id).first().getAttribute('data-status')) === 'done', 'offline: completing a task shows at once')
-    await shot('62-plan-offline-edit')
+    await shot('9o-plan-offline-edit')
     await goOnline()
     const sentEdit = await until(() => getTask(edited.id), (task) => task?.title?.endsWith('(с телефона)'))
     const sentTick = await until(() => getTask(ticked.id), (task) => task?.status === 'done')
@@ -418,7 +418,7 @@ export async function run(ctx) {
       (await tall(page.locator('[data-testid="conflict-keep-mine"]'))) && (await tall(page.locator('[data-testid="conflict-keep-theirs"]'))),
       'the conflict buttons are 48 px targets',
     )
-    await shot('63-sync-conflict')
+    await shot('9o-sync-conflict')
     await page.locator('[data-testid="conflict-keep-mine"]').click()
     const mine = await until(() => getTask(contested.id), (task) => task?.title?.endsWith('телефон'))
     const mineQueue = await until(queue, (entries) => entries.length === 0)
@@ -473,7 +473,7 @@ export async function run(ctx) {
         (await inline.locator('[data-testid="conflict-theirs"]').first().innerText()).includes('ноутбук, онлайн'),
       'editor online: 409 → inline «Изменено на другом устройстве» with the other value',
     )
-    await shot('64-editor-conflict')
+    await shot('9o-editor-conflict')
     await inline.locator('[data-testid="conflict-keep-theirs"]').click()
     await sleep(800)
     check(
@@ -503,7 +503,7 @@ export async function run(ctx) {
       ((await server(`${P}/journal/${today}`)).body?.entry?.wins_md ?? '').includes('ноутбука'),
       'journal: the other device\'s text is still on the server while the choice is open',
     )
-    await shot('65-journal-conflict')
+    await shot('9o-journal-conflict')
     await journalConflict.locator('[data-testid="conflict-keep-mine"]').click()
     const journalMine = await until(
       async () => (await server(`${P}/journal/${today}`)).body?.entry?.wins_md ?? '',
@@ -571,7 +571,7 @@ export async function run(ctx) {
       (await tall(failedRow.locator('[data-testid="sync-retry"]'))) && (await tall(failedRow.locator('[data-testid="sync-discard"]'))),
       '«Повторить» and «Удалить» are 48 px targets',
     )
-    await shot('66-sync-failed')
+    await shot('9o-sync-failed')
     await allowErrors(async () => {
       await failedRow.locator('[data-testid="sync-retry"]').click()
       await until(queue, (entries) => entries.some((entry) => statusOf(entry) === 'failed' && entry.attempts >= 2))
