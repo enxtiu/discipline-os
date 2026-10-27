@@ -5,6 +5,9 @@
  */
 import {
   forwardRef,
+  useEffect,
+  useId,
+  useRef,
   type ButtonHTMLAttributes,
   type InputHTMLAttributes,
   type ReactNode,
@@ -407,6 +410,97 @@ export function SegmentedControl<T extends string>({
 // --------------------------------------------------------------------------- //
 // Sheet (bottom sheet — the primary mobile interaction)
 // --------------------------------------------------------------------------- //
+const FOCUSABLE =
+  'a[href], area[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex]:not([tabindex="-1"]), [contenteditable="true"]'
+
+function focusables(root: HTMLElement): HTMLElement[] {
+  return [...root.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
+    (el) => el.tabIndex >= 0 && !el.closest('[inert], [aria-hidden="true"]') && el.getClientRects().length > 0,
+  )
+}
+
+/** Open sheets, the topmost last: only the topmost one traps focus and answers Escape. */
+const openSheets: symbol[] = []
+
+/**
+ * Modal focus for a sheet: focus moves into it when it opens (unless a field
+ * inside already took it with `autoFocus`), Tab / Shift+Tab cycle inside it,
+ * Escape closes it, and focus goes back to the control that opened it.
+ */
+function useSheetFocus(open: boolean, dialog: React.RefObject<HTMLElement>, onClose: () => void) {
+  const closeRef = useRef(onClose)
+  closeRef.current = onClose
+  // The opener is read while rendering the open state: by the time effects run,
+  // an `autoFocus` field inside the sheet already holds the focus.
+  const opener = useRef<HTMLElement | null>(null)
+  const wasOpen = useRef(false)
+  if (open !== wasOpen.current) {
+    wasOpen.current = open
+    if (open && typeof document !== 'undefined') {
+      const active = document.activeElement
+      opener.current = active instanceof HTMLElement && active !== document.body ? active : null
+    }
+  }
+
+  useEffect(() => {
+    if (!open) return
+    const token = Symbol('sheet')
+    openSheets.push(token)
+    const isTop = () => openSheets[openSheets.length - 1] === token
+    const returnTo = opener.current
+    const frame = window.requestAnimationFrame(() => {
+      const root = dialog.current
+      if (root && !root.contains(document.activeElement)) root.focus({ preventScroll: true })
+    })
+    const onKeyDown = (event: KeyboardEvent) => {
+      const root = dialog.current
+      if (!root || !isTop() || event.defaultPrevented || event.isComposing) return
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        closeRef.current()
+        return
+      }
+      if (event.key !== 'Tab') return
+      const items = focusables(root)
+      const active = document.activeElement
+      if (!items.length) {
+        event.preventDefault()
+        root.focus({ preventScroll: true })
+        return
+      }
+      const first = items[0]
+      const last = items[items.length - 1]
+      if (event.shiftKey && (active === first || active === root || !root.contains(active))) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && (active === last || !root.contains(active))) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+    // focus that lands outside (a click on the page behind) goes back into the sheet
+    const onFocusIn = (event: FocusEvent) => {
+      const root = dialog.current
+      if (!root || !isTop() || !(event.target instanceof Node) || root.contains(event.target)) return
+      if (event.target instanceof Element && event.target.closest('[role="dialog"], [role="status"], [aria-live]')) return
+      ;(focusables(root)[0] ?? root).focus({ preventScroll: true })
+    }
+    document.addEventListener('keydown', onKeyDown)
+    document.addEventListener('focusin', onFocusIn)
+    return () => {
+      window.cancelAnimationFrame(frame)
+      document.removeEventListener('keydown', onKeyDown)
+      document.removeEventListener('focusin', onFocusIn)
+      const index = openSheets.indexOf(token)
+      if (index >= 0) openSheets.splice(index, 1)
+      const root = dialog.current
+      const active = document.activeElement
+      const focusWasInside = !active || active === document.body || (!!root && root.contains(active))
+      if (returnTo?.isConnected && focusWasInside) returnTo.focus({ preventScroll: true })
+    }
+  }, [open, dialog])
+}
+
 export function Sheet({
   open,
   onClose,
@@ -423,6 +517,9 @@ export function Sheet({
   size?: 'auto' | 'tall'
 }) {
   const { t } = useTranslation()
+  const titleId = useId()
+  const dialogRef = useRef<HTMLDivElement>(null)
+  useSheetFocus(open, dialogRef, onClose)
   return (
     <AnimatePresence>
       {open && (
@@ -433,13 +530,16 @@ export function Sheet({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
+            aria-hidden="true"
           />
           <motion.div
+            ref={dialogRef}
             role="dialog"
             aria-modal="true"
-            aria-label={typeof title === 'string' ? title : undefined}
+            aria-labelledby={title ? titleId : undefined}
+            tabIndex={-1}
             className={clsx(
-              'fixed inset-x-0 bottom-0 z-50 flex flex-col rounded-t-3xl border border-b-0 border-[rgb(var(--border))] bg-[rgb(var(--bg-elevated))]',
+              'fixed inset-x-0 bottom-0 z-50 flex flex-col rounded-t-3xl border border-b-0 border-[rgb(var(--border))] bg-[rgb(var(--bg-elevated))] focus:outline-none',
               size === 'tall' ? 'max-h-[92dvh]' : 'max-h-[85dvh]',
             )}
             initial={{ y: '100%' }}
@@ -453,12 +553,14 @@ export function Sheet({
               if (info.offset.y > 120 || info.velocity.y > 800) onClose()
             }}
           >
-            <div className="flex items-center justify-between gap-3 px-5 pt-4">
+            <div className="flex items-center justify-between gap-3 px-5 pt-4" aria-hidden="true">
               <div className="mx-auto h-1.5 w-10 rounded-pill bg-[rgb(var(--border))]" />
             </div>
             {title && (
               <header className="flex items-center justify-between gap-3 px-5 pb-2 pt-3">
-                <h2 className="h2">{title}</h2>
+                <h2 id={titleId} className="h2">
+                  {title}
+                </h2>
                 <IconButton label={t('app.close')} icon={<IconClose size={20} />} onClick={onClose} />
               </header>
             )}
