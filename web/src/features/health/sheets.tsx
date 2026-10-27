@@ -58,6 +58,17 @@ function DayToggle({ value, onChange }: { value: WhichDay; onChange: (next: Whic
   )
 }
 
+/**
+ * Stage 9: a sheet reads the day's entry when it opens (Today no longer loads the
+ * series of closed sheets), so the entry can arrive after the first keystroke. The
+ * fields take the stored values only until the user edits them — per open and day.
+ */
+function useEdited(open: boolean, day: string): [boolean, () => void] {
+  const [edited, setEdited] = useState(false)
+  useEffect(() => setEdited(false), [open, day])
+  return [edited, () => setEdited(true)]
+}
+
 // --------------------------------------------------------------------------- //
 // Steps
 // --------------------------------------------------------------------------- //
@@ -71,10 +82,11 @@ export function StepsSheet({ open, onClose }: { open: boolean; onClose: () => vo
   const existing = series.data?.days.find((row) => row.date === day)
   const existingSteps = existing?.steps ?? 0
   const [value, setValue] = useState('')
+  const [edited, markEdited] = useEdited(open, day)
 
   useEffect(() => {
-    if (open) setValue(existingSteps ? String(existingSteps) : '')
-  }, [open, day, existingSteps])
+    if (open && !edited) setValue(existingSteps ? String(existingSteps) : '')
+  }, [open, day, existingSteps, edited])
 
   const steps = wholeNumber(value)
   const valid = ready && steps !== null && steps >= 0 && steps <= 200_000
@@ -106,7 +118,10 @@ export function StepsSheet({ open, onClose }: { open: boolean; onClose: () => vo
             className="tnum text-lg"
             placeholder={number(8000)}
             value={value}
-            onChange={(event) => setValue(event.target.value)}
+            onChange={(event) => {
+              markEdited()
+              setValue(event.target.value)
+            }}
             onKeyDown={(event) => event.key === 'Enter' && submit()}
           />
         </Field>
@@ -159,12 +174,13 @@ export function WeightSheet({ open, onClose }: { open: boolean; onClose: () => v
   const latest = series.data?.latest
   const [weight, setWeight] = useState('')
   const [fat, setFat] = useState('')
+  const [edited, markEdited] = useEdited(open, day)
 
   useEffect(() => {
-    if (!open) return
+    if (!open || edited) return
     setWeight(existingKg != null ? number(existingKg, 1) : '')
     setFat(existingFat != null ? number(existingFat, 1) : '')
-  }, [open, day, existingKg, existingFat])
+  }, [open, day, existingKg, existingFat, edited])
 
   const kgValue = decimal(weight)
   const fatValue = decimal(fat)
@@ -200,7 +216,10 @@ export function WeightSheet({ open, onClose }: { open: boolean; onClose: () => v
               className="tnum text-lg"
               placeholder={number(latest?.weight_kg ?? 75, 1)}
               value={weight}
-              onChange={(event) => setWeight(event.target.value)}
+              onChange={(event) => {
+                markEdited()
+                setWeight(event.target.value)
+              }}
               onKeyDown={(event) => event.key === 'Enter' && submit()}
             />
           </Field>
@@ -212,7 +231,10 @@ export function WeightSheet({ open, onClose }: { open: boolean; onClose: () => v
               className="tnum text-lg"
               placeholder="—"
               value={fat}
-              onChange={(event) => setFat(event.target.value)}
+              onChange={(event) => {
+                markEdited()
+                setFat(event.target.value)
+              }}
             />
           </Field>
         </div>
@@ -277,9 +299,10 @@ export function SleepSheet({ open, onClose }: { open: boolean; onClose: () => vo
   const [bed, setBed] = useState('23:00')
   const [wake, setWake] = useState('07:00')
   const [quality, setQuality] = useState<string>('')
+  const [edited, markEdited] = useEdited(open, day)
 
   useEffect(() => {
-    if (!open) return
+    if (!open || edited) return
     if (bedAt && wakeAt) {
       setBed(timeShort(bedAt, tz))
       setWake(timeShort(wakeAt, tz))
@@ -289,7 +312,7 @@ export function SleepSheet({ open, onClose }: { open: boolean; onClose: () => vo
       setWake('07:00')
       setQuality('')
     }
-  }, [open, day, bedAt, wakeAt, existingQuality, tz])
+  }, [open, day, bedAt, wakeAt, existingQuality, tz, edited])
 
   const minutes = useMemo(() => previewMinutes(bed, wake), [bed, wake])
   const valid = ready && minutes !== null && minutes <= 20 * 60
@@ -315,10 +338,28 @@ export function SleepSheet({ open, onClose }: { open: boolean; onClose: () => vo
         {day && <p className="text-xs muted">{t('health.sleep_day_hint', { day: dayLabel(day, 'long') })}</p>}
         <div className="grid grid-cols-2 gap-3">
           <Field label={t('health.bed_time')} htmlFor="bed-input">
-            <Input id="bed-input" type="time" className="tnum text-lg" value={bed} onChange={(e) => setBed(e.target.value)} />
+            <Input
+              id="bed-input"
+              type="time"
+              className="tnum text-lg"
+              value={bed}
+              onChange={(e) => {
+                markEdited()
+                setBed(e.target.value)
+              }}
+            />
           </Field>
           <Field label={t('health.wake_time')} htmlFor="wake-input">
-            <Input id="wake-input" type="time" className="tnum text-lg" value={wake} onChange={(e) => setWake(e.target.value)} />
+            <Input
+              id="wake-input"
+              type="time"
+              className="tnum text-lg"
+              value={wake}
+              onChange={(e) => {
+                markEdited()
+                setWake(e.target.value)
+              }}
+            />
           </Field>
         </div>
         <p className="tnum text-sm" data-testid="sleep-preview">
@@ -329,7 +370,10 @@ export function SleepSheet({ open, onClose }: { open: boolean; onClose: () => vo
         <Field label={t('health.sleep_quality')}>
           <SegmentedControl
             value={quality}
-            onChange={(next) => setQuality(next === quality ? '' : next)}
+            onChange={(next) => {
+              markEdited()
+              setQuality(next === quality ? '' : next)
+            }}
             options={QUALITY.map((value) => ({ value, label: value }))}
           />
         </Field>

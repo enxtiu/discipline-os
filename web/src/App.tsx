@@ -16,30 +16,23 @@ import { AppShell } from '@/components/layout/AppShell'
 import { Spinner } from '@/components/ui'
 import { AuthProvider, useAuth } from '@/features/auth/AuthProvider'
 import { TodayPage } from '@/features/today/TodayPage'
+import { chunk } from '@/lib/lazy'
 // stage 9: what a paired phone does not need for its first screen loads on demand —
-// pairing, the onboarding wizard and every settings screen are chunks of their own
+// pairing and the onboarding wizard are chunks of their own; the settings hub and its
+// sections are one chunk (moving between sections never waits once it is there)
 const PairingScreen = lazy(() => import('@/features/auth/PairingScreen').then((module) => ({ default: module.PairingScreen })))
 const OnboardingWizard = lazy(() =>
   import('@/features/auth/OnboardingWizard').then((module) => ({ default: module.OnboardingWizard })),
 )
-const SettingsPage = lazy(() => import('@/features/settings/SettingsPage').then((module) => ({ default: module.SettingsPage })))
-const ProfileSection = lazy(() =>
-  import('@/features/settings/ProfileSection').then((module) => ({ default: module.ProfileSection })),
-)
-const AppearanceSection = lazy(() =>
-  import('@/features/settings/AppearanceSection').then((module) => ({ default: module.AppearanceSection })),
-)
-const NotificationsSection = lazy(() =>
-  import('@/features/settings/NotificationsSection').then((module) => ({ default: module.NotificationsSection })),
-)
-const DevicesSection = lazy(() =>
-  import('@/features/settings/DevicesSection').then((module) => ({ default: module.DevicesSection })),
-)
-const TokensSection = lazy(() => import('@/features/settings/TokensSection').then((module) => ({ default: module.TokensSection })))
-const ShortcutSection = lazy(() =>
-  import('@/features/settings/ShortcutSection').then((module) => ({ default: module.ShortcutSection })),
-)
-const DataSection = lazy(() => import('@/features/settings/DataSection').then((module) => ({ default: module.DataSection })))
+const settings = chunk(() => import('@/features/settings/sections'))
+const SettingsPage = settings('SettingsPage')
+const ProfileSection = settings('ProfileSection')
+const AppearanceSection = settings('AppearanceSection')
+const NotificationsSection = settings('NotificationsSection')
+const DevicesSection = settings('DevicesSection')
+const TokensSection = settings('TokensSection')
+const ShortcutSection = settings('ShortcutSection')
+const DataSection = settings('DataSection')
 // stage 4: the training screens load on first visit (Today stays light)
 const TrainPage = lazy(() => import('@/features/train/TrainPage').then((m) => ({ default: m.TrainPage })))
 const WorkoutPage = lazy(() => import('@/features/train/WorkoutPage').then((m) => ({ default: m.WorkoutPage })))
