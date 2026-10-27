@@ -97,6 +97,28 @@ from app.schemas.planner import (
     TaskTimeOut,
     TimeEntryOut,
 )
+from app.schemas.stats import (
+    ActivityDayOut,
+    ActivityStatsOut,
+    ActivityWeekOut,
+    AreaTimeOut,
+    BodyStatsOut,
+    MuscleVolumeOut,
+    NutritionAdherenceOut,
+    NutritionAveragesOut,
+    NutritionDayOut,
+    NutritionStatsOut,
+    PlannerDayOut,
+    PlannerStatsOut,
+    ProgressStatsOut,
+    ProjectProgressOut,
+    ScorePointOut,
+    SleepPointOut,
+    StreakDayOut,
+    WeightPointOut,
+    XpPointOut,
+    ZoneOut,
+)
 from app.schemas.training import (
     BestsOut,
     BurnedDayOut,
@@ -116,6 +138,7 @@ from app.schemas.training import (
     WorkoutSetOut,
 )
 from app.services import health as health_service
+from app.services import stats as stats_service
 from app.services import training as training_service
 from app.services.ai_meal import AiBudget, MealAnalysis, ResolvedItem, confidence_level
 from app.services.food_search import FoodHit
@@ -1187,4 +1210,131 @@ def achievement_out(view: AchievementView) -> AchievementOut:
         unlocked_at=_utc(unlocked.unlocked_at) if unlocked is not None else None,
         seen=bool(unlocked.seen) if unlocked is not None else False,
         progress=progress,
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Stats & export (stage 8)
+# --------------------------------------------------------------------------- #
+def attachment_headers(filename: str) -> dict[str, str]:
+    """A download: ``Content-Disposition: attachment`` (the names are plain ASCII)."""
+    return {"Content-Disposition": f'attachment; filename="{filename}"', "Cache-Control": "no-store"}
+
+
+def _span_fields(span: stats_service.Span) -> dict[str, Any]:
+    return {"period": span.period, "from_": span.first, "to": span.last, "today": span.today}
+
+
+def nutrition_stats_out(series: stats_service.NutritionSeries) -> NutritionStatsOut:
+    ctx = series.ctx
+    zone = ctx.zone
+    averages, adherence = series.averages, series.adherence
+    return NutritionStatsOut(
+        **_span_fields(series.span),
+        target_kcal=ctx.targets.kcal,
+        target_protein_g=ctx.targets.protein_g,
+        target_fiber_g=ctx.targets.fiber_g,
+        target_water_ml=ctx.targets.water_ml,
+        zone=ZoneOut(low=zone.low_int, high=zone.high_int) if zone.target is not None else None,
+        floor=ctx.floor,
+        days=[
+            NutritionDayOut(
+                date=day.day,
+                kcal=day.kcal,
+                protein_g=day.protein_g,
+                fat_g=day.fat_g,
+                carbs_g=day.carbs_g,
+                fiber_g=day.fiber_g,
+                water_ml=day.water_ml,
+                meals=day.meals,
+                in_zone=day.in_zone,
+            )
+            for day in series.days
+        ],
+        averages=NutritionAveragesOut(**averages),
+        adherence=NutritionAdherenceOut(**adherence),
+    )
+
+
+def activity_stats_out(series: stats_service.ActivitySeries) -> ActivityStatsOut:
+    return ActivityStatsOut(
+        **_span_fields(series.span),
+        target_steps=series.ctx.targets.steps,
+        days=[
+            ActivityDayOut(
+                date=day.day,
+                steps=day.steps,
+                on_target=day.on_target,
+                workouts=day.workouts,
+                workout_kcal=day.workout_kcal,
+                active_kcal=day.active_kcal,
+            )
+            for day in series.days
+        ],
+        weeks=[
+            ActivityWeekOut(
+                week_start=week.week_start,
+                workouts=week.workouts,
+                planned=week.planned,
+                required=week.required,
+                volume_kg=week.volume_kg,
+            )
+            for week in series.weeks
+        ],
+        muscle_volume=[
+            MuscleVolumeOut(muscle=item.muscle, sets=item.sets, volume_kg=item.volume_kg)  # type: ignore[arg-type]
+            for item in series.muscles
+        ],
+        records=[record_out(record, series.exercises, day=day) for record, day in series.records],
+        records_total=series.records_total,
+    )
+
+
+def body_stats_out(series: stats_service.BodySeries) -> BodyStatsOut:
+    return BodyStatsOut(
+        **_span_fields(series.span),
+        weight=[WeightPointOut(date=point.day, kg=point.kg, avg7=point.avg7) for point in series.weight],
+        change_30d=series.change_30d,
+        sleep=[SleepPointOut(date=day, minutes=value) for day, value in series.sleep],
+        sleep_avg=series.sleep_avg,
+    )
+
+
+def planner_stats_out(series: stats_service.PlannerSeries) -> PlannerStatsOut:
+    return PlannerStatsOut(
+        **_span_fields(series.span),
+        days=[
+            PlannerDayOut(
+                date=day.day, done=day.done, created=day.created, tracked_minutes=minutes(day.tracked_seconds)
+            )
+            for day in series.days
+        ],
+        by_area=[
+            AreaTimeOut(
+                area=planner_ref_out((item.area.id, item.area.name, item.area.color))
+                if item.area is not None
+                else None,
+                minutes=minutes(item.seconds),
+                target_minutes=item.target_minutes,
+            )
+            for item in series.by_area
+        ],
+        projects=[
+            ProjectProgressOut(
+                project=planner_ref_out((item.project.id, item.project.name, item.project.color)),  # type: ignore[arg-type]
+                done=item.done,
+                total=item.total,
+                done_in_period=item.done_in_period,
+            )
+            for item in series.projects
+        ],
+    )
+
+
+def progress_stats_out(series: stats_service.ProgressSeries) -> ProgressStatsOut:
+    return ProgressStatsOut(
+        **_span_fields(series.span),
+        scores=[ScorePointOut(date=day.day, score=day.score) for day in series.days],
+        xp=[XpPointOut(date=day.day, xp=day.xp) for day in series.days],
+        streak_calendar=[StreakDayOut(date=day.day, overall=day.overall, freeze=day.freeze) for day in series.days],
     )
