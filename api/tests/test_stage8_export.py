@@ -22,13 +22,14 @@ import uuid
 import zipfile
 from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
+from pathlib import Path
 from typing import Any
 
 import httpx
 import orjson
 import pytest
 import sqlalchemy as sa
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.models import (
     Achievement,
@@ -68,6 +69,7 @@ from app.models import (
     Resource,
     SavedMealTemplate,
     SleepLog,
+    Streak,
     StreakKind,
     Tag,
     Task,
@@ -75,6 +77,7 @@ from app.models import (
     TimeEntry,
     User,
     UserAchievement,
+    UserSettings,
     WaterLog,
     WeeklyPlan,
     WorkoutLog,
@@ -86,6 +89,7 @@ from app.models import (
 )
 from app.services import export
 from app.services.export import LIBRARY, SECTIONS
+from app.services.restore import RestoreError, read_backup, restore
 from tests.stage6_helpers import other_user
 from tests.stage8_helpers import (
     NOON,
@@ -669,3 +673,239 @@ async def test_exports_stream_in_chunks(account, db, monkeypatch) -> None:
         assert len(sink._sink.drain()) == 0  # nothing waits in the sink between writes
     produced += len(sink.close_entry()) + len(sink.finish())
     assert produced > 200 * 64 * 1024
+
+
+# --------------------------------------------------------------------------- #
+# Restore
+# --------------------------------------------------------------------------- #
+async def save_backup(client: httpx.AsyncClient, path) -> Path:
+    path.write_bytes((await download(client, "backup")).content)
+    return path
+
+
+async def wipe(db, user_id: uuid.UUID) -> None:
+    """Delete every restorable row of the account (the user, devices and logs stay)."""
+    for section in reversed(RESTORED):
+        table = section.table
+        stmt = sa.delete(table).where(table.c[section.owner] == user_id)
+        if section.where is not None:
+            stmt = stmt.where(section.where(table))
+        await db.execute(stmt)
+    await db.commit()
+
+
+async def counts(db, user_id: uuid.UUID) -> dict[str, int]:
+    out = {}
+    for section in RESTORED:
+        table = section.table
+        stmt = select(func.count()).select_from(table).where(table.c[section.owner] == user_id)
+        if section.where is not None:
+            stmt = stmt.where(section.where(table))
+        out[section.name] = int(await db.scalar(stmt))
+    await db.commit()
+    return out
+
+
+async def restore_file(path: Path, **options: Any):
+    """What the CLI does: one session, commit — or roll back for a dry run."""
+    from app.db import SessionLocal
+
+    backup = read_backup(path)
+    async with SessionLocal() as session:
+        try:
+            report = await restore(session, backup, **options)
+        except BaseException:
+            await session.rollback()
+            raise
+        if options.get("dry_run"):
+            await session.rollback()
+        else:
+            await session.commit()
+    return report
+
+
+def rewrite_backup(
+    source: Path,
+    target: Path,
+    mutate: Any = None,
+    *,
+    data: bytes | None = None,
+    checksum: bool = True,
+) -> Path:
+    """A copy of a backup with ``mutate(data, manifest)`` applied (checksum updated
+    unless ``checksum=False``), or with ``data.json`` replaced by raw bytes."""
+    archive = zipfile.ZipFile(source)
+    manifest = orjson.loads(archive.read("manifest.json"))
+    document = orjson.loads(archive.read("data.json"))
+    if mutate is not None:
+        mutate(document, manifest)
+    payload = data if data is not None else orjson.dumps(document)
+    if checksum:
+        manifest["files"]["data.json"] = {"sha256": hashlib.sha256(payload).hexdigest(), "bytes": len(payload)}
+    with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as out:
+        out.writestr("data.json", payload)
+        out.writestr("manifest.json", orjson.dumps(manifest))
+    return target
+
+
+def restorable_tables(document: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
+    return {section.name: document["tables"][section.name] for section in RESTORED}
+
+
+async def test_restore_round_trip_and_a_second_restore_changes_nothing(account, db, tmp_path) -> None:
+    client, user_id = account["client"], account["user_id"]
+    path = await save_backup(client, tmp_path / "backup.zip")
+    before = orjson.loads((await download(client, "json")).content)
+    expected = await counts(db, user_id)
+    total = sum(expected.values())
+    await wipe(db, user_id)
+    assert sum((await counts(db, user_id)).values()) == 0
+
+    dry = await restore_file(path, dry_run=True)  # reports, writes nothing
+    assert (dry.dry_run, dry.inserted, dry.updated, dry.skipped) == (True, total, 0, 0)
+    assert sum((await counts(db, user_id)).values()) == 0
+
+    report = await restore_file(path)
+    assert (report.source_user_id, report.target_user_id, report.schema_version) == (user_id, user_id, "0003")
+    assert (report.inserted, report.updated, report.unchanged, report.skipped) == (total, 0, 0, 0)
+    assert {name: item.rows for name, item in report.tables.items()} == expected
+    assert await counts(db, user_id) == expected
+    assert all(item.same_id == item.referenced for item in report.library.values())
+
+    # identical rows: the export after the restore is the export before the wipe
+    after = orjson.loads((await download(client, "json")).content)
+    assert restorable_tables(after) == restorable_tables(before)
+    assert after["library"] == before["library"]
+
+    # spot checks through the ORM
+    db.expire_all()
+    meal = await db.get(MealLog, account["ids"]["meal"])
+    assert (meal.kcal, meal.local_day, meal.title, meal.user_id) == (Decimal("2050.25"), DAY, "Завтрак", user_id)
+    task = await db.get(Task, account["ids"]["task"])
+    assert (task.title, task.status, task.completed_at) == (FORMULA_TITLE, TaskStatus.DONE, local(DAY, 10))
+    assert task.search_vector_ru is not None  # rebuilt by the trigger
+    settings = (await db.scalars(select(UserSettings).where(UserSettings.user_id == user_id))).one()
+    assert (settings.target_kcal, settings.timezone, settings.quiet_hours_start) == (2000, "Asia/Bangkok", time(23))
+    food = await db.get(Food, account["ids"]["custom_food"])
+    assert food.aliases_text == "" and food.source_payload == {}  # the raw payload never left
+    tags = (await db.execute(select(task_tags.c.task_id, task_tags.c.tag_id))).all()
+    assert [row.task_id for row in tags] == [account["ids"]["task"]]
+    assert (await db.scalar(select(func.count()).select_from(Streak).where(Streak.user_id == user_id))) == 7
+
+    again = await restore_file(path)  # idempotent: nothing changes the second time
+    assert (again.inserted, again.updated, again.unchanged, again.skipped) == (0, 0, total, 0)
+    assert await counts(db, user_id) == expected
+    assert restorable_tables(orjson.loads((await download(client, "json")).content)) == restorable_tables(before)
+
+
+async def test_restore_over_changed_rows_puts_the_backup_values_back(account, db, tmp_path) -> None:
+    client, user_id = account["client"], account["user_id"]
+    path = await save_backup(client, tmp_path / "backup.zip")
+    meal_id = account["ids"]["meal"]
+    await db.execute(sa.update(MealLog).where(MealLog.id == meal_id).values(kcal=Decimal("1"), title="изменено"))
+    later = Task(user_id=user_id, title="после бэкапа")  # newer than the backup: kept (upserts, not a replace)
+    await _add(db, later)
+    later_id = later.id
+    report = await restore_file(path)
+    assert (report.tables["meal_logs"].updated, report.tables["meal_logs"].inserted) == (1, 0)
+    assert report.updated == 1 and report.inserted == 0
+    db.expire_all()
+    meal = await db.get(MealLog, meal_id)
+    assert (meal.kcal, meal.title) == (Decimal("2050.25"), "Завтрак")
+    assert await db.get(Task, later_id) is not None
+
+
+async def test_restore_into_an_empty_account_on_another_server(account, db, tmp_path) -> None:
+    """The source account is gone (another server); a new owner — with only what a new
+    account starts with — takes the backup. A library food this server lacks becomes
+    the user's own, an exercise is matched by name, an achievement and a quest by code,
+    and the rows of a quest this server does not know at all are skipped."""
+    client, source = account["client"], account["user_id"]
+    original = await save_backup(client, tmp_path / "backup.zip")
+    expected = await counts(db, source)
+    document = orjson.loads(zipfile.ZipFile(original).read("data.json"))
+    achievement_id = uuid.UUID(document["library"]["achievements"][0]["id"])
+    quest_ids = sorted({row["quest_id"] for row in document["tables"]["user_quests"]})
+    reseeded, retired = uuid.UUID(quest_ids[0]), quest_ids[1]
+    retired_rows = sum(1 for row in document["tables"]["user_quests"] if row["quest_id"] == retired)
+    unknown = str(uuid.uuid4())
+
+    def retire(data: dict[str, Any], manifest: dict[str, Any]) -> None:  # a quest this server never had
+        next(row for row in data["library"]["quests"] if row["id"] == retired).update(id=unknown, code="retired")
+        for row in data["tables"]["user_quests"]:
+            row["quest_id"] = unknown if row["quest_id"] == retired else row["quest_id"]
+
+    path = rewrite_backup(original, tmp_path / "other-server.zip", retire)
+
+    await db.execute(sa.delete(User).where(User.id == source))
+    await db.execute(sa.delete(Food).where(Food.id == account["ids"]["library_food"]))
+    old_exercise = await db.get(Exercise, account["ids"]["library_exercise"])
+    name_en = old_exercise.name_en
+    await db.execute(sa.delete(Exercise).where(Exercise.id == old_exercise.id))
+    twin = Exercise(is_global=True, name_en=name_en, muscle_group=MuscleGroup.CHEST, equipment=Equipment.BARBELL)
+    new_achievement_id = uuid.uuid4()
+    await db.execute(sa.update(Achievement).where(Achievement.id == achievement_id).values(id=new_achievement_id))
+    await db.execute(sa.text("DELETE FROM quests WHERE id = :id"), {"id": reseeded})  # comes back under a new id
+    await _add(db, twin)
+    twin_id = twin.id
+    from app.services.bootstrap import create_owner
+
+    target = (await create_owner(db, display_name="Новый сервер")).user.id
+    await db.commit()
+    fresh = await counts(db, target)
+    assert {name for name, count in fresh.items() if count} == {"settings", "areas", "tags", "streaks"}
+
+    with pytest.raises(RestoreError, match="does not exist here"):
+        await restore_file(path)  # the backup's own account is not on this server
+    report = await restore_file(path, user_id=target)
+    assert (report.source_user_id, report.target_user_id) == (source, target)
+    library = report.library
+    assert (library["foods"].copied, library["exercises"].matched, library["achievements"].matched) == (1, 1, 1)
+    assert (library["quests"].matched, library["quests"].missing) == (1, 1)
+    assert report.tables["user_quests"].skipped == retired_rows
+    restored = await counts(db, target)
+    expected["foods"] += 1  # the library food that is no longer here is now the user's own
+    expected["user_quests"] -= retired_rows
+    assert restored == expected
+    assert report.tables["areas"].merged == 7 and report.tables["streaks"].merged == 7  # the new account's own
+    assert report.tables["settings"].merged == 1 and report.tables["tags"].merged == 6
+
+    db.expire_all()
+    copy = await db.get(Food, account["ids"]["library_food"])
+    assert (copy.user_id, copy.is_global, copy.name_ru) == (target, False, "Гречка библиотечная")
+    items = (await db.scalars(select(MealItem).where(MealItem.user_id == target))).all()
+    assert account["ids"]["library_food"] in {item.food_id for item in items}
+    sets = (await db.scalars(select(WorkoutSet).where(WorkoutSet.user_id == target))).all()
+    assert {row.exercise_id for row in sets} == {twin_id}  # pointed at the exercise found by name
+    achieved = (await db.scalars(select(UserAchievement).where(UserAchievement.user_id == target))).all()
+    assert new_achievement_id in {row.achievement_id for row in achieved}
+    projects = (await db.scalars(select(Project).where(Project.user_id == target))).all()
+    areas = {area.id: area.name for area in (await db.scalars(select(Area).where(Area.user_id == target))).all()}
+    assert all(project.area_id in areas for project in projects if project.area_id)
+    assert len(areas) == len(document["tables"]["areas"])  # the defaults were merged, not duplicated
+    settings = (await db.scalars(select(UserSettings).where(UserSettings.user_id == target))).one()
+    assert (settings.target_kcal, settings.timezone) == (2000, "Asia/Bangkok")  # the backup's values
+
+    again = await restore_file(path, user_id=target)
+    assert (again.inserted, again.updated) == (0, 0)
+    assert await counts(db, target) == restored
+
+
+async def test_restore_never_touches_another_users_rows(account, db, tmp_path) -> None:
+    client, source = account["client"], account["user_id"]
+    path = await save_backup(client, tmp_path / "backup.zip")
+    async with other_user():
+        other = (await db.scalars(select(User.id).where(User.is_owner.is_(False)))).one()
+    await db.commit()
+    before, other_before = await counts(db, source), await counts(db, other)
+    # an empty account, but the backup's rows still belong to their owner on this server
+    with pytest.raises(RestoreError, match="belongs to another account"):
+        await restore_file(path, user_id=other)
+    assert await counts(db, other) == other_before and await counts(db, source) == before
+
+    # an account with data of its own refuses a foreign backup
+    await _add(db, MealLog(user_id=other, logged_at=local(DAY, 8), local_day=DAY, kcal=Decimal(500), item_count=1))
+    with pytest.raises(RestoreError, match="is not empty"):
+        await restore_file(path, user_id=other)
+    with pytest.raises(RestoreError, match="does not exist here"):
+        await restore_file(path, user_id=uuid.uuid4())
