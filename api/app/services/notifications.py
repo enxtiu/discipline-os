@@ -4,12 +4,20 @@ Two scheduler jobs (registered in ``app/services/hooks.py``):
 
 * ``dispatch_notifications`` (every minute) delivers due ``reminders`` rows — task
   reminders created by the planner (stage 6) and the smart daily reminders below.
-  Every row is claimed with ``FOR UPDATE SKIP LOCKED`` in its own short
-  transaction, so overlapping runs never send the same reminder twice and one
-  slow push service never holds up the rest.
+  Each row goes through three steps: *claim* (a short transaction: ``FOR UPDATE
+  SKIP LOCKED``, every check, then a lease in ``payload`` and one attempt counted),
+  *send* (no transaction, no lock — bounded by the push sender's deadline), *book*
+  (a short transaction: results, status, history). A task edit therefore never
+  waits for a push service, and an overlapping run skips a leased row. Users are
+  served side by side (``DISPATCH_CONCURRENCY`` reminders at once, each user's in
+  order), so one user's slow push service never delays anybody else.
 * ``plan_daily_reminders`` (every 15 min) creates today's smart reminders for
   every user with push on, at their local times (DST-safe), idempotent by
   ``dedupe_key``, never in the past and never inside quiet hours.
+
+Every push carries a TTL (``reminder_ttl``): the push service may keep it for an
+offline phone only until the reminder goes stale and never into the next quiet
+hours; the service worker drops one that still arrives after ``expires_at``.
 
 Smart reminders re-check their condition **at send time**, so nobody gets a
 pointless nudge: meal (nothing logged in the window), water (behind the
@@ -20,7 +28,9 @@ ever suggests eating less or praises skipping a meal (see ``MESSAGES``).
 
 from __future__ import annotations
 
+import asyncio
 import math
+import re
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
@@ -80,8 +90,13 @@ DEFAULT_WORKOUT_TIME = "18:00"
 DEFAULT_EVENING_REVIEW_TIME = "21:30"
 
 STALE_AFTER = timedelta(minutes=60)  # a reminder more than an hour late is dropped, not sent
+NUDGE_TTL = timedelta(minutes=30)  # a daily nudge is worth less: a push service keeps it at most this long
 MAX_ATTEMPTS = 3  # transient push failures are retried on the next runs, then `failed`
 BATCH_LIMIT = 500
+DISPATCH_CONCURRENCY = 4  # reminders in flight at once (different users side by side)
+LEASE = timedelta(minutes=2)  # a claimed row is left alone this long (> push.SEND_DEADLINE_SECONDS)
+LEASE_KEY = "_sending"  # reminders.payload while its push is in flight: {"token": …, "until": ISO}
+_ISO_UTC = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z")
 WATER_DAY = (time(8, 0), time(22, 0))  # the water target is spread over this part of the day
 PLANNER_INTERVAL = timedelta(minutes=15)
 
@@ -284,6 +299,16 @@ class QuietHours:
             day += timedelta(days=1)
         return local_instant(day, self.end, tz)
 
+    def next_start(self, instant: datetime, tz: str | None) -> datetime | None:
+        """The first UTC instant after ``instant`` at which quiet hours begin (DST-safe);
+        ``None`` when there are none."""
+        if not self.enabled or self.start == self.end:
+            return None
+        moment = ensure_utc(instant)
+        day = moment.astimezone(get_zone(tz)).date()
+        start = local_instant(day, self.start, tz)
+        return start if start > moment else local_instant(day + timedelta(days=1), self.start, tz)
+
 
 # --------------------------------------------------------------------------- #
 # Per-user context
@@ -429,6 +454,22 @@ def test_message(lang: str) -> push.PushMessage:
         urgency="high",
         expires=False,
     )
+
+
+def reminder_ttl(ctx: UserContext, remind_at: datetime, *, smart: bool) -> int:
+    """Seconds a push service may keep this reminder for a phone that is offline (RFC 8030 TTL).
+
+    Until the reminder goes stale (``STALE_AFTER`` past its time: what the dispatcher itself
+    still sends), at most ``NUDGE_TTL`` for a daily nudge, and never into the next quiet
+    hours — a phone that comes back online at 03:00 gets nothing rather than last
+    evening's reminder with its "in 15 min" text."""
+    deadline = ensure_utc(remind_at) + STALE_AFTER
+    if smart:
+        deadline = min(deadline, ctx.now + NUDGE_TTL)
+    quiet_start = ctx.quiet.next_start(ctx.now, ctx.tz)
+    if quiet_start is not None:
+        deadline = min(deadline, quiet_start)
+    return max(0, int((deadline - ctx.now).total_seconds()))
 
 
 def _generic_text(kind: ReminderKind, lang: str) -> tuple[str, str]:
@@ -740,8 +781,40 @@ async def _suppress(
     return _close(row, ReminderStatus.SUPPRESSED, reason)
 
 
-async def process_reminder(db: AsyncSession, reminder_id: uuid.UUID, now: datetime) -> str:
-    """Claim one due reminder (``FOR UPDATE SKIP LOCKED``), decide, send, book. Returns the outcome."""
+@dataclass(slots=True)
+class Claim:
+    """A reminder leased for sending: everything the send and the booking need."""
+
+    reminder_id: uuid.UUID
+    user_id: uuid.UUID
+    kind: ReminderKind
+    remind_at: datetime
+    attempts: int
+    token: str
+    message: push.PushMessage
+    targets: list[push.Target]
+
+
+def _lease_of(row: Reminder) -> tuple[str, datetime] | None:
+    """``(token, until)`` of the lease a run put on the row while sending, if any."""
+    lease = row.payload.get(LEASE_KEY) if isinstance(row.payload, dict) else None
+    if not isinstance(lease, dict) or not isinstance(lease.get("until"), str):
+        return None
+    if not _ISO_UTC.fullmatch(lease["until"]):
+        return None
+    return str(lease.get("token") or ""), datetime.strptime(lease["until"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
+
+
+def _without_lease(payload: Any) -> dict[str, Any]:
+    return {key: value for key, value in (payload or {}).items() if key != LEASE_KEY}
+
+
+async def claim_reminder(db: AsyncSession, reminder_id: uuid.UUID, now: datetime) -> Claim | str:
+    """Step 1 (short transaction): lock the due row (``FOR UPDATE SKIP LOCKED``), decide.
+
+    Returns the outcome when the reminder ends here (cancelled, suppressed, deferred,
+    rescheduled, skipped); otherwise counts the attempt, leases the row (``LEASE_KEY``
+    in ``payload``) and returns the ``Claim`` — the caller commits before sending."""
     row = await db.scalar(
         select(Reminder)
         .where(Reminder.id == reminder_id, Reminder.status == ReminderStatus.PENDING, Reminder.remind_at <= now)
@@ -749,6 +822,12 @@ async def process_reminder(db: AsyncSession, reminder_id: uuid.UUID, now: dateti
     )
     if row is None:  # another run holds it, or it changed meanwhile
         return "skipped"
+    lease = _lease_of(row)
+    if lease is not None and lease[1] > now:  # another run is sending it right now
+        return "skipped"
+    interrupted = lease is not None  # a run died while sending it: its lease lapsed
+    if interrupted:
+        row.payload = _without_lease(row.payload)
     ctx = await user_context(db, row.user_id, now)
     if ctx is None:
         return _close(row, ReminderStatus.CANCELLED, "user_inactive")
@@ -825,69 +904,158 @@ async def process_reminder(db: AsyncSession, reminder_id: uuid.UUID, now: dateti
 
     if not push.is_configured():
         return await _suppress(db, row, message, "push_disabled", now)
+    try:
+        push.vapid()
+    except push.PushNotConfigured:  # keys set but unreadable: same as no keys, not a retry loop
+        return await _suppress(db, row, message, "push_disabled", now)
     subscriptions = await push.active_subscriptions(db, row.user_id, now=now)
     if not subscriptions:
         return await _suppress(db, row, message, "no_subscription", now)
+    if interrupted and (row.attempts or 0) >= MAX_ATTEMPTS:  # that was its last attempt
+        error = "delivery_failed:interrupted"
+        await _book_log(db, row.user_id, row.id, row.kind, row.remind_at, message, "failed", error, now)
+        return _close(row, ReminderStatus.FAILED, error)
 
-    try:
-        report = await push.deliver(db, subscriptions, message, now=now)
-    except push.PushNotConfigured:  # keys set but unreadable: same as no keys, not a retry loop
-        return await _suppress(db, row, message, "push_disabled", now)
+    message.ttl = reminder_ttl(ctx, row.remind_at, smart=smart)
+    token = new_id().hex
     row.attempts = (row.attempts or 0) + 1
-    if report.sent:
-        status, error = "sent", None
-        row.status = ReminderStatus.SENT
-        row.sent_at = now
-        row.last_error = None
-        outcome = "sent"
-    elif report.transient and row.attempts < MAX_ATTEMPTS:
-        status, error = "retrying", f"retrying:{report.summary()}"
-        row.last_error = error
-        outcome = "retrying"
-    else:
-        status, error = "failed", f"delivery_failed:{report.summary()}"
-        row.status = ReminderStatus.FAILED
-        row.last_error = error
-        outcome = "failed"
+    row.payload = {**_without_lease(row.payload), LEASE_KEY: {"token": token, "until": push.iso_utc(now + LEASE)}}
+    return Claim(
+        reminder_id=row.id,
+        user_id=row.user_id,
+        kind=row.kind,
+        remind_at=row.remind_at,
+        attempts=row.attempts,
+        token=token,
+        message=message,
+        targets=[push.Target.of(sub) for sub in subscriptions],
+    )
+
+
+async def _book_log(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    reminder_id: uuid.UUID,
+    kind: ReminderKind,
+    remind_at: datetime,
+    message: push.PushMessage,
+    status: str,
+    error: str | None,
+    now: datetime,
+    report: push.DeliveryReport | None = None,
+    *,
+    linked: bool = True,
+) -> None:
+    """The reminder's history row (``linked=False``: the reminder was deleted meanwhile).
+    Its payload is what was pushed (``sent_at``/``expires_at`` only when this run sent it)."""
     await write_log(
         db,
-        user_id=row.user_id,
-        dedupe_key=f"reminder:{row.id}",
-        kind=row.kind.value,
+        user_id=user_id,
+        dedupe_key=f"reminder:{reminder_id}",
+        kind=kind.value,
         title=message.title,
         body=message.body,
-        payload=message.data(),
+        payload=message.data(now if report is not None else None),
         status=status,
         now=now,
-        scheduled_for=row.remind_at,
-        reminder_id=row.id,
+        scheduled_for=remind_at,
+        reminder_id=reminder_id if linked else None,
         error=error,
         report=report,
     )
-    return outcome
+
+
+async def book_delivery(db: AsyncSession, claim: Claim, report: push.DeliveryReport, now: datetime) -> str:
+    """Step 3 (short transaction): book the results, the reminder's status and its history row.
+
+    Tolerant of what happened during the send: a deleted subscription is skipped, a
+    deleted reminder only loses its link in the history, and a reminder the planner
+    moved meanwhile keeps its new time (it is not marked sent)."""
+    await push.record(db, report, now=now)
+    if report.sent:
+        status, error = "sent", None
+    elif report.transient and claim.attempts < MAX_ATTEMPTS:
+        status, error = "retrying", f"retrying:{report.summary()}"
+    else:
+        status, error = "failed", f"delivery_failed:{report.summary()}"
+    row = await db.scalar(select(Reminder).where(Reminder.id == claim.reminder_id).with_for_update())
+    lease = _lease_of(row) if row is not None else None
+    if row is not None and lease is not None and lease[0] == claim.token:
+        row.payload = _without_lease(row.payload)
+        if row.status == ReminderStatus.PENDING and row.remind_at == claim.remind_at:
+            if status == "sent":
+                row.status = ReminderStatus.SENT
+                row.sent_at = now
+                row.last_error = None
+            elif status == "retrying":
+                row.last_error = error
+            else:
+                row.status = ReminderStatus.FAILED
+                row.last_error = error
+    await _book_log(
+        db,
+        claim.user_id,
+        claim.reminder_id,
+        claim.kind,
+        claim.remind_at,
+        claim.message,
+        status,
+        error,
+        now,
+        report,
+        linked=row is not None,
+    )
+    return status
+
+
+async def process_reminder(reminder_id: uuid.UUID, now: datetime) -> str:
+    """Claim, send, book one due reminder (each step its own short transaction, the send
+    in none). Returns the outcome."""
+    async with session_scope() as db:
+        claim = await claim_reminder(db, reminder_id, now)
+    if isinstance(claim, str):
+        return claim
+    report = await push.send(claim.targets, claim.message, now=now)
+    async with session_scope() as db:
+        return await book_delivery(db, claim, report, now)
+
+
+async def _process_safely(reminder_id: uuid.UUID, now: datetime) -> str:
+    try:
+        return await process_reminder(reminder_id, now)
+    except Exception as exc:  # one broken row never stops the run
+        log.exception("reminder_dispatch_failed", reminder_id=str(reminder_id), error=type(exc).__name__)
+        return "error"
 
 
 async def dispatch_due(now: datetime | None = None, *, limit: int = BATCH_LIMIT) -> DispatchReport:
-    """Deliver every due reminder. Idempotent and safe when two runs overlap."""
-    now = now or utcnow()
+    """Deliver every due reminder. Idempotent and safe when two runs overlap.
+
+    Users are served side by side, each user's reminders in order, with at most
+    ``DISPATCH_CONCURRENCY`` reminders in flight. ``now`` pins the clock (tests); by
+    default each reminder is judged at the moment it is processed."""
     report = DispatchReport()
     async with session_scope() as db:
-        ids = (
-            await db.scalars(
-                select(Reminder.id)
-                .where(Reminder.status == ReminderStatus.PENDING, Reminder.remind_at <= now)
+        rows = (
+            await db.execute(
+                select(Reminder.id, Reminder.user_id)
+                .where(Reminder.status == ReminderStatus.PENDING, Reminder.remind_at <= (now or utcnow()))
                 .order_by(Reminder.remind_at)
                 .limit(limit)
             )
         ).all()
-    for reminder_id in ids:
-        try:
-            async with session_scope() as db:
-                outcome = await process_reminder(db, reminder_id, now)
-        except Exception as exc:  # one broken row never stops the run
-            log.exception("reminder_dispatch_failed", reminder_id=str(reminder_id), error=type(exc).__name__)
-            outcome = "error"
-        report.add(outcome.split(":", 1)[0])
+    queues: dict[uuid.UUID, list[uuid.UUID]] = {}
+    for reminder_id, user_id in rows:
+        queues.setdefault(user_id, []).append(reminder_id)
+    slots = asyncio.Semaphore(max(1, DISPATCH_CONCURRENCY))
+
+    async def serve(reminder_ids: list[uuid.UUID]) -> None:
+        for reminder_id in reminder_ids:
+            async with slots:
+                outcome = await _process_safely(reminder_id, now or utcnow())
+            report.add(outcome.split(":", 1)[0])
+
+    await asyncio.gather(*(serve(reminder_ids) for reminder_ids in queues.values()))
     return report
 
 

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import time as clock
 import uuid
-from datetime import timedelta
+from datetime import time, timedelta
 from typing import Any
 
 import httpx
@@ -249,6 +249,111 @@ async def test_the_answer_body_is_never_waited_for(authed: httpx.AsyncClient, va
     assert took < 4.0, f"the send took {took:.1f} s"
 
 
+async def test_one_slow_push_service_does_not_hold_up_other_users(
+    authed: httpx.AsyncClient, client: httpx.AsyncClient, vapid, db, monkeypatch
+) -> None:
+    """Before: reminders went out one after another, so the next user waited for the slow one."""
+    from app.services import push
+
+    monkeypatch.setattr(push, "SEND_DEADLINE_SECONDS", 1.5, raising=False)
+    with LocalPushService() as local:
+        local.routes["/push/slow"] = slow(30)
+        assert (await subscribe(authed, local.url("/push/slow"))).status_code == 201
+        other, token = await other_user(client, "Other")
+        response = await client.post(
+            f"{P}/subscriptions",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"endpoint": local.url("/push/fast"), "keys": BrowserKeys.new().json()},
+        )
+        assert response.status_code == 201, response.text
+        me = await owner_id(db)
+        await quiet_off(db, me, other)
+        await db.execute(sa.text("DELETE FROM reminders"))  # smart rows planned on subscribe
+        await db.commit()
+        slow_one = await add_reminder(
+            db, me, kind=ReminderKind.CUSTOM, title="slow", remind_at=NOON - timedelta(minutes=2)
+        )
+        fast_one = await add_reminder(
+            db, other, kind=ReminderKind.CUSTOM, title="fast", remind_at=NOON - timedelta(minutes=1)
+        )
+        started = clock.monotonic()
+        report = await dispatch(NOON)
+        took = clock.monotonic() - started
+        fast_hits = local.hits_to("/push/fast")
+    assert len(fast_hits) == 1
+    assert fast_hits[0].at - started < 3.0, f"the other user's push left after {fast_hits[0].at - started:.1f} s"
+    assert took < 8.0, f"the run took {took:.1f} s with a 1.5 s deadline"
+    assert (report.get("sent"), report.get("retrying")) == (1, 1)
+    assert (await reminder(db, fast_one)).status == ReminderStatus.SENT
+    slow_row = await reminder(db, slow_one)
+    assert (slow_row.status, slow_row.attempts, slow_row.last_error) == (
+        ReminderStatus.PENDING,
+        1,
+        "retrying:timeout",
+    )
+
+
+async def test_the_reminder_row_is_not_locked_while_the_push_service_answers(
+    authed: httpx.AsyncClient, vapid, db
+) -> None:
+    """Before: the row lock (FOR UPDATE) was held during the POST, so editing or deleting the task
+    blocked for as long as the push service took."""
+    with LocalPushService() as local:
+        seen: dict[str, Any] = {}
+
+        def check_lock(request, server: LocalPushService) -> None:
+            with psycopg.connect(SYNC_DSN, autocommit=True) as conn:
+                try:
+                    with conn.transaction():
+                        conn.execute("SELECT id FROM reminders WHERE id = %s FOR UPDATE NOWAIT", (seen["id"],))
+                        conn.execute("UPDATE tasks SET title = title WHERE id = %s", (seen["task"],))
+                    seen["locked"] = False
+                except psycopg.errors.LockNotAvailable:
+                    seen["locked"] = True
+            answer(201)(request, server)
+
+        local.routes["/push/lock"] = check_lock
+        assert (await subscribe(authed, local.url("/push/lock"))).status_code == 201
+        me = await owner_id(db)
+        await quiet_off(db, me)
+        seen["task"] = await add_task(db, me, title="Позвонить", due_at=NOON)
+        seen["id"] = await add_reminder(db, me, task_id=seen["task"], remind_at=NOON)
+        report = await dispatch(NOON)
+    assert report.get("sent") == 1
+    assert seen["locked"] is False
+    assert (await reminder(db, seen["id"])).status == ReminderStatus.SENT
+
+
+async def test_dispatch_serves_users_concurrently_within_a_bound(
+    client: httpx.AsyncClient, vapid, db, monkeypatch
+) -> None:
+    from app.services import notifications
+
+    monkeypatch.setattr(notifications, "DISPATCH_CONCURRENCY", 2, raising=False)
+    with LocalPushService() as local:
+        users = []
+        for n in range(4):
+            path = f"/push/u{n}"
+            local.routes[path] = slow(2.0)  # long enough for two sends to overlap on a busy machine
+            user_id, token = await other_user(client, f"User{n}")
+            response = await client.post(
+                f"{P}/subscriptions",
+                headers={"Authorization": f"Bearer {token}"},
+                json={"endpoint": local.url(path), "keys": BrowserKeys.new().json()},
+            )
+            assert response.status_code == 201, response.text
+            users.append(user_id)
+        await quiet_off(db, *users)
+        await db.execute(sa.text("DELETE FROM reminders"))
+        await db.commit()
+        for user_id in users:
+            await add_reminder(db, user_id, kind=ReminderKind.CUSTOM, title="go", remind_at=NOON)
+        report = await dispatch(NOON)
+        peak = local.max_in_flight
+    assert report.get("sent") == 4
+    assert peak == 2, f"{peak} pushes were in flight at once"
+
+
 async def test_active_subscriptions_are_capped_per_user(authed: httpx.AsyncClient, vapid, db) -> None:
     from app.services import push
 
@@ -279,6 +384,66 @@ async def test_active_subscriptions_are_capped_per_user(authed: httpx.AsyncClien
 # --------------------------------------------------------------------------- #
 # M5 — a push never waits at the push service into quiet hours or past staleness
 # --------------------------------------------------------------------------- #
+async def test_task_reminder_expires_before_the_quiet_hours(ready, db) -> None:
+    """Before: every reminder had a 12 h TTL — a phone offline at 22:30 got it at 03:00."""
+    user_id, fake, keys = ready["user_id"], ready["push"], ready["keys"]
+    at = utc(2026, 7, 15, 15, 30)  # 22:30 Bangkok; quiet hours from 23:00
+    task_id = await add_task(db, user_id, title="Таблетки", due_at=at + timedelta(minutes=15))
+    await add_reminder(db, user_id, task_id=task_id, remind_at=at)
+    assert (await dispatch(at)).get("sent") == 1
+    sent = fake.to(ready["endpoint"])[0]
+    assert sent.headers["ttl"] == "1800"
+    payload = keys.decrypt(sent.data)
+    assert (payload["sent_at"], payload["expires_at"]) == ("2026-07-15T15:30:00Z", "2026-07-15T16:00:00Z")
+
+
+async def test_reminder_ttl_follows_staleness_and_kind(ready, db) -> None:
+    user_id, fake = ready["user_id"], ready["push"]
+
+    # on time, quiet hours far away: the hour a reminder stays relevant
+    on_time = await add_reminder(db, user_id, task_id=await add_task(db, user_id), remind_at=NOON)
+    await dispatch(NOON)
+    assert (await reminder(db, on_time)).status == ReminderStatus.SENT
+    assert fake.requests[-1].headers["ttl"] == "3600"
+
+    # 50 minutes late (the server was down): 10 minutes left before it is stale
+    late = await add_reminder(db, user_id, task_id=await add_task(db, user_id), remind_at=NOON - timedelta(minutes=50))
+    await dispatch(NOON)
+    assert (await reminder(db, late)).status == ReminderStatus.SENT
+    assert fake.requests[-1].headers["ttl"] == "600"
+
+    # a daily nudge is worth less: half an hour, and still not into the quiet hours
+    review = utc(2026, 7, 15, 14, 30)  # 21:30
+    await add_reminder(
+        db,
+        user_id,
+        kind=ReminderKind.EVENING_REVIEW,
+        remind_at=review,
+        payload={"date": "2026-07-15", "time": "21:30"},
+        dedupe="evening_review:2026-07-15",
+    )
+    await dispatch(review)
+    assert fake.requests[-1].headers["ttl"] == "1800"
+    await ready["client"].put(f"{N}/prefs", json={"evening_review_time": "22:40"})
+    later = utc(2026, 7, 15, 15, 40)  # 22:40, twenty minutes before the quiet hours
+    await add_reminder(
+        db,
+        user_id,
+        kind=ReminderKind.EVENING_REVIEW,
+        remind_at=later,
+        payload={"date": "2026-07-15", "time": "22:40"},
+        dedupe="evening_review:2026-07-15:late",
+    )
+    await dispatch(later)
+    assert fake.requests[-1].headers["ttl"] == "1200"
+
+    # quiet hours off: only staleness counts
+    await set_settings(db, user_id, quiet_hours_enabled=False)
+    night = utc(2026, 7, 15, 16, 30)  # 23:30
+    await add_reminder(db, user_id, task_id=await add_task(db, user_id), remind_at=night)
+    await dispatch(night)
+    assert fake.requests[-1].headers["ttl"] == "3600"
+    assert len(fake.requests) == 5
 
 
 async def test_test_push_keeps_its_minute_and_never_expires_in_the_service_worker(ready) -> None:
@@ -288,6 +453,21 @@ async def test_test_push_keeps_its_minute_and_never_expires_in_the_service_worke
     assert sent.headers["ttl"] == "60"
     payload = keys.decrypt(sent.data)
     assert "sent_at" in payload and "expires_at" not in payload  # the user is waiting for it
+
+
+def test_next_quiet_hours_start() -> None:
+    from app.services.notifications import QuietHours
+
+    night = QuietHours(True, time(23, 0), time(7, 0))
+    assert night.next_start(utc(2026, 7, 15, 5, 0), "Asia/Bangkok") == utc(2026, 7, 15, 16, 0)  # 12:00 → 23:00
+    assert night.next_start(utc(2026, 7, 15, 16, 30), "Asia/Bangkok") == utc(2026, 7, 16, 16, 0)  # inside → next
+    siesta = QuietHours(True, time(13, 0), time(15, 0))
+    assert siesta.next_start(utc(2026, 7, 15, 9, 0), "Asia/Bangkok") == utc(2026, 7, 16, 6, 0)  # 16:00 → tomorrow
+    # DST: 23:00 in Berlin is 21:00 UTC in summer, 22:00 UTC after the clocks go back
+    assert night.next_start(utc(2026, 10, 24, 12, 0), "Europe/Berlin") == utc(2026, 10, 24, 21, 0)
+    assert night.next_start(utc(2026, 10, 25, 12, 0), "Europe/Berlin") == utc(2026, 10, 25, 22, 0)
+    assert QuietHours(False, time(23, 0), time(7, 0)).next_start(NOON, "Asia/Bangkok") is None
+    assert QuietHours(True, time(8, 0), time(8, 0)).next_start(NOON, "Asia/Bangkok") is None
 
 
 # --------------------------------------------------------------------------- #

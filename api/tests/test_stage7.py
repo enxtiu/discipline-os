@@ -434,9 +434,9 @@ async def test_dispatch_due_and_not_due(ready, db) -> None:
         "kind": "task",
         "id": str(task_id),
         "sent_at": "2026-07-15T05:00:00Z",
-        "expires_at": "2026-07-15T06:00:00Z",  # the default hour
+        "expires_at": "2026-07-15T05:59:40Z",  # an hour after its time (12:00 − 20 s)
     }
-    assert fake.to(ready["endpoint"])[0].headers["ttl"] == "3600"
+    assert fake.to(ready["endpoint"])[0].headers["ttl"] == "3580"
     logs = await log_rows(db, user_id)
     assert len(logs) == 1
     assert (logs[0].dedupe_key, logs[0].status, logs[0].sent_at, logs[0].reminder_id) == (
@@ -643,7 +643,7 @@ async def test_push_disabled_suppresses(ready, db, monkeypatch) -> None:
 
 async def test_two_overlapping_runs_send_once(ready, db) -> None:
     user_id, fake = ready["user_id"], ready["push"]
-    fake.delay = 0.3  # the first run holds the row lock while "sending"
+    fake.delay = 0.3  # the first run's lease keeps the second away while it is "sending"
     rid = await add_reminder(db, user_id, task_id=await add_task(db, user_id), remind_at=NOON)
     first, second = await asyncio.gather(dispatch(NOON), dispatch(NOON))
     assert first.get("sent") + second.get("sent") == 1
