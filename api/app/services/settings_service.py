@@ -18,7 +18,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import inspect, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings as get_app_settings
@@ -46,6 +46,12 @@ def _f(value: Decimal | float | int | None) -> float | None:
 
 
 async def get_or_create_settings(db: AsyncSession, user: User) -> UserSettings:
+    # The request's principal (app/api/deps.py) has usually loaded this row already: a
+    # SELECT would hand back that very object (the identity map keeps loaded state), so
+    # take it without the round trip (stage 9 perf).
+    for item in list(db.identity_map.values()):
+        if isinstance(item, UserSettings) and inspect(item).dict.get("user_id") == user.id:
+            return item
     row = (await db.execute(select(UserSettings).where(UserSettings.user_id == user.id))).scalar_one_or_none()
     if row is None:
         app_settings = get_app_settings()
