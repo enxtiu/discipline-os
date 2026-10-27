@@ -1005,3 +1005,30 @@ async def test_engine_gets_share_a_per_user_rate_limit(authed: httpx.AsyncClient
     assert missing.status_code == 404  # the POSTs have their own budget
     async with other_user() as stranger:  # per user
         assert (await stranger.get("/api/v1/gamification/today")).status_code == 200
+
+
+async def test_frozen_targets_read_the_compact_copy_or_the_breakdown(owner, db) -> None:
+    """A row carries what it was judged with twice: compact (``components.targets``) and in
+    its items (``detail.target`` / the kcal ``detail.floor``) — rows written before the
+    compact copy existed read the items; a damaged copy degrades to "unknown"."""
+    uid = owner.id
+    d = date(2026, 7, 10)
+    await configure(db, uid)
+    await eat_day(db, uid, d)
+    await run(db, uid, NOON)
+    compact = (await score.load_flags(db, uid, d, d))[d].targets
+    assert compact == score.FrozenTargets(kcal=2000, protein_g=150, fiber_g=30, water_ml=2500, steps=8000, floor=1500)
+    await db.execute(
+        update(DailyScore).where(DailyScore.user_id == uid).values(components=DailyScore.components.op("-")("targets"))
+    )
+    await db.commit()
+    assert (await score.load_flags(db, uid, d, d))[d].targets == compact  # from the items
+    await db.execute(
+        update(DailyScore)
+        .where(DailyScore.user_id == uid, DailyScore.local_day == d)
+        .values(
+            components=DailyScore.components.op("||")(sa.literal({"targets": "garbage"}, sa.dialects.postgresql.JSONB))
+        )
+    )
+    await db.commit()
+    assert (await score.load_flags(db, uid, d, d))[d].targets is None
