@@ -1,8 +1,23 @@
-/** Stage 6 — owned by the calendar/time/journal workstream (placeholder until it lands). */
-import { useTranslation } from 'react-i18next'
-import { EmptyState } from '@/components/ui'
+/** /plan/journal — the daily review loads as its own chunk on the first visit; the skeleton stays here. */
+import { lazy, Suspense } from 'react'
+
+import { Skeleton, SkeletonCard } from '@/components/ui'
+
+const JournalScreen = lazy(() => import('./JournalScreen'))
 
 export function JournalPage() {
-  const { t } = useTranslation()
-  return <EmptyState title={t('plan.journal')} />
+  return (
+    <Suspense
+      fallback={
+        <div className="space-y-4" aria-hidden="true">
+          <Skeleton className="h-12" />
+          <Skeleton className="h-16" />
+          <SkeletonCard lines={3} />
+          <SkeletonCard lines={4} />
+        </div>
+      }
+    >
+      <JournalScreen />
+    </Suspense>
+  )
 }
