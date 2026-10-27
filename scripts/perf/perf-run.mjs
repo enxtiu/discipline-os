@@ -69,6 +69,7 @@ const SCREENS = {
 }
 const SELECTED = option('--screens', Object.keys(SCREENS).join(',')).split(',')
 const TABS = args.includes('--tabs')
+const WATERFALL = args.includes('--waterfall') // print each load's request timeline
 const TAB_SEQUENCE = ['food', 'plan', 'today', 'food', 'plan', 'stats', 'today']
 
 const iPhone = devices['iPhone 13']
@@ -278,6 +279,11 @@ async function measure(mode, name) {
     longTaskMs: Math.round(page_.longtasks.reduce((total, [, duration]) => total + duration, 0)),
     blockingMs: Math.round(blocking),
     apiCalls: api.map((item) => `${item.method} ${new URL(item.url).pathname}${new URL(item.url).search}`),
+    timeline: all
+      .map((item) => ({ url: new URL(item.url).pathname, start: ms(item.start), end: ms(item.end), bytes: item.bytes }))
+      .sort((a, b) => a.start - b.start),
+    longTaskList: page_.longtasks.map(([start, duration]) => [Math.round(start), Math.round(duration)]),
+    marks: page_.marks,
     scripts: js.map((item) => new URL(item.url).pathname.replace('/assets/', '')),
     errors,
   }
@@ -349,6 +355,15 @@ for (const mode of MODES) {
     for (let run = 1; run <= RUNS; run += 1) {
       const result = await measure(mode, name)
       results.push({ ...result, run })
+      if (WATERFALL) {
+        const marks = `shell ${result.shell} · ring ${result.ring ?? '—'} · ready ${result.ready}`
+        console.log(`  waterfall (${marks}):`)
+        for (const item of result.timeline) {
+          console.log(`    ${String(item.start).padStart(5)} → ${String(item.end).padStart(5)}  ${(item.bytes / 1000).toFixed(1).padStart(6)} kB  ${item.url}`)
+        }
+        console.log(`    long tasks: ${result.longTaskList.map(([start, duration]) => `${start}+${duration}`).join(', ')}`)
+        console.log(`    marks: ${Object.entries(result.marks).map(([key, value]) => `${key} ${Math.round(value)}`).join(', ')}`)
+      }
       console.log(
         `${mode.padEnd(4)} ${name.padEnd(5)} #${run}  shell ${result.shell} ms · ready ${result.ready} ms` +
           `${result.ring ? ` · ring ${result.ring} ms` : ''} · idle ${result.idle} ms · ${result.requests} req` +
