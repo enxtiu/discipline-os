@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# End-to-end smoke test against a running API (stages 1–3).
+# End-to-end smoke test against a running API (stages 1–7).
 #
 #   API_BASE=http://127.0.0.1:8000/api scripts/smoke.sh VKT6-S6D5
 #
@@ -7,7 +7,9 @@
 # The device it pairs is revoked again at the end, so it can be re-run as long
 # as a free device slot exists (default limit: 2).
 # Exits non-zero on the first failed expectation. Read-only apart from one
-# settings PATCH, one target preview and one API token it creates and revokes.
+# settings PATCH, one target preview and one API token it creates and revokes
+# (stage 7: one push subscription it registers and removes, and the history row
+# of the test notification it sends to a local receiver).
 set -euo pipefail
 
 API_BASE="${API_BASE:-http://127.0.0.1:8000/api}"
@@ -241,6 +243,106 @@ api DELETE "/v1/health/steps/$OLD_DAY" '' "$TOKEN" >/dev/null
 api DELETE "/v1/tokens/$SHORTCUT_ID" '' "$TOKEN" >/dev/null
 pass "ingest «8 342» / «512,5» / 6.2 km twice → one day, read access refused, food untouched (cleaned up)"
 
+step "16. web push (stage 7): subscription → POST /push/test → local receiver → decrypt"
+split "$(api GET /v1/push/config '' "$TOKEN")"
+[[ "$STATUS" == "200" ]] || fail "push config returned $STATUS: $BODY"
+if [[ "$(parse "$BODY" "d['enabled']")" != "True" ]]; then
+  pass "push is not configured on this API (no VAPID keys) — skipped; generate them with: python -m app.cli vapid-keys"
+else
+  VAPID_PUBLIC="$(parse "$BODY" "d['vapid_public_key']")"
+  PUSH_DIR="$(mktemp -d)"
+  b64url() { base64 -w0 | tr '+/' '-_' | tr -d '='; }
+  # the "browser": a fresh P-256 key pair and auth secret
+  openssl ecparam -name prime256v1 -genkey -noout -out "$PUSH_DIR/browser.pem" 2>/dev/null
+  P256DH="$(openssl ec -in "$PUSH_DIR/browser.pem" -pubout -outform DER 2>/dev/null | tail -c 65 | b64url)"
+  head -c 16 /dev/urandom > "$PUSH_DIR/auth.bin"
+  AUTH="$(b64url < "$PUSH_DIR/auth.bin")"
+  # the "push service": a tiny local receiver that stores every POST (http://127.0.0.1 is
+  # accepted as an endpoint only when the API runs with ENV=development)
+  PUSH_PORT="$(python3 -c 'import socket;s=socket.socket();s.bind(("127.0.0.1",0));print(s.getsockname()[1]);s.close()')"
+  python3 - "$PUSH_PORT" "$PUSH_DIR" <<'RECEIVER' &
+import base64, http.server, json, pathlib, sys
+
+port, out = int(sys.argv[1]), pathlib.Path(sys.argv[2])
+
+class Receiver(http.server.BaseHTTPRequestHandler):
+    def do_POST(self):
+        body = self.rfile.read(int(self.headers.get("Content-Length") or 0))
+        record = {"path": self.path, "headers": {k.lower(): v for k, v in self.headers.items()},
+                  "body": base64.b64encode(body).decode()}
+        (out / f"post-{len(list(out.glob('post-*.json')))}.json").write_text(json.dumps(record))
+        self.send_response(201)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def log_message(self, *args):
+        pass
+
+http.server.HTTPServer(("127.0.0.1", port), Receiver).serve_forever()
+RECEIVER
+  RECEIVER_PID=$!
+  stop_receiver() { kill "$RECEIVER_PID" 2>/dev/null || true; rm -rf "$PUSH_DIR"; }
+  trap stop_receiver EXIT
+  for _ in $(seq 1 50); do
+    python3 -c "import socket,sys;s=socket.socket();sys.exit(s.connect_ex(('127.0.0.1',$PUSH_PORT)))" && break
+    sleep 0.1
+  done
+  ENDPOINT="http://127.0.0.1:$PUSH_PORT/push/smoke-$RANDOM$RANDOM"
+  split "$(api POST /v1/push/subscriptions "{\"endpoint\":\"$ENDPOINT\",\"keys\":{\"p256dh\":\"$P256DH\",\"auth\":\"$AUTH\"}}" "$TOKEN")"
+  if [[ "$STATUS" == "422" ]]; then
+    stop_receiver
+    trap - EXIT
+    pass "this API refuses local push endpoints (ENV is not development) — skipped"
+  else
+  [[ "$STATUS" == "201" ]] || fail "subscribe returned $STATUS: $BODY"
+  [[ "$(parse "$BODY" "d['endpoint_host']")" == "127.0.0.1" ]] || fail "subscription not bound to the receiver: $BODY"
+  PUSH_SUB_ID="$(parse "$BODY" "d['id']")"
+  split "$(api POST /v1/push/test '' "$TOKEN")"
+  [[ "$STATUS" == "200" ]] || fail "push test returned $STATUS: $BODY"
+  [[ "$(parse "$BODY" "d['sent'] >= 1")" == "True" ]] || fail "push test did not deliver: $BODY"
+  for _ in $(seq 1 30); do [[ -f "$PUSH_DIR/post-0.json" ]] && break; sleep 0.1; done
+  POSTS="$(find "$PUSH_DIR" -name 'post-*.json' | wc -l)"
+  [[ "$POSTS" == "1" ]] || fail "the receiver got $POSTS POSTs, expected exactly one"
+  python3 - "$PUSH_DIR/post-0.json" "$VAPID_PUBLIC" <<'CHECK' || fail "the push request is not an RFC 8291/8292 web push"
+import json, sys
+record, vapid_public = json.load(open(sys.argv[1])), sys.argv[2]
+headers = record["headers"]
+assert headers.get("content-encoding") == "aes128gcm", headers
+auth = headers.get("authorization", "")
+assert auth.startswith("vapid t=") and auth.endswith(f",k={vapid_public}"), auth[:40]
+assert headers.get("ttl") == "60" and headers.get("urgency") == "high", headers
+CHECK
+  LANGUAGE="$(parse "$(sed '$d' <<<"$(api GET /v1/settings '' "$TOKEN")")" "d['settings']['language']")"
+  EXPECTED_TITLE="$([[ "$LANGUAGE" == "en" ]] && echo "Test notification" || echo "Проверка уведомлений")"
+  VENV_PY="$(dirname "$0")/../api/.venv/bin/python"
+  if [[ -x "$VENV_PY" ]] && "$VENV_PY" -c 'import http_ece, cryptography' 2>/dev/null; then
+    TITLE="$("$VENV_PY" - "$PUSH_DIR/post-0.json" "$PUSH_DIR/browser.pem" "$PUSH_DIR/auth.bin" <<'DECRYPT'
+import base64, json, sys
+import http_ece
+from cryptography.hazmat.primitives.serialization import load_pem_private_key
+record = json.load(open(sys.argv[1]))
+key = load_pem_private_key(open(sys.argv[2], "rb").read(), password=None)
+payload = json.loads(http_ece.decrypt(base64.b64decode(record["body"]), private_key=key,
+                                      auth_secret=open(sys.argv[3], "rb").read(), version="aes128gcm"))
+print(payload["title"])
+DECRYPT
+)"
+    [[ "$TITLE" == "$EXPECTED_TITLE" ]] || fail "decrypted title '$TITLE', expected '$EXPECTED_TITLE'"
+    DECRYPTED="decrypted with the browser key: «$TITLE»"
+  else
+    DECRYPTED="decryption skipped (no api/.venv with http_ece here)"
+  fi
+  split "$(api POST /v1/push/unsubscribe "{\"endpoint\":\"$ENDPOINT\"}" "$TOKEN")"
+  [[ "$STATUS" == "204" ]] || fail "unsubscribe returned $STATUS: $BODY"
+  split "$(api GET /v1/push/subscriptions '' "$TOKEN")"
+  [[ "$(parse "$BODY" "any(i['id'] == '$PUSH_SUB_ID' for i in d['items'])")" == "False" ]] \
+    || fail "the smoke subscription is still registered: $BODY"
+  stop_receiver
+  trap - EXIT
+  pass "one aes128gcm POST with a VAPID header reached the receiver, $DECRYPTED; unsubscribed, receiver stopped"
+  fi
+fi
+
 step "14. device self-revoke (cleanup)"
 split "$(api DELETE "/v1/devices/$DEVICE_ID" '' "$TOKEN")"
 [[ "$STATUS" == "200" ]] || fail "device revoke returned $STATUS: $BODY"
@@ -248,4 +350,4 @@ split "$(api GET /v1/auth/session '' "$TOKEN")"
 [[ "$STATUS" == "401" ]] || fail "a revoked device token still works ($STATUS)"
 pass "smoke device revoked, its token is dead"
 
-printf '\n\033[32mAll smoke checks passed (stages 1–5).\033[0m\n'
+printf '\n\033[32mAll smoke checks passed (stages 1–7).\033[0m\n'
