@@ -23,17 +23,19 @@ from decimal import Decimal
 
 import httpx
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from app.core.errors import Conflict
 from app.models import (
     Achievement,
     DailyScore,
+    MealLog,
     Quest,
     QuestStatus,
     StreakKind,
     UserAchievement,
     UserQuest,
+    UserSettings,
     XpKind,
 )
 from app.services.day_metrics import week_start_for
@@ -408,3 +410,86 @@ def test_policy_overall_credit_is_a_meal_at_or_above_the_floor_and_the_kcal_part
     low = day_with(900)
     assert (low.value, low.credit, low.counts_for_overall) == (75.0, False, False)
     assert day_with(0, meals=0).credit is False  # not logging is never credit
+
+
+# --------------------------------------------------------------------------- #
+# L3 — a final day is never recomputed, whatever the timezone does later
+# --------------------------------------------------------------------------- #
+async def day_state(db, uid, day: date) -> tuple:
+    db.expire_all()
+    row = (await db.scalars(select(DailyScore).where(DailyScore.user_id == uid, DailyScore.local_day == day))).one()
+    stored = (row.score, row.computed_at, row.components)
+    xp = {key: event.points for key, event in (await xp_rows(db, uid)).items() if event.local_day == day}
+    return (*stored, xp)
+
+
+async def test_moving_west_never_reopens_a_final_day(owner, db) -> None:
+    """Adapted from probe T1: Bangkok → Los Angeles after the day was finalised."""
+    uid = owner.id
+    d, d1 = date(2026, 7, 10), date(2026, 7, 11)
+    await configure(db, uid)  # Asia/Bangkok
+    await eat_day(db, uid, d)
+    await eat_day(db, uid, d1)
+    await run(db, uid, datetime(2026, 7, 11, 17, 30, tzinfo=UTC))  # 12 July 00:30 Bangkok: d is final
+    frozen_d = await day_state(db, uid, d)
+    assert frozen_d[2]["final"] is True and frozen_d[0] > 0 and frozen_d[3]
+    await run(db, uid, datetime(2026, 7, 13, 5, 0, tzinfo=UTC))  # 13 July 12:00 Bangkok: d1 is final too
+    frozen_d1 = await day_state(db, uid, d1)
+    assert frozen_d1[2]["final"] is True and await day_state(db, uid, d) == frozen_d
+
+    # both days' meals are deleted, then the phone moves to Los Angeles (13 July 06:00 UTC
+    # = 12 July 23:00 there): d is "today − 2" again and d1 is "yesterday" — the open window
+    await db.execute(update(MealLog).where(MealLog.user_id == uid).values(is_deleted=True))
+    await db.execute(update(UserSettings).where(UserSettings.user_id == uid).values(timezone="America/Los_Angeles"))
+    await db.commit()
+    snapshot = await run(db, uid, datetime(2026, 7, 13, 6, 0, tzinfo=UTC))
+    assert (snapshot.ctx.today, snapshot.ctx.yesterday) == (date(2026, 7, 12), d1)
+    assert await day_state(db, uid, d) == frozen_d
+    assert await day_state(db, uid, d1) == frozen_d1  # a final "yesterday" stays as it was
+    assert d1 not in snapshot.computed and snapshot.flags[d1].credit is True
+
+
+async def test_rows_from_before_the_final_mark_stay_frozen_after_a_move_west(owner, db) -> None:
+    """Rows written before finality was explicit (no ``final`` key) are final once their
+    day is before yesterday and they were computed after the grace day ended anywhere
+    (10:00 UTC the next day) — whatever the timezone does now. A legacy row of the open
+    window is recomputed once (it was last computed while in the window)."""
+    uid = owner.id
+    d = date(2026, 7, 10)
+    await configure(db, uid)
+    for day in (d, date(2026, 7, 14)):
+        await eat_day(db, uid, day)
+    await run(db, uid, datetime(2026, 7, 11, 17, 30, tzinfo=UTC))  # d finalised in Bangkok
+    await run(db, uid, NOON)  # 11–13 July finalised, 14–15 July in the window
+    await db.execute(
+        update(DailyScore).where(DailyScore.user_id == uid).values(components=DailyScore.components.op("-")("final"))
+    )
+    await db.commit()
+    legacy = await day_state(db, uid, d)
+    assert "final" not in legacy[2]
+    await db.execute(update(MealLog).where(MealLog.user_id == uid).values(is_deleted=True))
+    await db.execute(update(UserSettings).where(UserSettings.user_id == uid).values(timezone="America/Los_Angeles"))
+    await db.commit()
+    snapshot = await run(db, uid, NOON + timedelta(hours=1))  # 14 July 23:00 in Los Angeles
+    assert snapshot.ctx.today == date(2026, 7, 14)
+    assert await day_state(db, uid, d) == legacy  # frozen for good
+    window = await day_state(db, uid, date(2026, 7, 14))  # the open window there: recomputed
+    assert (window[2]["final"], window[0], window[3]) == (False, 0, {})
+
+
+async def test_store_never_overwrites_a_final_row(owner, db) -> None:
+    uid = owner.id
+    d = date(2026, 7, 10)
+    await configure(db, uid)
+    await eat_day(db, uid, d)
+    snapshot = await run(db, uid, NOON)
+    before = await day_state(db, uid, d)
+    assert before[2]["final"] is True
+    from app.db import SessionLocal
+    from app.services.day_metrics import DayMetrics
+
+    async with SessionLocal() as session:
+        empty = score.compute_day_score(DayMetrics(day=d), snapshot.ctx, provisional=False)
+        await score.store(session, snapshot.ctx, [empty], {d: 0})
+        await session.commit()
+    assert await day_state(db, uid, d) == before

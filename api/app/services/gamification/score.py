@@ -28,16 +28,17 @@ whatever the user's weights are.
 from __future__ import annotations
 
 import math
-from collections.abc import Iterable
+from collections.abc import Collection, Iterable
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 
-from sqlalchemy import Float, cast, select
+from sqlalchemy import Float, cast, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.ids import new_id
+from app.core.tz import ensure_utc
 from app.models import DailyScore
 from app.schemas.gamification import DEFAULT_SCORE_WEIGHTS, SCORE_KEYS
 from app.services.day_metrics import DayMetrics, KcalZone, nutrition_credit
@@ -243,9 +244,12 @@ def rings(score: DayScore, weights: dict[str, float]) -> dict[str, float]:
 # --------------------------------------------------------------------------- #
 # Storage (daily_scores)
 # --------------------------------------------------------------------------- #
-def to_json(score: DayScore) -> dict[str, Any]:
+def to_json(score: DayScore, *, final: bool = False) -> dict[str, Any]:
+    """The stored breakdown. ``final``: the day's last computation (after its grace day)
+    — such a row is never recomputed again, whatever the timezone does later."""
     return {
         "version": SCORE_VERSION,
+        "final": final,
         "provisional": score.provisional,
         "credit": score.credit,
         "items": [
@@ -318,6 +322,12 @@ def counts_for_overall(row: DailyScore) -> bool:
     return payload.get("credit") is True and _clamp_score(row.score) >= OVERALL_THRESHOLD
 
 
+def legacy_final_at(day: date) -> datetime:
+    """The earliest instant at which ``day``'s grace day is over anywhere on Earth: local
+    midnight starting ``day + 2`` in UTC+14, i.e. 10:00 UTC on ``day + 1``."""
+    return datetime.combine(day + timedelta(days=1), time(10, 0), tzinfo=UTC)
+
+
 @dataclass(slots=True, frozen=True)
 class ScoreFlag:
     """The light view of a stored day: enough for streaks and achievements."""
@@ -326,22 +336,55 @@ class ScoreFlag:
     score: float
     credit: bool
     computed_at: datetime
+    final_mark: bool | None = None  # the stored ``final`` key; None: stored before it existed
 
     @property
     def counts_for_overall(self) -> bool:
         return self.credit and self.score >= OVERALL_THRESHOLD
 
+    def is_final(self, today: date) -> bool:
+        """Is this row the day's last computation? Explicit since review 8 (``final``):
+        a final row is never recomputed, whatever the timezone does later. A row stored
+        before the key existed counts as final once its day is before yesterday and it was
+        computed after the grace day ended *somewhere* (the old rule, in whichever
+        timezone the user had then, always implies that) — so no move to another
+        timezone can ever re-open it."""
+        if self.final_mark is not None:
+            return self.final_mark
+        return self.day <= today - timedelta(days=2) and ensure_utc(self.computed_at) >= legacy_final_at(self.day)
+
 
 async def load_flags(db: AsyncSession, user_id, first: date, last: date) -> dict[date, ScoreFlag]:
-    """Stored score, credit flag and ``computed_at`` per day — without the breakdown
-    (years of history stay a small read)."""
-    credit = DailyScore.components["credit"].astext
+    """Stored score, credit and finality per day — without the breakdown (years of
+    history stay a small read). Malformed JSON degrades (no credit, not final)."""
+    components = DailyScore.components
     rows = await db.execute(
-        select(DailyScore.local_day, cast(DailyScore.score, Float), credit, DailyScore.computed_at).where(
-            DailyScore.user_id == user_id, DailyScore.local_day.between(first, last)
-        )
+        select(
+            DailyScore.local_day,
+            cast(DailyScore.score, Float),
+            components["credit"].astext,
+            DailyScore.computed_at,
+            components["final"].astext,
+        ).where(DailyScore.user_id == user_id, DailyScore.local_day.between(first, last))
     )
-    return {row[0]: ScoreFlag(row[0], float(row[1] or 0), row[2] == "true", row[3]) for row in rows}
+    return {
+        row[0]: ScoreFlag(
+            day=row[0],
+            score=float(row[1] or 0),
+            credit=row[2] == "true",
+            computed_at=row[3],
+            final_mark=_mark(row[4]),
+        )
+        for row in rows
+    }
+
+
+def _mark(value: str | None) -> bool | None:
+    """The stored ``final`` key: true/false, None when absent (a row from before it
+    existed); anything else (a damaged row) is "not final" — recomputed, never trusted."""
+    if value is None:
+        return None
+    return value == "true"
 
 
 async def load_rows(db: AsyncSession, user_id, first: date, last: date) -> dict[date, DailyScore]:
@@ -357,17 +400,21 @@ async def store(
     scores: Iterable[DayScore],
     xp_by_day: dict[date, int],
     streak_days: dict[date, int] | None = None,
+    *,
+    final: Collection[date] = (),
 ) -> int:
     """Upsert the given days (chunked statements). ``streak_days`` = the overall streak
-    length reached on that day. Returns the number of rows written."""
+    length reached on that day; ``final`` = the days computed for the last time. A row
+    that is already final is never overwritten. Returns the number of rows sent."""
     streak_days = streak_days or {}
+    final = set(final)
     values = [
         {
             "id": new_id(),
             "user_id": ctx.user_id,
             "local_day": score.day,
             "score": score.value,
-            "components": to_json(score),
+            "components": to_json(score, final=score.day in final),
             "weights": score.weights,
             "xp_earned": int(xp_by_day.get(score.day, 0)),
             "streak_days": int(streak_days.get(score.day, 0)),
@@ -390,6 +437,7 @@ async def store(
                 "computed_at": stmt.excluded.computed_at,
                 "updated_at": stmt.excluded.updated_at,
             },
+            where=func.coalesce(DailyScore.components["final"].astext, "") != "true",
         )
         await db.execute(stmt)
     return len(values)

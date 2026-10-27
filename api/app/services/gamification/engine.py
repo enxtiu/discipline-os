@@ -5,9 +5,11 @@ Order, inside one transaction holding a per-user advisory lock (overlapping runs
 two jobs, a job and a request — simply take turns; every write is idempotent):
 
 1. **days** — daily scores and day XP for the open window (yesterday, today) and,
-   once each, for older days whose score was never computed after their grace day
-   ended (first run, downtime): those are then frozen for good. Score and XP of a
-   day are always finalised together.
+   once each, for older days without a *final* row (first run, downtime): those are
+   then frozen for good — the row says so (``components.final``), and a final day is
+   never recomputed, whatever the timezone does later (a day that is "yesterday"
+   again after a move west keeps its frozen row). Score and XP of a day are always
+   finalised together.
 2. **streaks** — recomputed from the history; rows upserted (longest never
    decreases); overall-streak milestones paid once per run.
 3. **achievements** — metrics, unlocks, permanent XP (repeated while a level-up
@@ -76,19 +78,15 @@ class GameSnapshot:
 
 
 def _pending(
-    stored: dict[date, score.ScoreFlag], ctx: GameContext, first_data: date | None, oldest: date
+    stored_days: Iterable[date], final: set[date], ctx: GameContext, first_data: date | None, oldest: date
 ) -> list[date]:
-    """Days before yesterday that still need their final computation: never scored
-    (from the first data day on), or last scored before their grace day ended
-    (``computed_at`` < local start of day + 2) — then they are frozen for good."""
+    """Days before yesterday without a final row, oldest first: never scored (from the
+    first data day on) or scored only while they were in the open window. Each is
+    computed once more and then frozen for good."""
     last = ctx.today - timedelta(days=2)
     candidates = set(iter_days(max(first_data, oldest), last)) if first_data is not None else set()
-    candidates |= {day for day in stored if day <= last}
-    return sorted(
-        day
-        for day in candidates
-        if day not in stored or stored[day].computed_at < ctx.local_start(day + timedelta(days=2))
-    )
+    candidates |= {day for day in stored_days if day <= last}
+    return sorted(day for day in candidates if day not in final)
 
 
 async def sync_user(
@@ -123,29 +121,31 @@ async def sync_user(
     plans = day_metrics.weeks_from_plan(plan, start, today, ctx.week_start)
     stored = await score.load_flags(db, user_id, start, today)
 
+    # a final row is never recomputed — even when a move west makes its day "yesterday"
+    final = {day for day, flag in stored.items() if flag.is_final(today)}
     # yesterday stays in the window while it has data or a stored row (a deleted meal
     # must lose its XP); a brand-new account gets no empty "yesterday"
     with_yesterday = (first_data is not None and first_data <= yesterday) or yesterday in stored
-    window = [yesterday, today] if with_yesterday else [today]
-    pending = _pending(stored, ctx, first_data, oldest)
+    window = [day for day in ([yesterday, today] if with_yesterday else [today]) if day not in final or day == today]
+    pending = _pending(stored, final, ctx, first_data, oldest)
     computed = {day: score.compute_day_score(history[day], ctx, provisional=day == today) for day in pending + window}
+    writable = sorted(day for day in computed if day not in final)  # (today is final only after a ≥ 2-day jump west)
 
     flags: dict[date, DayFlag] = {day: DayFlag(flag.score, flag.credit) for day, flag in stored.items()}
-    flags.update({day: DayFlag(item.value, item.credit) for day, item in computed.items()})
+    flags.update({day: DayFlag(computed[day].value, computed[day].credit) for day in writable})
     overall_days = {day for day, flag in flags.items() if flag.credit and flag.score >= score.OVERALL_THRESHOLD}
     longest = await streaks.stored_longest(db, user_id)
     states = streaks.compute(history, overall_days, plans, ctx, longest, track=set(computed))
     snapshot = GameSnapshot(ctx=ctx, history=history, computed=computed, flags=flags, plans=plans, streaks=states)
 
-    if persist and "days" in stages:
-        days = sorted(computed)
-        refs = await xp.load_refs(db, ctx, days[0], today)
+    if persist and "days" in stages and writable:
+        refs = await xp.load_refs(db, ctx, writable[0], today)
         awards = [
             award
-            for day in days
+            for day in writable
             for award in xp.day_awards(day, history[day], refs.get(day), ctx, finished=day < today)
         ]
-        await xp.sync_days(db, ctx, days, awards)
+        await xp.sync_days(db, ctx, writable, awards)
     if persist and "streaks" in stages:
         await streaks.persist(db, ctx, states)
         await streaks.award_milestones(db, ctx, states[0])
@@ -171,10 +171,10 @@ async def sync_user(
         await quests.expire(db, ctx)
         await quests.rotate(db, ctx, f)
         snapshot.quests = await quests.refresh(db, ctx, history, snapshot.week_required)  # no XP until claimed
-    if persist and "days" in stages:  # last, so xp_earned includes this run's permanent awards
-        days = sorted(computed)
-        xp_by_day = await xp.per_day(db, user_id, days[0], today)
-        await score.store(db, ctx, computed.values(), xp_by_day, states[0].count_on)
+    if persist and "days" in stages and writable:  # last, so xp_earned includes this run's permanent awards
+        xp_by_day = await xp.per_day(db, user_id, writable[0], today)
+        rows = [computed[day] for day in writable]
+        await score.store(db, ctx, rows, xp_by_day, states[0].count_on, final=pending)
         snapshot.xp_today = xp_by_day.get(today, 0)
     else:
         snapshot.xp_today = (await xp.per_day(db, user_id, today, today)).get(today, 0)
