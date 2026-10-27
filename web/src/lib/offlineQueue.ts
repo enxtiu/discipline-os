@@ -690,9 +690,28 @@ export async function resolveConflict(id: number, choice: 'mine' | 'theirs'): Pr
   }
   if (Object.keys(base).length > 0) body.base = base
   else delete body.base
+  if (choice === 'theirs') {
+    // later waiting writes of the same row were built on the value given up: they drop it too
+    const later = await offlineDb.queue.where(':id').above(id).toArray()
+    for (const next of later) {
+      if (next.id === undefined || next.path !== entry.path || statusOf(next) !== 'pending' || next.sending) continue
+      if (!isRecord(next.body)) continue
+      const nextBody = { ...next.body }
+      const nextBase = isRecord(nextBody.base) ? { ...nextBody.base } : {}
+      for (const field of fields) {
+        delete nextBody[field]
+        delete nextBase[field]
+      }
+      if (Object.keys(nextBase).length > 0) nextBody.base = nextBase
+      else delete nextBody.base
+      if (Object.keys(nextBody).some((key) => key !== 'base' && key !== 'id')) await offlineDb.queue.update(next.id, { body: nextBody })
+      else await offlineDb.queue.delete(next.id)
+    }
+  }
   const rest = Object.keys(body).filter((key) => key !== 'base' && key !== 'id')
   if (choice === 'theirs' && rest.length === 0) {
     await discardEntry(id)
+    void flushNow() // what waited behind it can go now
     return
   }
   await offlineDb.queue.update(id, {

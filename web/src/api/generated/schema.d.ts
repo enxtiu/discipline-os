@@ -2508,6 +2508,23 @@ export interface components {
              */
             tasks: components["schemas"]["TaskOut"][];
         };
+        /** AreaBaseIn */
+        AreaBaseIn: {
+            /** Name */
+            name?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Color */
+            color?: string | null;
+            /** Icon */
+            icon?: string | null;
+            /** Weekly Target Minutes */
+            weekly_target_minutes?: number | null;
+            /** Is Archived */
+            is_archived?: boolean | null;
+            /** Sort Order */
+            sort_order?: number | null;
+        };
         /** AreaCountsOut */
         AreaCountsOut: {
             /**
@@ -2627,6 +2644,8 @@ export interface components {
             is_archived?: boolean | null;
             /** Sort Order */
             sort_order?: number | null;
+            /** @description Compare-and-set: the values this edit started from, for the fields it changes (any field of this request may be listed). A listed field whose stored value differs — and is not already the value this request sets — answers 409 `edit_conflict` with `details.fields` and `details.current`; nothing is written. Absent: last write wins. */
+            base?: components["schemas"]["AreaBaseIn"] | null;
         };
         /** AreaTimeOut */
         AreaTimeOut: {
@@ -2669,6 +2688,25 @@ export interface components {
             duration_s?: number | null;
             /** Distance M */
             distance_m?: number | null;
+        };
+        /** BlockBaseIn */
+        BlockBaseIn: {
+            /**
+             * Date
+             * Format: date
+             * @description Local calendar day, YYYY-MM-DD
+             */
+            date: string;
+            /**
+             * Start
+             * @description HH:MM (H:MM and HH:MM:SS accepted)
+             */
+            start: string;
+            /**
+             * End
+             * @description HH:MM (H:MM and HH:MM:SS accepted)
+             */
+            end: string;
         };
         /** BlockIn */
         BlockIn: {
@@ -3689,6 +3727,26 @@ export interface components {
              */
             minutes: number;
         };
+        /** JournalBaseIn */
+        JournalBaseIn: {
+            /** Note Md */
+            note_md?: string | null;
+            /** Rating */
+            rating?: number | null;
+            /** Mood */
+            mood?: number | null;
+            /** Energy */
+            energy?: number | null;
+            /** Wins Md */
+            wins_md?: string | null;
+            /** Improvements Md */
+            improvements_md?: string | null;
+            /**
+             * Tags
+             * @description order and case do not matter
+             */
+            tags?: string[] | null;
+        };
         /** JournalDayOut */
         JournalDayOut: {
             entry?: components["schemas"]["JournalOut"] | null;
@@ -3774,6 +3832,8 @@ export interface components {
             improvements_md?: string | null;
             /** Tags */
             tags?: string[] | null;
+            /** @description Compare-and-set: the values this edit started from, for the fields it changes (any field of this request may be listed). A listed field whose stored value differs — and is not already the value this request sets — answers 409 `edit_conflict` with `details.fields` and `details.current`; nothing is written. Absent: last write wins. */
+            base?: components["schemas"]["JournalBaseIn"] | null;
         };
         /** JournalListItemOut */
         JournalListItemOut: {
@@ -4887,6 +4947,31 @@ export interface components {
             /** Streak Calendar */
             streak_calendar: components["schemas"]["StreakDayOut"][];
         };
+        /** ProjectBaseIn */
+        ProjectBaseIn: {
+            /** Name */
+            name?: string | null;
+            /** Outcome */
+            outcome?: string | null;
+            /** Description Md */
+            description_md?: string | null;
+            /** Area Id */
+            area_id?: string | null;
+            /** Status */
+            status?: ("active" | "on_hold" | "completed" | "cancelled" | "archived") | null;
+            /** Deadline */
+            deadline?: string | null;
+            /** Start Date */
+            start_date?: string | null;
+            /** Color */
+            color?: string | null;
+            /** Icon */
+            icon?: string | null;
+            /** Is Archived */
+            is_archived?: boolean | null;
+            /** Sort Order */
+            sort_order?: number | null;
+        };
         /** ProjectCountsOut */
         ProjectCountsOut: {
             /**
@@ -5049,6 +5134,8 @@ export interface components {
             is_archived?: boolean | null;
             /** Sort Order */
             sort_order?: number | null;
+            /** @description Compare-and-set: the values this edit started from, for the fields it changes (any field of this request may be listed). A listed field whose stored value differs — and is not already the value this request sets — answers 409 `edit_conflict` with `details.fields` and `details.current`; nothing is written. Absent: last write wins. */
+            base?: components["schemas"]["ProjectBaseIn"] | null;
         };
         /** ProjectProgressOut */
         ProjectProgressOut: {
@@ -5563,6 +5650,24 @@ export interface components {
              */
             ids: string[];
         };
+        /** ResourceBaseIn */
+        ResourceBaseIn: {
+            /** Name */
+            name?: string | null;
+            /** Notes Md */
+            notes_md?: string | null;
+            /** Url */
+            url?: string | null;
+            /** Area Id */
+            area_id?: string | null;
+            /**
+             * Tags
+             * @description order and case do not matter
+             */
+            tags?: string[] | null;
+            /** Is Archived */
+            is_archived?: boolean | null;
+        };
         /** ResourceIn */
         ResourceIn: {
             /** Id */
@@ -5632,6 +5737,8 @@ export interface components {
             tags?: string[] | null;
             /** Is Archived */
             is_archived?: boolean | null;
+            /** @description Compare-and-set: the values this edit started from, for the fields it changes (any field of this request may be listed). A listed field whose stored value differs — and is not already the value this request sets — answers 409 `edit_conflict` with `details.fields` and `details.current`; nothing is written. Absent: last write wins. */
+            base?: components["schemas"]["ResourceBaseIn"] | null;
         };
         /** RingOut */
         RingOut: {
@@ -6264,6 +6371,58 @@ export interface components {
              */
             is_manual: boolean;
         };
+        /** TaskBaseIn */
+        TaskBaseIn: {
+            /** Title */
+            title?: string | null;
+            /** Notes Md */
+            notes_md?: string | null;
+            /**
+             * Status
+             * @description `scheduled` compares as `open`
+             */
+            status?: ("inbox" | "open" | "scheduled" | "in_progress" | "waiting" | "blocked" | "done" | "cancelled") | null;
+            /** Priority */
+            priority?: number | null;
+            /** Project Id */
+            project_id?: string | null;
+            /** Area Id */
+            area_id?: string | null;
+            /** Parent Id */
+            parent_id?: string | null;
+            /** Due Date */
+            due_date?: string | null;
+            /** Due Time */
+            due_time?: string | null;
+            block?: components["schemas"]["BlockBaseIn"] | null;
+            /** Estimate Minutes */
+            estimate_minutes?: number | null;
+            /**
+             * Recurrence Rule
+             * @description RRULE text or a preset key
+             */
+            recurrence_rule?: string | null;
+            /** Recurrence Until */
+            recurrence_until?: string | null;
+            /**
+             * Tags
+             * @description order and case do not matter
+             */
+            tags?: string[] | null;
+            /** Context */
+            context?: string | null;
+            /** Energy */
+            energy?: number | null;
+            /** Is Pinned */
+            is_pinned?: boolean | null;
+            /** Sort Order */
+            sort_order?: number | null;
+            /**
+             * Reminders
+             * @description the pending ones; order does not matter
+             */
+            reminders?: components["schemas"]["ReminderIn"][] | null;
+        };
         /** TaskCompleteIn */
         TaskCompleteIn: {
             /** Completed At */
@@ -6608,6 +6767,8 @@ export interface components {
             sort_order?: number | null;
             /** Reminders */
             reminders?: components["schemas"]["ReminderIn"][] | null;
+            /** @description Compare-and-set: the values this edit started from, for the fields it changes (any field of this request may be listed). A listed field whose stored value differs — and is not already the value this request sets — answers 409 `edit_conflict` with `details.fields` and `details.current`; nothing is written. Absent: last write wins. */
+            base?: components["schemas"]["TaskBaseIn"] | null;
         };
         /** TaskPatchResultOut */
         TaskPatchResultOut: {
@@ -6785,6 +6946,28 @@ export interface components {
              */
             updated_at: string;
         };
+        /** TimeEntryBaseIn */
+        TimeEntryBaseIn: {
+            /** Task Id */
+            task_id?: string | null;
+            /** Project Id */
+            project_id?: string | null;
+            /** Area Id */
+            area_id?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Note */
+            note?: string | null;
+            /** Date */
+            date?: string | null;
+            /** Start */
+            start?: string | null;
+            /**
+             * End
+             * @description null while the entry runs
+             */
+            end?: string | null;
+        };
         /** TimeEntryIn */
         TimeEntryIn: {
             /** Id */
@@ -6914,6 +7097,8 @@ export interface components {
             start?: string | null;
             /** End */
             end?: string | null;
+            /** @description Compare-and-set: the values this edit started from, for the fields it changes (any field of this request may be listed). A listed field whose stored value differs — and is not already the value this request sets — answers 409 `edit_conflict` with `details.fields` and `details.current`; nothing is written. Absent: last write wins. */
+            base?: components["schemas"]["TimeEntryBaseIn"] | null;
         };
         /** TimeSummaryOut */
         TimeSummaryOut: {
@@ -10642,6 +10827,13 @@ export interface operations {
                     "application/json": components["schemas"]["TaskPatchResultOut"];
                 };
             };
+            /** @description `edit_conflict`: a field listed in `base` changed meanwhile — `details.fields`, `details.current` (the row as the API shows it); nothing was written */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -11127,6 +11319,13 @@ export interface operations {
                     "application/json": components["schemas"]["AreaOut"];
                 };
             };
+            /** @description `edit_conflict`: a field listed in `base` changed meanwhile — `details.fields`, `details.current` (the row as the API shows it); nothing was written */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -11323,6 +11522,13 @@ export interface operations {
                     "application/json": components["schemas"]["ProjectOut"];
                 };
             };
+            /** @description `edit_conflict`: a field listed in `base` changed meanwhile — `details.fields`, `details.current` (the row as the API shows it); nothing was written */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -11453,6 +11659,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ResourceOut"];
                 };
+            };
+            /** @description `edit_conflict`: a field listed in `base` changed meanwhile — `details.fields`, `details.current` (the row as the API shows it); nothing was written */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -11790,6 +12003,13 @@ export interface operations {
                     "application/json": components["schemas"]["TimeEntryOut"];
                 };
             };
+            /** @description `edit_conflict`: a field listed in `base` changed meanwhile — `details.fields`, `details.current` (the row as the API shows it); nothing was written */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -11922,6 +12142,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["JournalOut"];
                 };
+            };
+            /** @description `edit_conflict`: a field listed in `base` changed meanwhile — `details.fields`, `details.current` (the row as the API shows it); nothing was written */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

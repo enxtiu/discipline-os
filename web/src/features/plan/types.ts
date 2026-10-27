@@ -164,7 +164,12 @@ export interface TaskIn {
   sort_order?: number
   reminders?: ReminderIn[]
 }
-export type TaskPatchIn = Partial<Omit<TaskIn, 'id'>>
+/**
+ * Compare-and-set (stage 9): the values an edit started from, for the fields it
+ * changes. A field that moved on the server meanwhile answers 409 `edit_conflict`.
+ */
+export type TaskBaseIn = Partial<Omit<TaskIn, 'id' | 'status'>> & { status?: TaskStatus }
+export type TaskPatchIn = Partial<Omit<TaskIn, 'id'>> & { base?: TaskBaseIn }
 
 export interface TaskPatchResult {
   task: TaskDetail
@@ -501,6 +506,15 @@ export interface JournalIn {
   wins_md?: string | null
   improvements_md?: string | null
   tags?: string[]
+  /** Compare-and-set (stage 9): the values the edit started from. */
+  base?: Omit<JournalIn, 'id' | 'base'>
+}
+
+/** The `details` of a 409 `edit_conflict` (stage 9). */
+export interface EditConflictDetails<T> {
+  fields: string[]
+  /** The row as the API shows it now (null: the journal day has no entry any more). */
+  current: T | null
 }
 export interface DaySummary {
   date: string
