@@ -194,8 +194,9 @@ export async function run(ctx) {
       ((await page.locator('[role="dialog"] .surface-sunken p.stat-value').first().innerText()) || '0').replace(/\s/g, '').replace(',', '.'),
     )
     await page.getByRole('button', { name: 'Записать в дневник' }).click()
-    await sleep(900)
     const pendingMeal = page.locator('[data-testid="meal-row"][data-pending="true"]')
+    await pendingMeal.first().waitFor({ timeout: 8000 }).catch(() => {})
+    await page.getByText('запишется, когда появится сеть').first().waitFor({ timeout: 5000 }).catch(() => {})
     const offlineMealId = await pendingMeal.first().getAttribute('data-meal-id').catch(() => null)
     if (offlineMealId) made.meals.add(offlineMealId)
     check(
@@ -219,8 +220,8 @@ export async function run(ctx) {
     const waterLine = page.locator('span.tnum.muted').filter({ hasText: 'мл' }).first()
     const waterBefore = await waterLine.innerText()
     await page.getByRole('button', { name: /\+250 мл/ }).click()
-    await sleep(800)
-    const waterAfter = await waterLine.innerText()
+    const waterAfter = await until(() => waterLine.innerText(), (value) => value !== waterBefore, 8000)
+    await page.locator('[data-testid="water-pending"]').waitFor({ timeout: 5000 }).catch(() => {})
     check(
       waterBefore !== waterAfter && (await page.locator('[data-testid="water-pending"]').isVisible()),
       'offline: +250 ml moves the water total at once, marked «ждёт отправки»',
@@ -255,13 +256,13 @@ export async function run(ctx) {
     await recentChip.click()
     await page.getByText('Записать в дневник').waitFor({ timeout: 8000 })
     await page.getByRole('button', { name: 'Записать в дневник' }).click()
-    await sleep(900)
     const twoPending = page.locator('[data-testid="meal-row"][data-pending="true"]')
+    await until(() => twoPending.count(), (count) => count === 2, 8000)
     const withdrawnId = await twoPending.nth(1).getAttribute('data-meal-id').catch(() => null)
     const queuedBeforeWithdraw = (await queue()).length
     await twoPending.nth(1).locator('[data-testid="meal-delete"]').click()
-    await sleep(800)
-    const queuedAfterWithdraw = await queue()
+    await until(() => twoPending.count(), (count) => count === 1, 8000)
+    const queuedAfterWithdraw = await until(queue, (entries) => entries.length === queuedBeforeWithdraw - 1, 5000)
     check(
       (await twoPending.count()) === 1 &&
         queuedAfterWithdraw.length === queuedBeforeWithdraw - 1 &&
@@ -301,8 +302,7 @@ export async function run(ctx) {
     // delete that meal offline: it leaves at once and the delete is sent later
     await setOffline(true)
     await settledRow.locator('[data-testid="meal-delete"]').click()
-    await sleep(700)
-    const goneAtOnce = (await settledRow.count()) === 0
+    const goneAtOnce = (await until(() => settledRow.count(), (count) => count === 0, 8000)) === 0
     await goOnline()
     const afterDelete = await until(day, (value) => !(value?.meals ?? []).some((meal) => meal.client_uuid === offlineMealId))
     check(
@@ -326,8 +326,9 @@ export async function run(ctx) {
     await openTask(page, edited.id)
     await page.locator('[data-testid="task-title-input"]').fill(`UI офлайн-правка ${stamp} (с телефона)`)
     await page.locator('[data-testid="task-save"]').click()
-    await sleep(800)
     const editedRow = row(page, edited.id).first()
+    await until(async () => (await editedRow.innerText().catch(() => '')).includes('(с телефона)'), Boolean, 8000)
+    await until(() => editedRow.getAttribute('data-pending'), (value) => value === 'true', 5000)
     check(
       (await editedRow.innerText()).includes('(с телефона)') &&
         (await editedRow.getAttribute('data-pending')) === 'true' &&
@@ -342,7 +343,7 @@ export async function run(ctx) {
     )
     // ticking another one offline: done at once
     await row(page, ticked.id).first().locator('[data-testid="task-check"]').click()
-    await sleep(600)
+    await until(() => row(page, ticked.id).first().getAttribute('data-status'), (value) => value === 'done', 5000)
     check((await row(page, ticked.id).first().getAttribute('data-status')) === 'done', 'offline: completing a task shows at once')
     await shot('9o-plan-offline-edit')
     await goOnline()
@@ -475,7 +476,7 @@ export async function run(ctx) {
     )
     await shot('9o-editor-conflict')
     await inline.locator('[data-testid="conflict-keep-theirs"]').click()
-    await sleep(800)
+    await until(() => page.locator('[data-testid="task-title-input"]').inputValue(), (value) => value.includes('ноутбук, онлайн'), 8000)
     check(
       (await page.locator('[data-testid="task-title-input"]').inputValue()).includes('ноутбук, онлайн') &&
         (await getTask(contested.id))?.title === `UI конфликт ${stamp} — ноутбук, онлайн`,
