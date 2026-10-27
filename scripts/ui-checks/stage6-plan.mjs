@@ -452,6 +452,22 @@ export async function run(ctx) {
       slotLabel,
     )
 
+    // …and a day of the month view opens it with that due date
+    await page.locator('[role="dialog"]').waitFor({ state: 'detached', timeout: 5000 }).catch(() => {})
+    await page.evaluate((detail) => window.dispatchEvent(new CustomEvent('dsos:plan:new-task', { detail })), {
+      due_date: day(4),
+    })
+    await page.locator('[data-testid="task-title-input"]').waitFor({ timeout: 8000 })
+    const dueField = await page.locator('[data-testid="due-date"]').inputValue().catch(() => '')
+    await page.locator('[data-testid="task-title-input"]').fill(`UI день месяца ${stamp}`)
+    const dayCreated = await act(/\/tasks$/, 'POST', () => page.locator('[data-testid="task-save"]').click())
+    const monthDay = keep(dayCreated.body)
+    check(
+      dayCreated.status === 201 && dueField === day(4) && monthDay?.due_date === day(4) && monthDay?.status === 'open',
+      'newTask({due_date}) — a day of the month view — opens the editor with that date',
+      `${dueField} → ${monthDay?.due_date}`,
+    )
+
     // ---- the editor starts a timer on its task ---------------------------------
     await go('/plan/upcoming')
     await openTask(slot?.id)

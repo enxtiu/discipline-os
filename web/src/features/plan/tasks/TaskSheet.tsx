@@ -326,6 +326,7 @@ export function TaskSheet({
     setPendingAction(null)
     form.reset()
     setPendingSubtasks([])
+    setDropped([])
     action?.()
   }
 
