@@ -648,7 +648,19 @@
     "sleep_not_found": "No sleep entry on that day.",
     "sleep_duration_invalid": "Sleep must last between 1 minute and 20 hours.",
     "health_day_not_found": "No steps on that day.",
-    "weight_last_entry": "This is your only weigh-in — correct it instead of deleting it: the profile needs a weight."
+    "weight_last_entry": "This is your only weigh-in — correct it instead of deleting it: the profile needs a weight.",
+    "task_too_deep": "Too deeply nested: a subtask can have only one more level",
+    "too_many_subtasks": "This task already has too many subtasks",
+    "invalid_rrule": "Could not read the repeat rule",
+    "invalid_block": "Check the time block: start, end and at most 24 hours",
+    "invalid_reminder": "A \"N minutes before\" reminder needs a task date or time",
+    "too_many_reminders": "At most 5 reminders per task",
+    "too_many_tags": "At most 10 tags per task",
+    "invalid_tag": "Tags use letters, digits, \"_\" and \"-\", up to 64 characters",
+    "range_too_large": "The date range is too large",
+    "timer_too_long": "The timer has run for over a day — tell how long it actually ran",
+    "invalid_time_entry": "Check the entry: 1 minute to 24 hours, not in the future",
+    "name_taken": "That name is already taken"
   },
   "ai": {
     "capture_row": "Add by photo, text or barcode",
