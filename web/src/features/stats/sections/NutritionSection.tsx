@@ -12,7 +12,7 @@ import { useTranslation } from 'react-i18next'
 
 import { ProgressBar } from '@/components/ui'
 import { number } from '@/lib/format'
-import { DailyChart, type TooltipLine } from '../charts/DailyChart'
+import { DailyChart, isDense, type TooltipLine } from '../charts/DailyChart'
 import { useChartTheme } from '../charts/theme'
 import { elapsedDays, fiberDays, hasNutrition } from '../derive'
 import { periodLabel, shortDay } from '../format'
@@ -61,6 +61,7 @@ function KcalCard({ stats, dimmed }: { stats: NutritionStats; dimmed: boolean })
   const elapsed = elapsedDays(stats.days, stats.today)
   const missing = stats.days.filter((day) => day.date <= stats.today && day.meals === 0).length
   const kcal = t('common.kcal')
+  const mark = isDense(stats.days) ? 'dot' : 'bar'
 
   const colour = (day: NutritionDay) => {
     const status = dayStatus(day, stats)
@@ -123,19 +124,22 @@ function KcalCard({ stats, dimmed }: { stats: NutritionStats; dimmed: boolean })
         items={[
           {
             label: t('stats.nutrition.avg'),
-            value: averages.kcal != null ? `${number(averages.kcal)} ${kcal}` : '—',
+            value: averages.kcal != null ? number(averages.kcal) : '—',
+            unit: averages.kcal != null ? kcal : undefined,
             sub: averages.days ? t('stats.over_days', { n: averages.days }) : t('stats.no_finished_days'),
             testId: 'stat-kcal-avg',
           },
           {
             label: t('stats.nutrition.in_zone'),
-            value: t('stats.n_of_m', { n: adherence.zone_days, m: averages.days }),
+            value: number(adherence.zone_days),
+            unit: t('stats.of_m', { m: averages.days }),
             sub: t('stats.days_short'),
             testId: 'stat-zone-days',
           },
           {
             label: t('stats.nutrition.logged'),
-            value: t('stats.n_of_m', { n: adherence.logged_days, m: elapsed }),
+            value: number(adherence.logged_days),
+            unit: t('stats.of_m', { m: elapsed }),
             sub: t('stats.days_short'),
             testId: 'stat-logged-days',
           },
@@ -147,19 +151,19 @@ function KcalCard({ stats, dimmed }: { stats: NutritionStats; dimmed: boolean })
         summary={summary}
         testId="chart-kcal"
         formatY={(value) => number(value)}
-        series={[{ key: 'kcal', value: (day) => day.kcal, color: theme.food, colorOf: colour, ghost: true }]}
-        target={target != null ? { value: target, label: t('stats.nutrition.target_label', { kcal: number(target) }) } : undefined}
+        series={[{ key: 'kcal', value: (day) => day.kcal, color: theme.food, colorOf: colour, ghost: true, denseKind: 'dots' }]}
+        target={target != null ? { value: target } : undefined}
         band={zone ?? undefined}
         tooltip={tooltip}
       />
       <Legend
         items={[
-          { mark: 'bar', color: theme.food, label: t('stats.nutrition.legend_in_zone') },
-          { mark: 'bar', color: theme.rest, label: t('stats.nutrition.legend_other') },
-          { mark: 'bar', color: theme.alpha(theme.food, 0.45), label: t('stats.legend_today') },
-          { mark: 'ghost', color: theme.muted, label: t('stats.legend_no_records') },
-          ...(target != null ? [{ mark: 'dash' as const, color: theme.ink, label: t('stats.legend_target') }] : []),
-          ...(zone ? [{ mark: 'band' as const, color: theme.food, label: t('stats.nutrition.legend_zone') }] : []),
+          { mark, color: theme.food, label: t('stats.nutrition.legend_in_zone') },
+          { mark, color: theme.rest, label: t('stats.nutrition.legend_other') },
+          { mark, color: theme.alpha(theme.food, 0.45), label: t('stats.legend_today') },
+          ...(mark === 'bar' ? [{ mark: 'ghost' as const, color: theme.muted, label: t('stats.legend_no_records') }] : []),
+          ...(target != null ? [{ mark: 'dash' as const, color: theme.ink, label: t('stats.nutrition.legend_target', { kcal: number(target) }) }] : []),
+          ...(zone ? [{ mark: 'band' as const, color: theme.food, label: t('stats.nutrition.legend_zone', { low: number(zone.low), high: number(zone.high) }) }] : []),
         ]}
       />
       <DataTable

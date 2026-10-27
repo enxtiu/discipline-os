@@ -10,7 +10,7 @@ import { ProgressBar } from '@/components/ui'
 import { number } from '@/lib/format'
 import { ColorDot } from '@/features/plan/tasks/ColorDot'
 import { BarList } from '../charts/BarList'
-import { DailyChart, type TooltipLine } from '../charts/DailyChart'
+import { DailyChart, isDense, type TooltipLine } from '../charts/DailyChart'
 import { useChartTheme } from '../charts/theme'
 import { hasPlanner, plannerTotals } from '../derive'
 import { hoursMinutes, periodLabel, shortDay } from '../format'
@@ -72,14 +72,14 @@ function TasksCard({ stats, dimmed }: { stats: PlannerStats; dimmed: boolean }) 
         })}
         series={[
           { key: 'done', value: (day) => (day.date <= stats.today ? day.done : null), color: theme.food },
-          { key: 'created', value: (day) => (day.date <= stats.today ? day.created : null), color: theme.rest },
+          { key: 'created', value: (day) => (day.date <= stats.today ? day.created : null), color: theme.rest, kind: 'dots', denseKind: 'line' },
         ]}
         tooltip={tooltip}
       />
       <Legend
         items={[
-          { mark: 'bar', color: theme.food, label: t('stats.planner.done') },
-          { mark: 'bar', color: theme.rest, label: t('stats.planner.created') },
+          { mark: isDense(stats.days) ? 'line' : 'bar', color: theme.food, label: t('stats.planner.done') },
+          { mark: isDense(stats.days) ? 'line' : 'dot', color: theme.rest, label: t('stats.planner.created') },
         ]}
       />
       <DataTable

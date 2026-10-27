@@ -94,10 +94,11 @@ function ScoreCard({ stats, dimmed }: { stats: ProgressStats; dimmed: boolean })
             color: theme.food,
             colorOf: colour,
             kind: 'line',
+            denseKind: 'line',
             dots: stats.scores.length <= DENSE_AFTER,
           },
         ]}
-        target={{ value: OVERALL_MIN_SCORE, label: t('stats.progress.streak_line', { min: OVERALL_MIN_SCORE }) }}
+        target={{ value: OVERALL_MIN_SCORE }}
         tooltip={tooltip}
       />
       <Legend
@@ -135,10 +136,11 @@ function XpCard({ stats, dimmed }: { stats: ProgressStats; dimmed: boolean }) {
     <StatCard title={t('stats.progress.xp_title')} hint={t('stats.progress.xp_hint')} testId="stats-xp-card" dimmed={dimmed}>
       <Tiles
         items={[
-          { label: t('stats.progress.xp_total'), value: `${number(totals.xp)} XP`, sub: t('stats.activity.in_period'), testId: 'stat-xp-total' },
+          { label: t('stats.progress.xp_total'), value: number(totals.xp), unit: 'XP', sub: t('stats.activity.in_period'), testId: 'stat-xp-total' },
           {
             label: t('stats.progress.best_day'),
-            value: best ? `${number(best.xp)} XP` : '—',
+            value: best ? number(best.xp) : '—',
+            unit: best ? 'XP' : undefined,
             sub: best ? dayMonth(best.date) : '',
             testId: 'stat-xp-best',
           },
@@ -190,7 +192,7 @@ function StreakCard({ stats, dimmed, weekStart }: { stats: ProgressStats; dimmed
         items={[
           { mark: 'cell', color: theme.food, label: t('stats.progress.legend_counted') },
           { mark: 'cell', color: theme.sleep, label: t('stats.progress.legend_freeze') },
-          { mark: 'ghost', color: theme.muted, label: t('stats.progress.legend_missed') },
+          { mark: 'empty', color: theme.muted, label: t('stats.progress.legend_missed') },
         ]}
       />
       <Link

@@ -7,14 +7,19 @@ import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 
 import { number } from '@/lib/format'
-import { DailyChart, type TooltipLine } from '../charts/DailyChart'
+import { DailyChart, isDense, type TooltipLine } from '../charts/DailyChart'
 import { useChartTheme } from '../charts/theme'
 import { bodyTotals } from '../derive'
 import { dayMonth, hoursMinutes, hoursTick, periodLabel, shortDay, signed } from '../format'
 import { CardEmpty, DataTable, Legend, StatCard, Tiles } from '../parts'
 import type { BodyStats, SleepPoint, WeightPoint } from '../types'
 
-const SLEEP_TICK = 180 // minutes: 0 · 3 h · 6 h · 9 h
+/** Hour ticks for sleep: every 2 h up to 10 h, every 3 h beyond. */
+function sleepTicks(longest: number): number[] {
+  const step = longest > 600 ? 180 : 120
+  const top = Math.max(step * 3, Math.ceil(longest / step) * step)
+  return Array.from({ length: top / step + 1 }, (_, index) => index * step)
+}
 
 export function BodySection({ stats, dimmed }: { stats: BodyStats; dimmed: boolean }) {
   const { t } = useTranslation()
@@ -60,13 +65,15 @@ function WeightCard({ stats, dimmed }: { stats: BodyStats; dimmed: boolean }) {
         items={[
           {
             label: t('stats.body.latest'),
-            value: totals.latest ? `${number(totals.latest.kg, 1)} ${kg}` : '—',
+            value: totals.latest ? number(totals.latest.kg, 1) : '—',
+            unit: totals.latest ? kg : undefined,
             sub: totals.latest ? dayMonth(totals.latest.date) : t('stats.body.no_weigh_in'),
             testId: 'stat-weight-latest',
           },
           {
             label: t('stats.body.change_30d'),
-            value: stats.change_30d != null ? `${signed(stats.change_30d)} ${kg}` : '—',
+            value: stats.change_30d != null ? signed(stats.change_30d) : '—',
+            unit: stats.change_30d != null ? kg : undefined,
             sub: stats.change_30d != null ? t('stats.body.change_hint') : t('stats.body.change_none'),
             testId: 'stat-weight-change',
           },
@@ -88,8 +95,8 @@ function WeightCard({ stats, dimmed }: { stats: BodyStats; dimmed: boolean }) {
               change: stats.change_30d != null ? signed(stats.change_30d) : '—',
             })}
             series={[
-              { key: 'avg7', value: (point) => point.avg7, color: theme.food, kind: 'line', smooth: true },
-              { key: 'kg', value: (point) => point.kg, color: theme.ink, kind: 'dots' },
+              { key: 'avg7', value: (point) => point.avg7, color: theme.food, kind: 'line', denseKind: 'line', smooth: true },
+              { key: 'kg', value: (point) => point.kg, color: theme.ink, kind: 'dots', denseKind: 'dots' },
             ]}
             tooltip={tooltip}
           />
@@ -125,9 +132,9 @@ function SleepCard({ stats, dimmed }: { stats: BodyStats; dimmed: boolean }) {
   const { t } = useTranslation()
   const theme = useChartTheme()
   const totals = bodyTotals(stats)
-  const longest = Math.max(0, ...stats.sleep.map((night) => night.minutes ?? 0))
-  const ceiling = Math.max(SLEEP_TICK * 3, Math.ceil(longest / SLEEP_TICK) * SLEEP_TICK)
-  const ticks = Array.from({ length: ceiling / SLEEP_TICK + 1 }, (_, index) => index * SLEEP_TICK)
+  const ticks = sleepTicks(Math.max(0, ...stats.sleep.map((night) => night.minutes ?? 0)))
+  const ceiling = ticks[ticks.length - 1]
+  const mark = isDense(stats.sleep) ? 'dot' : 'bar'
   const tooltip = (night: SleepPoint): TooltipLine[] =>
     night.minutes == null
       ? [{ label: '', value: t('stats.no_records'), mark: 'none' }]
@@ -159,16 +166,32 @@ function SleepCard({ stats, dimmed }: { stats: BodyStats; dimmed: boolean }) {
               avg: stats.sleep_avg != null ? hoursMinutes(stats.sleep_avg) : '—',
               n: totals.nights,
             })}
-            series={[{ key: 'minutes', value: (night) => night.minutes, color: theme.sleep, ghost: true }]}
-            average={stats.sleep_avg != null ? { value: stats.sleep_avg, label: t('stats.body.avg_label', { value: hoursMinutes(stats.sleep_avg) }) } : undefined}
+            series={[{ key: 'minutes', value: (night) => night.minutes, color: theme.sleep, ghost: true, denseKind: 'dots' }]}
+            average={stats.sleep_avg != null ? { value: stats.sleep_avg } : undefined}
             tooltip={tooltip}
           />
           <Legend
             items={[
-              { mark: 'bar', color: theme.sleep, label: t('stats.body.legend_night') },
-              { mark: 'ghost', color: theme.muted, label: t('stats.legend_no_records') },
-              ...(stats.sleep_avg != null ? [{ mark: 'dash' as const, color: theme.ink, label: t('stats.legend_average') }] : []),
+              { mark, color: theme.sleep, label: t('stats.body.legend_night') },
+              ...(mark === 'bar' ? [{ mark: 'ghost' as const, color: theme.muted, label: t('stats.legend_no_records') }] : []),
+              ...(stats.sleep_avg != null
+                ? [{ mark: 'dash' as const, color: theme.ink, label: t('stats.body.avg_label', { value: hoursMinutes(stats.sleep_avg) }) }]
+                : []),
             ]}
+          />
+          <DataTable
+            caption={t('stats.body.sleep_title')}
+            testId="table-sleep"
+            columns={[{ label: t('stats.col.day') }, { label: t('stats.col.sleep'), align: 'right' }]}
+            rows={() =>
+              stats.sleep
+                .filter((night) => night.date <= stats.today)
+                .map((night) => ({
+                  key: night.date,
+                  muted: night.minutes == null,
+                  cells: [shortDay(night.date), night.minutes != null ? hoursMinutes(night.minutes) : '—'],
+                }))
+            }
           />
         </>
       ) : (

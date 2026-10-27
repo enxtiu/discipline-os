@@ -9,7 +9,8 @@ import { useTranslation } from 'react-i18next'
 
 import { number } from '@/lib/format'
 import { useChartTheme, useReducedMotion } from './theme'
-import { dayMonth, monthShort, weekRange } from '../format'
+import { addDays } from '@/lib/format'
+import { dayMonth, monthNarrow, weekRange } from '../format'
 import type { ActivityWeek } from '../types'
 
 interface Datum {
@@ -33,9 +34,13 @@ export function WeeksChart({
   const data: Datum[] = weeks.map((week) => ({ week: week.week_start, workouts: week.workouts, required: week.required, __week: week }))
   const top = Math.max(3, ...weeks.map((week) => Math.max(week.workouts, week.required)))
   const dense = weeks.length > 16
-  // label every week up to a quarter; a year shows the week that starts each month
+  // label every week (every other one past two months); a year names each month once, at the
+  // first week whose middle (start + 3 days) falls in it
+  const middle = (week: ActivityWeek) => addDays(week.week_start, 3)
   const ticks = dense
-    ? weeks.filter((week, index) => index === 0 || week.week_start.slice(5, 7) !== weeks[index - 1].week_start.slice(5, 7)).map((week) => week.week_start)
+    ? weeks
+        .filter((week, index) => index === 0 || middle(week).slice(5, 7) !== middle(weeks[index - 1]).slice(5, 7))
+        .map((week) => week.week_start)
     : weeks.map((week) => week.week_start)
   const step = weeks.length > 8 ? 2 : 1
 
@@ -52,7 +57,7 @@ export function WeeksChart({
             axisLine={{ stroke: theme.grid }}
             height={22}
             tick={{ fill: theme.muted, fontSize: 11 }}
-            tickFormatter={(value: string) => (dense ? monthShort(value) : dayMonth(value).replace('.', ''))}
+            tickFormatter={(value: string) => (dense ? monthNarrow(addDays(value, 3)) : dayMonth(value).replace('.', ''))}
           />
           <YAxis
             orientation="right"

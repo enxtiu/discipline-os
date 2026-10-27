@@ -827,7 +827,8 @@
       "workouts": "Workouts",
       "weight": "Weight, kg",
       "avg7": "7-day avg",
-      "score": "Score"
+      "score": "Score",
+      "sleep": "Sleep"
     },
     "nutrition": {
       "kcal_title": "Calories",
@@ -838,7 +839,6 @@
       "logged": "Logged",
       "summary": "Calories per day, {{period}}: {{avg}} kcal on average over {{days}} logged days; {{zone}} days in the target zone; {{missing}} days with nothing logged.",
       "summary_target": "Target {{target}} kcal, zone {{low}}–{{high}} kcal.",
-      "target_label": "target {{kcal}}",
       "status": {
         "in_zone": "in the target zone",
         "below_zone": "below the zone",
@@ -854,7 +854,7 @@
       "water": "water",
       "legend_in_zone": "in the zone",
       "legend_other": "outside the zone",
-      "legend_zone": "target zone",
+      "legend_zone": "zone {{low}}–{{high}}",
       "table_caption": "Calories, protein and water per day, {{period}}",
       "adherence_title": "Protein, fiber, water",
       "adherence_hint": "Days the target was reached. Protein and fiber only count on days eaten at or above the safe floor.",
@@ -869,7 +869,8 @@
       "macros_avg": "Daily average: {{list}}",
       "empty": "Nothing logged to eat in this period",
       "empty_hint": "Log your meals — calories per day, the target zone and protein and water days appear here.",
-      "empty_action": "Log food"
+      "empty_action": "Log food",
+      "legend_target": "target {{kcal}} kcal"
     },
     "activity": {
       "steps_title": "Steps",
@@ -885,16 +886,15 @@
       "on_target": "target reached",
       "below_target": "below target",
       "steps_summary": "Steps per day, {{period}}: {{avg}} a day on average; the {{target}} target was reached on {{n}} of {{m}} days with data.",
-      "target_label": "target {{steps}}",
       "legend_on_target": "target reached",
       "legend_below": "below target",
       "no_steps": "No steps in this period — connect the iOS Shortcut or enter them on the Health screen.",
       "workouts_title": "Workouts per week",
       "workouts_hint": "Done and what the week needs: your weekly plan, or 3 without one. Rest days are part of the plan.",
-      "weeks_met": "Weeks on plan",
+      "weeks_met": "On plan",
       "weeks_short": "weeks",
       "volume": "Volume",
-      "volume_hint": "kg × reps",
+      "volume_hint": "no warm-ups",
       "week_planned": "workouts per your weekly plan",
       "week_default": "workouts (no plan — 3)",
       "volume_value": "volume {{kg}} kg",
@@ -916,7 +916,12 @@
       "records_more": "And {{n}} more — on the Train screen.",
       "empty": "No activity in this period",
       "empty_hint": "Steps from the iOS Shortcut, workouts and burned calories appear here.",
-      "empty_action": "Go to training"
+      "empty_action": "Go to training",
+      "best_day": "Best day",
+      "week_need_planned": "Needed for the week — per your plan",
+      "week_need_default": "Needed for the week — 3 without a plan",
+      "legend_target": "target {{steps}}",
+      "tonnes": "t"
     },
     "body": {
       "weight_title": "Weight",
@@ -976,12 +981,11 @@
       "provisional": "provisional — day in progress",
       "score_value": "{{score}} of 100",
       "score_summary": "Day score, {{period}}: {{avg}} on average; {{n}} days scoring {{min}} or more.",
-      "streak_line": "{{min}} — streak day",
       "legend_score": "day score",
       "legend_streak": "streak level {{min}}",
       "xp_title": "XP",
       "xp_hint": "XP earned each day",
-      "xp_total": "This period",
+      "xp_total": "Total",
       "xp_day": "that day",
       "xp_summary": "XP, {{period}}: {{xp}} XP in total.",
       "calendar_title": "Streak calendar",
@@ -1000,7 +1004,8 @@
       "legend_freeze": "freeze",
       "legend_missed": "did not count",
       "to_achievements": "Streaks, levels and achievements"
-    }
+    },
+    "of_m": "of {{m}}"
   },
   "settings": {
     "title": "Settings",

@@ -3,16 +3,17 @@
  *
  * Marks follow one spec everywhere: bars ≤ 24 px with 4 px rounded tops on a
  * single baseline and a 2 px gap; 2 px lines; dots with a ring in the card
- * colour; hairline horizontal grid; muted tabular ticks on the right. Up to a
- * month the days are bars; a quarter or a year (90–366 days) becomes a line,
- * broken where nothing was logged (an isolated day keeps a dot).
+ * colour; hairline horizontal grid; muted tabular ticks on the right at round
+ * values. Up to a month the days are bars; a quarter or a year (90–366 days)
+ * is drawn with each series' dense form — dots (one per day, coloured like
+ * the bars would be) or a line broken where nothing was logged.
  *
  * "Nothing logged" is never drawn as zero: a series with `ghost` marks a past
- * day without data with a small dashed placeholder, and every tooltip says
- * «нет записей». Tooltips open on tap and follow a dragging finger; the chart
- * itself is one `role="img"` whose name is the text summary the card passes.
+ * day without data with a small dashed placeholder (bars), a dense series
+ * simply leaves the day empty, and every tooltip says «нет записей». Tooltips
+ * open on tap and follow a dragging finger; the chart itself is one
+ * `role="img"` whose name is the text summary the card passes.
  */
-import { useMemo } from 'react'
 import {
   Bar,
   CartesianGrid,
@@ -40,8 +41,10 @@ export interface ChartSeries<Row> {
   color: string
   /** per-day colour (emphasis: in the zone vs not); default `color` */
   colorOf?: (row: Row) => string
-  /** default: bars up to a month, a line beyond */
+  /** the mark up to a month (default: bars) */
   kind?: SeriesKind
+  /** the mark for a quarter or a year (default: a line) */
+  denseKind?: SeriesKind
   /** dashed placeholder for a past day without data (bars only) */
   ghost?: boolean
   /** smooth curve (a moving average); daily values stay straight segments */
@@ -54,7 +57,7 @@ export interface TooltipLine {
   label: string
   value: string
   color?: string
-  /** the key mark beside the label: a short line (default) or a dashed one */
+  /** the key mark beside the label: a short line (default), a dashed one, none */
   mark?: 'line' | 'dash' | 'none'
 }
 
@@ -68,20 +71,35 @@ export interface DailyChartProps<Row extends { date: string }> {
   summary: string
   height?: number
   formatY?: (value: number) => string
-  /** fixed y range (e.g. a score 0–100); default 0 … a nice ceiling over data, target and band */
+  /** fixed y range (e.g. a score 0–100); default 0 … a round ceiling over data, target and band */
   yDomain?: [number, number]
   /** start the y axis near the data instead of 0 (weight) */
   fitY?: boolean
   yTicks?: number[]
-  target?: { value: number; label?: string }
+  target?: { value: number }
   band?: { low: number; high: number }
-  average?: { value: number; label?: string }
+  average?: { value: number }
   testId?: string
 }
 
-/** More than a month of days is drawn as a line. */
+/** More than a month of days is drawn in each series' dense form. */
 export const DENSE_AFTER = 31
 const GHOST_SHARE = 0.035
+
+export function isDense(rows: unknown[]): boolean {
+  return rows.length > DENSE_AFTER
+}
+
+/** Round ticks from 0: the step is 1, 2, 2.5 or 5 × 10ⁿ, about `count` intervals. */
+export function niceTicks(max: number, count = 3): number[] {
+  if (!(max > 0)) return [0, 1]
+  const raw = max / count
+  const power = 10 ** Math.floor(Math.log10(raw))
+  const step = [1, 2, 2.5, 5, 10].map((factor) => factor * power).find((candidate) => candidate >= raw) ?? 10 * power
+  const ticks: number[] = [0]
+  while (ticks[ticks.length - 1] < max) ticks.push(Math.round((ticks[ticks.length - 1] + step) * 1000) / 1000)
+  return ticks
+}
 
 type Datum = { date: string; __row: unknown } & Record<string, unknown>
 
@@ -103,64 +121,57 @@ export function DailyChart<Row extends { date: string }>({
 }: DailyChartProps<Row>) {
   const theme = useChartTheme()
   const reduced = useReducedMotion()
-  const dense = rows.length > DENSE_AFTER
+  const dense = isDense(rows)
   const today = range.today
 
-  const kinds = series.map((item) => item.kind ?? (dense ? 'line' : 'bar'))
+  const kinds: SeriesKind[] = series.map((item) => (dense ? (item.denseKind ?? 'line') : (item.kind ?? 'bar')))
   const values = rows.flatMap((row) => series.map((item) => item.value(row))).filter((v): v is number => v != null)
-
   const top = Math.max(1, ...values, target?.value ?? 0, band?.high ?? 0, average?.value ?? 0)
-  const domain = useMemo<[number, number] | [number | string, number | string]>(() => {
-    if (yDomain) return yDomain
-    if (fitY && values.length) {
-      const low = Math.min(...values, ...(target ? [target.value] : []))
-      const high = Math.max(...values, ...(target ? [target.value] : []))
-      const pad = Math.max(0.5, (high - low) * 0.25)
-      return [Math.floor(low - pad), Math.ceil(high + pad)]
-    }
-    return [0, 'auto']
-  }, [yDomain, fitY, values, target])
 
-  const data = useMemo<Datum[]>(
-    () =>
-      rows.map((row, index) => {
-        const datum: Datum = { date: row.date, __row: row }
-        series.forEach((item, s) => {
-          const value = item.value(row)
-          datum[item.key] = value
-          if (item.ghost && kinds[s] === 'bar') {
-            datum[`${item.key}__ghost`] = value == null && row.date <= today ? top * GHOST_SHARE : null
-          }
-          if (kinds[s] === 'line') {
-            // an isolated day (no data on either side) still shows as a dot
-            const before = index > 0 ? item.value(rows[index - 1]) : null
-            const after = index < rows.length - 1 ? item.value(rows[index + 1]) : null
-            datum[`${item.key}__alone`] = value != null && before == null && after == null
-          }
-        })
-        return datum
-      }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- series accessors are stable per render of the card
-    [rows, series, today, top],
-  )
+  let domain: [number, number] | undefined = yDomain
+  let axisTicks = yTicks
+  if (!domain && fitY && values.length) {
+    const low = Math.min(...values)
+    const high = Math.max(...values)
+    const pad = Math.max(0.5, (high - low) * 0.25)
+    domain = [Math.floor(low - pad), Math.ceil(high + pad)]
+  } else if (!domain) {
+    axisTicks = yTicks ?? niceTicks(top)
+    domain = [0, axisTicks[axisTicks.length - 1]]
+  }
+
+  const data: Datum[] = rows.map((row, index) => {
+    const datum: Datum = { date: row.date, __row: row }
+    series.forEach((item, s) => {
+      const value = item.value(row)
+      datum[item.key] = value
+      if (item.ghost && kinds[s] === 'bar') {
+        datum[`${item.key}__ghost`] = value == null && row.date <= today ? top * GHOST_SHARE : null
+      }
+      if (kinds[s] === 'line') {
+        // an isolated day (no data on either side) still shows as a dot
+        const before = index > 0 ? item.value(rows[index - 1]) : null
+        const after = index < rows.length - 1 ? item.value(rows[index + 1]) : null
+        datum[`${item.key}__alone`] = value != null && before == null && after == null
+      }
+    })
+    return datum
+  })
 
   const ticks = tickDays(
     rows.map((row) => row.date),
     range.period,
   )
-  const yWidth = Math.max(28, Math.ceil(formatY(Math.round(top * 1.15)).length * 6.6) + 8)
+  const widest = Math.max(...(axisTicks ?? domain ?? [top]).map((value) => formatY(value).length))
+  const yWidth = Math.max(26, Math.ceil(widest * 6.4) + 10)
   const hasBars = kinds.includes('bar')
   const animate = !reduced
+  const dotRadius = dense ? (rows.length > 120 ? 1.6 : 2.2) : 3.5
 
   return (
-    <div role="img" aria-label={summary} data-testid={testId} className="stats-chart -mx-1 select-none">
+    <div role="img" aria-label={summary} data-testid={testId} data-dense={dense || undefined} className="stats-chart -mx-1 select-none">
       <ResponsiveContainer width="100%" height={height} initialDimension={{ width: 320, height }}>
-        <ComposedChart
-          data={data}
-          margin={{ top: 8, right: 0, bottom: 0, left: 4 }}
-          barCategoryGap={dense ? 0 : 2}
-          barGap={2}
-        >
+        <ComposedChart data={data} margin={{ top: 8, right: 0, bottom: 0, left: 4 }} barCategoryGap={dense ? 0 : 2} barGap={2}>
           <CartesianGrid vertical={false} stroke={theme.grid} strokeWidth={1} />
           {band && (
             <ReferenceArea
@@ -186,8 +197,9 @@ export function DailyChart<Row extends { date: string }>({
             orientation="right"
             width={yWidth}
             domain={domain}
-            ticks={yTicks}
-            tickCount={4}
+            ticks={axisTicks}
+            tickCount={axisTicks ? undefined : 4}
+            interval={0}
             allowDecimals={false}
             tickLine={false}
             axisLine={false}
@@ -203,6 +215,11 @@ export function DailyChart<Row extends { date: string }>({
             allowEscapeViewBox={{ x: false, y: true }}
             wrapperStyle={{ outline: 'none', zIndex: 5 }}
           />
+          {!hasBars && (
+            // a bar series with no values: the category axis becomes a band scale, so the days
+            // of a line sit at the centres of their slots (aligned with the ticks), not on the edges
+            <Bar dataKey="__slot" fill="none" isAnimationActive={false} legendType="none" />
+          )}
           {series.map((item, s) => {
             const kind = kinds[s]
             if (kind === 'bar') {
@@ -214,13 +231,12 @@ export function DailyChart<Row extends { date: string }>({
                   stackId={stack}
                   fill={item.color}
                   maxBarSize={24}
-                  radius={[4, 4, 0, 0]}
+                  radius={dense ? 0 : [4, 4, 0, 0]}
                   isAnimationActive={animate}
                   animationDuration={350}
                   className={`stats-bar stats-bar-${item.key}`}
                 >
-                  {item.colorOf &&
-                    rows.map((row) => <Cell key={row.date} fill={item.colorOf?.(row) ?? item.color} data-date={row.date} />)}
+                  {item.colorOf && rows.map((row) => <Cell key={row.date} fill={item.colorOf?.(row) ?? item.color} />)}
                 </Bar>,
                 item.ghost ? (
                   <Bar
@@ -246,20 +262,22 @@ export function DailyChart<Row extends { date: string }>({
                 dataKey={item.key}
                 type={item.smooth ? 'monotone' : 'linear'}
                 stroke={line ? item.color : 'none'}
-                strokeWidth={2}
+                strokeWidth={dense && line ? 1.5 : 2}
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 connectNulls={false}
-                isAnimationActive={animate}
+                isAnimationActive={animate && line}
                 animationDuration={450}
-                className={`stats-line stats-line-${item.key}`}
-                dot={(props: DotProps) => (
+                className={`stats-${kind} stats-${kind}-${item.key}`}
+                dot={({ key: _key, ...props }: DotProps & { key?: unknown }) => (
                   <SeriesDot
                     key={`${item.key}-${props.index}`}
                     {...props}
                     dataKey={item.key}
                     color={item.colorOf ? item.colorOf((props.payload as Datum).__row as Row) : item.color}
                     surface={theme.surface}
+                    radius={dotRadius}
+                    ring={!dense}
                     always={!line || item.dots === true}
                   />
                 )}
@@ -272,11 +290,10 @@ export function DailyChart<Row extends { date: string }>({
               y={target.value}
               ifOverflow="extendDomain"
               stroke={theme.ink}
-              strokeOpacity={0.55}
+              strokeOpacity={0.6}
               strokeWidth={1.5}
               strokeDasharray="5 4"
               className="stats-target"
-              label={target.label ? <LineLabel text={target.label} theme={theme} /> : undefined}
             />
           )}
           {average && (
@@ -284,11 +301,10 @@ export function DailyChart<Row extends { date: string }>({
               y={average.value}
               ifOverflow="extendDomain"
               stroke={theme.ink}
-              strokeOpacity={0.45}
-              strokeWidth={1}
+              strokeOpacity={0.5}
+              strokeWidth={1.5}
               strokeDasharray="2 3"
               className="stats-average"
-              label={average.label ? <LineLabel text={average.label} theme={theme} /> : undefined}
             />
           )}
         </ComposedChart>
@@ -342,31 +358,23 @@ function SeriesDot({
   dataKey,
   color,
   surface,
+  radius,
+  ring,
   always,
-}: DotProps & { dataKey: string; color: string; surface: string; always: boolean }) {
+}: DotProps & { dataKey: string; color: string; surface: string; radius: number; ring: boolean; always: boolean }) {
   if (value == null || cx == null || cy == null) return null
   const alone = Boolean((payload as Record<string, unknown> | undefined)?.[`${dataKey}__alone`])
   if (!always && !alone) return null
-  return <circle cx={cx} cy={cy} r={3.5} fill={color} stroke={surface} strokeWidth={2} className="stats-dot" />
-}
-
-function LineLabel({ text, theme, viewBox }: { text: string; theme: ChartTheme; viewBox?: { x: number; y: number; width: number } }) {
-  if (!viewBox) return null
   return (
-    <text
-      x={viewBox.x + 4}
-      y={viewBox.y - 5}
-      fontSize={10.5}
-      fontWeight={600}
-      fill={theme.ink}
-      fillOpacity={0.8}
-      stroke={theme.surface}
-      strokeWidth={3}
-      paintOrder="stroke"
-      className="tnum"
-    >
-      {text}
-    </text>
+    <circle
+      cx={cx}
+      cy={cy}
+      r={always ? radius : Math.max(radius, 2.5)}
+      fill={color}
+      stroke={ring ? surface : 'none'}
+      strokeWidth={ring ? 2 : 0}
+      className="stats-dot"
+    />
   )
 }
 

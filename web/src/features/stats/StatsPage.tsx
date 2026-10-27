@@ -86,18 +86,19 @@ export default function StatsPage() {
         onCurrent={() => go({ date: null })}
       />
 
-      <nav className="scroll-x" aria-label={t('stats.sections_label')}>
+      <nav className="scroll-x -my-2 gap-1.5" aria-label={t('stats.sections_label')}>
         {SECTIONS.map((section) => (
           <a
             key={section}
             href={`#stats-${section}`}
-            className="chip min-h-tap shrink-0 whitespace-nowrap"
+            className="flex min-h-tap shrink-0 items-center"
+            data-testid={`stats-jump-${section}`}
             onClick={(event) => {
               event.preventDefault()
               document.getElementById(`stats-${section}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
             }}
           >
-            {t(`stats.section.${section}`)}
+            <span className="chip whitespace-nowrap">{t(`stats.section.${section}`)}</span>
           </a>
         ))}
       </nav>

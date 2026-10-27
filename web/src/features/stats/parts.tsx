@@ -107,18 +107,23 @@ export function CardEmpty({
 export interface Tile {
   label: string
   value: string
+  /** a unit set smaller after the value (kcal, kg, XP) */
+  unit?: string
   sub?: string
   testId?: string
 }
 
 export function Tiles({ items }: { items: Tile[] }) {
   return (
-    <dl className={clsx('grid gap-2', items.length >= 4 ? 'grid-cols-2' : items.length === 3 ? 'grid-cols-3' : 'grid-cols-2')}>
+    <dl className={clsx('grid gap-2', items.length === 3 ? 'grid-cols-3' : 'grid-cols-2')}>
       {items.map((item) => (
-        <div key={item.label} className="surface-sunken min-w-0 px-3 py-2" data-testid={item.testId}>
-          <dt className="truncate text-[11px] font-medium uppercase tracking-wide muted">{item.label}</dt>
-          <dd className="tnum mt-0.5 truncate text-[17px] font-semibold leading-tight" data-testid={item.testId ? `${item.testId}-value` : undefined}>
-            {item.value}
+        <div key={item.label} className="surface-sunken min-w-0 px-2.5 py-2" data-testid={item.testId}>
+          <dt className="truncate text-xs muted">{item.label}</dt>
+          <dd className="mt-0.5 flex min-w-0 items-baseline gap-1 leading-tight">
+            <span className="tnum truncate text-[17px] font-semibold" data-testid={item.testId ? `${item.testId}-value` : undefined}>
+              {item.value}
+            </span>
+            {item.unit && <span className="shrink-0 text-[11px] font-medium muted">{item.unit}</span>}
           </dd>
           {item.sub && <dd className="tnum mt-0.5 truncate text-[11px] muted">{item.sub}</dd>}
         </div>
@@ -130,7 +135,7 @@ export function Tiles({ items }: { items: Tile[] }) {
 // --------------------------------------------------------------------------- //
 // Legend (identity never by colour alone: a mark beside a text label)
 // --------------------------------------------------------------------------- //
-export type LegendMark = 'bar' | 'line' | 'dash' | 'dot' | 'band' | 'ghost' | 'cell'
+export type LegendMark = 'bar' | 'line' | 'dash' | 'dot' | 'band' | 'ghost' | 'cell' | 'empty'
 
 export interface LegendItem {
   mark: LegendMark
@@ -167,6 +172,8 @@ function LegendSwatch({ mark, color }: { mark: LegendMark; color: string }) {
       return <span aria-hidden="true" className="inline-block h-2.5 w-3.5 rounded-[2px] opacity-40" style={{ backgroundColor: color }} />
     case 'ghost':
       return <span aria-hidden="true" className="inline-block h-2.5 w-2.5 rounded-[3px] border border-dashed" style={{ borderColor: color }} />
+    case 'empty':
+      return <span aria-hidden="true" className="inline-block h-2.5 w-2.5 rounded-[3px] border border-[rgb(var(--border))] bg-[rgb(var(--bg-sunken))]" />
   }
 }
 

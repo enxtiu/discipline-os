@@ -12,7 +12,7 @@ import clsx from 'clsx'
 
 import { IconSnowflake } from '@/features/game/icons'
 import { addDays } from '@/lib/format'
-import { monthShort, shortDay, weekday, weekdayShort } from '../format'
+import { monthNarrow, monthShort, shortDay, weekday, weekdayShort } from '../format'
 import type { Period, StreakDay } from '../types'
 
 type CellState = 'overall' | 'freeze' | 'missed' | 'future'
@@ -100,7 +100,7 @@ export function StreakCalendar({
               return (
                 <div key={column} className="flex min-w-0 flex-1 flex-col gap-[2px]">
                   <span className="h-3 overflow-visible whitespace-nowrap text-[9px] leading-3 muted">
-                    {firstOfMonth ? monthShort(firstOfMonth.date) : ''}
+                    {firstOfMonth ? (period === 'year' ? monthNarrow(firstOfMonth.date) : monthShort(firstOfMonth.date)) : ''}
                   </span>
                   {week.map((day, row) =>
                     day ? (

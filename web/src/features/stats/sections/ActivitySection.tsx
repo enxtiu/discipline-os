@@ -7,15 +7,16 @@
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 
+import { ProgressBar } from '@/components/ui'
 import { IconTrophy } from '@/features/game/icons'
 import { dayLabel, number } from '@/lib/format'
 import { recordExerciseName, recordValue } from '@/features/train/format'
 import { BarList } from '../charts/BarList'
-import { DailyChart, type TooltipLine } from '../charts/DailyChart'
+import { DailyChart, isDense, type TooltipLine } from '../charts/DailyChart'
 import { useChartTheme } from '../charts/theme'
 import { WeeksChart } from '../charts/WeeksChart'
 import { activityTotals, elapsedDays, hasBurned, hasSteps, hasWorkouts } from '../derive'
-import { periodLabel, shortDay, compact } from '../format'
+import { compact, compactAxis, dayMonth, periodLabel, shortDay } from '../format'
 import { CardEmpty, DataTable, Legend, StatCard, Tiles } from '../parts'
 import type { ActivityDay, ActivityStats } from '../types'
 
@@ -53,6 +54,7 @@ function StepsCard({ stats, dimmed }: { stats: ActivityStats; dimmed: boolean })
   const totals = activityTotals(stats)
   const target = stats.target_steps
   const steps = t('stats.activity.steps_unit')
+  const mark = isDense(stats.days) ? 'dot' : 'bar'
 
   const colour = (day: ActivityDay) => {
     if (day.date === stats.today && !day.on_target) return theme.alpha(theme.move, 0.45)
@@ -86,15 +88,16 @@ function StepsCard({ stats, dimmed }: { stats: ActivityStats; dimmed: boolean })
           },
           {
             label: t('stats.activity.on_target_days'),
-            value: t('stats.n_of_m', { n: totals.onTargetDays, m: totals.stepsDays }),
+            value: number(totals.onTargetDays),
+            unit: t('stats.of_m', { m: totals.stepsDays }),
             sub: t('stats.activity.days_with_steps'),
             testId: 'stat-steps-target',
           },
           {
-            label: t('stats.activity.workouts'),
-            value: number(totals.workouts),
-            sub: t('stats.activity.in_period'),
-            testId: 'stat-workouts',
+            label: t('stats.activity.best_day'),
+            value: totals.bestSteps ? number(totals.bestSteps.steps) : '—',
+            sub: totals.bestSteps ? dayMonth(totals.bestSteps.date) : '',
+            testId: 'stat-steps-best',
           },
         ]}
       />
@@ -111,17 +114,18 @@ function StepsCard({ stats, dimmed }: { stats: ActivityStats; dimmed: boolean })
               m: totals.stepsDays,
               target: target ? number(target) : '—',
             })}
-            formatY={compact}
-            series={[{ key: 'steps', value: (day) => day.steps, color: theme.move, colorOf: colour, ghost: true }]}
-            target={target ? { value: target, label: t('stats.activity.target_label', { steps: number(target) }) } : undefined}
+            formatY={compactAxis}
+            series={[{ key: 'steps', value: (day) => day.steps, color: theme.move, colorOf: colour, ghost: true, denseKind: 'dots' }]}
+            target={target ? { value: target } : undefined}
             tooltip={tooltip}
           />
           <Legend
             items={[
-              { mark: 'bar', color: theme.move, label: t('stats.activity.legend_on_target') },
-              { mark: 'bar', color: theme.rest, label: t('stats.activity.legend_below') },
-              { mark: 'ghost', color: theme.muted, label: t('stats.legend_no_data') },
-              ...(target ? [{ mark: 'dash' as const, color: theme.ink, label: t('stats.legend_target') }] : []),
+              { mark, color: theme.move, label: t('stats.activity.legend_on_target') },
+              { mark, color: theme.rest, label: t('stats.activity.legend_below') },
+              { mark, color: theme.alpha(theme.move, 0.45), label: t('stats.legend_today') },
+              ...(mark === 'bar' ? [{ mark: 'ghost' as const, color: theme.muted, label: t('stats.legend_no_data') }] : []),
+              ...(target ? [{ mark: 'dash' as const, color: theme.ink, label: t('stats.activity.legend_target', { steps: number(target) }) }] : []),
             ]}
           />
           <DataTable
@@ -159,24 +163,33 @@ function WorkoutsCard({ stats, dimmed }: { stats: ActivityStats; dimmed: boolean
       <Tiles
         items={[
           { label: t('stats.activity.workouts'), value: number(totals.workouts), sub: t('stats.activity.in_period'), testId: 'stat-workouts-total' },
-          {
-            label: t('stats.activity.weeks_met'),
-            value: t('stats.n_of_m', { n: weeksMet, m: stats.weeks.length }),
-            sub: t('stats.activity.weeks_short'),
-            testId: 'stat-weeks-met',
-          },
+          ...(single
+            ? []
+            : [
+                {
+                  label: t('stats.activity.weeks_met'),
+                  value: number(weeksMet),
+                  unit: t('stats.of_m', { m: stats.weeks.length }),
+                  sub: t('stats.activity.weeks_short'),
+                  testId: 'stat-weeks-met',
+                },
+              ]),
           {
             label: t('stats.activity.volume'),
-            value: volume > 0 ? `${compact(Math.round(volume))} ${t('common.kg')}` : '—',
+            value: volume <= 0 ? '—' : volume < 10_000 ? number(Math.round(volume)) : number(volume / 1000, 1),
+            unit: volume <= 0 ? undefined : volume < 10_000 ? t('common.kg') : t('stats.activity.tonnes'),
             sub: t('stats.activity.volume_hint'),
             testId: 'stat-volume',
           },
         ]}
       />
       {single ? (
-        <div className="surface-sunken flex items-center justify-between gap-3 px-3 py-2.5 text-sm" data-testid="week-progress">
-          <span className="muted">{single.planned > 0 ? t('stats.activity.week_planned') : t('stats.activity.week_default')}</span>
-          <span className="tnum font-semibold">{t('stats.n_of_m', { n: single.workouts, m: single.required })}</span>
+        <div className="space-y-1.5" data-testid="week-progress" data-workouts={single.workouts} data-required={single.required}>
+          <div className="flex items-baseline justify-between gap-3 text-sm">
+            <span className="min-w-0 muted">{single.planned > 0 ? t('stats.activity.week_need_planned') : t('stats.activity.week_need_default')}</span>
+            <span className="tnum shrink-0 font-semibold">{t('stats.n_of_m', { n: single.workouts, m: single.required })}</span>
+          </div>
+          <ProgressBar value={single.workouts} max={Math.max(1, single.required)} tone="violet" />
         </div>
       ) : (
         <>
@@ -220,10 +233,11 @@ function BurnedCard({ stats, dimmed }: { stats: ActivityStats; dimmed: boolean }
     >
       <Tiles
         items={[
-          { label: t('stats.activity.burn_workouts'), value: `${number(totals.workoutKcal)} ${kcal}`, sub: t('stats.activity.in_period'), testId: 'stat-burn-workouts' },
+          { label: t('stats.activity.burn_workouts'), value: number(totals.workoutKcal), unit: kcal, sub: t('stats.activity.in_period'), testId: 'stat-burn-workouts' },
           {
             label: t('stats.activity.burn_active'),
-            value: totals.activeDays ? `${number(totals.activeKcal)} ${kcal}` : '—',
+            value: totals.activeDays ? number(totals.activeKcal) : '—',
+            unit: totals.activeDays ? kcal : undefined,
             sub: t('stats.n_of_m_days', { n: totals.activeDays, m: elapsed }),
             testId: 'stat-burn-active',
           },
@@ -243,15 +257,15 @@ function BurnedCard({ stats, dimmed }: { stats: ActivityStats; dimmed: boolean }
             })}
             formatY={compact}
             series={[
-              { key: 'workout_kcal', value: (day) => (day.workout_kcal > 0 ? day.workout_kcal : day.date <= stats.today ? 0 : null), color: theme.burn },
               { key: 'active_kcal', value: (day) => day.active_kcal, color: theme.move },
+              { key: 'workout_kcal', value: (day) => (day.workout_kcal > 0 ? day.workout_kcal : null), color: theme.burn, kind: 'dots', denseKind: 'dots' },
             ]}
             tooltip={tooltip}
           />
           <Legend
             items={[
-              { mark: 'bar', color: theme.burn, label: t('stats.activity.burn_workouts') },
-              { mark: 'bar', color: theme.move, label: t('stats.activity.burn_active') },
+              { mark: isDense(stats.days) ? 'line' : 'bar', color: theme.move, label: t('stats.activity.burn_active') },
+              { mark: 'dot', color: theme.burn, label: t('stats.activity.burn_workouts') },
             ]}
           />
         </>

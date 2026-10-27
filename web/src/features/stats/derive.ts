@@ -62,8 +62,13 @@ export function hasNutrition(stats: NutritionStats): boolean {
 // --------------------------------------------------------------------------- //
 export function activityTotals(stats: ActivityStats) {
   const finished = stats.days.filter((day) => day.date < stats.today)
+  const bestSteps = stats.days.reduce<{ date: string; steps: number } | null>(
+    (top, day) => (day.steps != null && (!top || day.steps > top.steps) ? { date: day.date, steps: day.steps } : top),
+    null,
+  )
   return {
     stepsMean: mean(finished.map((day) => day.steps)),
+    bestSteps,
     stepsDays: stats.days.filter((day) => day.steps != null).length,
     onTargetDays: stats.days.filter((day) => day.on_target === true).length,
     workouts: sum(stats.days.map((day) => day.workouts)),

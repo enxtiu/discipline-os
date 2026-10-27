@@ -78,6 +78,11 @@ export function monthShort(day: string): string {
   return format(day, { month: 'short' }).replace('.', '')
 }
 
+/** «Я», «Ф», «М» — a month as one letter (twelve of them fit a phone's width). */
+export function monthNarrow(day: string): string {
+  return format(day, { month: 'narrow' }).toLocaleUpperCase(locale())
+}
+
 /** The x-axis label of one day for the given period. */
 export function tickLabel(day: string, period: Period): string {
   switch (period) {
@@ -85,8 +90,10 @@ export function tickLabel(day: string, period: Period): string {
       return weekdayShort(day)
     case 'month':
       return String(Number(day.slice(8, 10)))
-    default:
+    case 'quarter':
       return monthShort(day)
+    case 'year':
+      return monthNarrow(day)
   }
 }
 
@@ -121,8 +128,14 @@ export function signed(value: number, digits = 1): string {
   return `${rounded > 0 ? '+' : '−'}${number(Math.abs(rounded), digits)}`
 }
 
-/** Compact axis numbers: 12 500 → «12,5 тыс.» / «12.5K»; small values stay plain. */
+/** Compact big numbers: 12 500 → «12,5 тыс.» / «12.5K»; values under 10 000 stay plain. */
 export function compact(value: number): string {
   if (Math.abs(value) < 10_000) return number(value)
+  return new Intl.NumberFormat(locale(), { notation: 'compact', maximumFractionDigits: 1 }).format(value)
+}
+
+/** Axis ticks in thousands from 1 000 on (0 · 5 тыс. · 10 тыс.), so one axis never mixes styles. */
+export function compactAxis(value: number): string {
+  if (Math.abs(value) < 1000) return number(value)
   return new Intl.NumberFormat(locale(), { notation: 'compact', maximumFractionDigits: 1 }).format(value)
 }
