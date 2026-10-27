@@ -30,7 +30,7 @@ jobs:
       DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/dsos_test
       TEST_DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/dsos_test
       SECRET_KEY: ci-secret-key-not-used-in-production-0123456789
-      ENV: test
+      ENV: development  # Settings accepts development|staging|production; tests set it too
       SCHEDULER_ENABLED: "false"
     steps:
       - uses: actions/checkout@v4
