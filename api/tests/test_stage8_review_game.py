@@ -972,3 +972,33 @@ async def test_a_streak_reminder_follows_quiet_hours_changed_after_planning(push
         "streak:2026-07-15": (local(TODAY, 19, 30), "19:30", ReminderStatus.PENDING, None)
     }
     assert (await dispatch(local(TODAY, 19, 30))).get("sent") == 1
+
+
+# --------------------------------------------------------------------------- #
+# Note — the GETs that run the engine are rate limited per user
+# --------------------------------------------------------------------------- #
+async def test_engine_gets_share_a_per_user_rate_limit(authed: httpx.AsyncClient, db, monkeypatch) -> None:
+    from app.api.v1 import gamification as gamification_api
+    from tests.stage6_helpers import other_user
+
+    monkeypatch.setattr(gamification_api, "SYNCS_PER_MINUTE", 5)
+    await configure(db, await owner_id(db))
+    paths = [
+        "/api/v1/gamification/today",
+        "/api/v1/gamification/profile",
+        "/api/v1/gamification/xp?from=2026-07-01&to=2026-07-02",
+        "/api/v1/gamification/scores?from=2026-07-01&to=2026-07-02",
+        "/api/v1/stats/progress",
+    ]
+    for path in paths:  # one shared budget of 5
+        response = await authed.get(path)
+        assert response.status_code == 200, (path, response.text)
+    for path in paths:
+        limited = await authed.get(path)
+        assert limited.status_code == 429, path
+        assert limited.json()["error"]["code"] == "rate_limited" and int(limited.headers["Retry-After"]) >= 1
+    assert (await authed.get("/api/v1/stats/nutrition")).status_code == 200  # no engine run: not limited
+    missing = await authed.post(f"/api/v1/gamification/quests/{uuid.uuid4()}/claim")
+    assert missing.status_code == 404  # the POSTs have their own budget
+    async with other_user() as stranger:  # per user
+        assert (await stranger.get("/api/v1/gamification/today")).status_code == 200
