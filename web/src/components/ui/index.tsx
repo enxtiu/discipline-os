@@ -10,6 +10,7 @@ import {
   useEffect,
   useId,
   useRef,
+  useState,
   type ButtonHTMLAttributes,
   type InputHTMLAttributes,
   type ReactNode,
@@ -128,9 +129,12 @@ export const Button = forwardRef<
     block?: boolean
   }
 >(function Button(
-  { variant = 'primary', size = 'md', loading, icon, block, className, children, disabled, ...rest },
+  { variant = 'primary', size = 'md', loading, icon, block, className, children, disabled, onClick, ...rest },
   ref,
 ) {
+  // While loading the button keeps its focus (a `disabled` button drops it to
+  // <body> and a keyboard or VoiceOver user loses their place): it is marked
+  // busy and ignores presses instead.
   return (
     <button
       ref={ref}
@@ -138,9 +142,19 @@ export const Button = forwardRef<
         `btn-${variant}`,
         size === 'sm' && 'btn-sm',
         block && 'w-full',
+        loading && 'pointer-events-none opacity-50',
         className,
       )}
-      disabled={disabled || loading}
+      disabled={disabled}
+      aria-disabled={loading || undefined}
+      aria-busy={loading || undefined}
+      onClick={(event) => {
+        if (loading) {
+          event.preventDefault()
+          return
+        }
+        onClick?.(event)
+      }}
       {...rest}
     >
       {loading ? <Spinner size={18} /> : icon}
@@ -387,6 +401,8 @@ export function Toggle({
   label: string
   disabled?: boolean
 }) {
+  // The 28 px track is drawn inside a 48 px tall button; the negative margin keeps
+  // the rows it sits in exactly as tall as before.
   return (
     <button
       type="button"
@@ -570,7 +586,25 @@ export function Sheet({
   const { t } = useTranslation()
   const titleId = useId()
   const dialogRef = useRef<HTMLDivElement>(null)
+  const bodyRef = useRef<HTMLDivElement>(null)
   useSheetFocus(open, dialogRef, onClose)
+  // A body that scrolls but holds nothing focusable (a long explanation) takes the
+  // focus itself, so the keyboard can scroll it.
+  const [scrollStop, setScrollStop] = useState(false)
+  useEffect(() => {
+    const body = bodyRef.current
+    if (!open || !body) return
+    const update = () => setScrollStop(body.scrollHeight > body.clientHeight + 1 && focusables(body).length === 0)
+    update()
+    const resize = new ResizeObserver(update)
+    resize.observe(body)
+    const mutation = new MutationObserver(update)
+    mutation.observe(body, { childList: true, subtree: true })
+    return () => {
+      resize.disconnect()
+      mutation.disconnect()
+    }
+  }, [open])
   return (
     <AnimatePresence>
       {open && (
@@ -615,7 +649,15 @@ export function Sheet({
                 <IconButton label={t('app.close')} icon={<IconClose size={20} />} onClick={onClose} />
               </header>
             )}
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-4">{children}</div>
+            <div
+              ref={bodyRef}
+              className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-4"
+              {...(scrollStop
+                ? { tabIndex: 0, role: 'region', 'aria-labelledby': title ? titleId : undefined }
+                : {})}
+            >
+              {children}
+            </div>
             {footer && (
               <footer
                 className="border-t border-[rgb(var(--border))] px-5 pt-3"

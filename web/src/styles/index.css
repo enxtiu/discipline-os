@@ -9,6 +9,8 @@
    ========================================================================== */
 
 @layer base {
+  /* Contrast (stage 9): every colour used for text meets 4.5:1 on the cards, the page,
+     the sunken wells and its own 10–15 % tint in both themes (scripts/ui-checks/stage9-a11y.mjs). */
   :root {
     --bg: 11 18 32;              /* #0B1220 */
     --bg-elevated: 17 26 43;     /* #111A2B */
@@ -109,6 +111,13 @@
     outline: 2px solid rgb(var(--accent));
     outline-offset: 2px;
     border-radius: 6px;
+  }
+
+  /* a control scrolled into view by Tab or VoiceOver lands clear of the sticky
+     header and of the fixed tab bar with its floating quick-add button */
+  html {
+    scroll-padding-top: calc(4.5rem + env(safe-area-inset-top, 0px));
+    scroll-padding-bottom: calc(7.5rem + env(safe-area-inset-bottom, 0px));
   }
 
   @media (prefers-reduced-motion: reduce) {
