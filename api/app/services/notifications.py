@@ -826,7 +826,10 @@ async def process_reminder(db: AsyncSession, reminder_id: uuid.UUID, now: dateti
     if not subscriptions:
         return await _suppress(db, row, message, "no_subscription", now)
 
-    report = await push.deliver(db, subscriptions, message, now=now)
+    try:
+        report = await push.deliver(db, subscriptions, message, now=now)
+    except push.PushNotConfigured:  # keys set but unreadable: same as no keys, not a retry loop
+        return await _suppress(db, row, message, "push_disabled", now)
     row.attempts = (row.attempts or 0) + 1
     if report.sent:
         status, error = "sent", None

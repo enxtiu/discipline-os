@@ -842,6 +842,17 @@ async def test_push_disabled_suppresses(ready, db, monkeypatch) -> None:
     assert (await reminder(db, rid)).last_error == "push_disabled"
     assert (await log_rows(db))[0].error == "push_disabled"
 
+    # a private key that cannot be read is the same: suppressed once, not retried every minute
+    monkeypatch.setattr(get_settings(), "vapid_private_key", "not a key")
+    broken = await add_reminder(db, ready["user_id"], task_id=await add_task(db, ready["user_id"]), remind_at=NOON)
+    report = await dispatch(NOON)
+    assert report.get("suppressed") == 1 and report.get("error") == 0
+    row = await reminder(db, broken)
+    assert (row.status, row.last_error, row.attempts) == (ReminderStatus.SUPPRESSED, "push_disabled", 0)
+    assert ready["push"].requests == []
+    test = await ready["client"].post(f"{P}/test")
+    assert (test.status_code, test.json()["error"]["code"]) == (503, "push_disabled")
+
 
 async def test_two_overlapping_runs_send_once(ready, db) -> None:
     user_id, fake = ready["user_id"], ready["push"]
