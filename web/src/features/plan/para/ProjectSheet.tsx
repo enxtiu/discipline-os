@@ -141,7 +141,7 @@ export function ProjectSheet({
             ))}
           </Select>
         </Field>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-3">
           <Field label={t('plan.start_date')} htmlFor={ids.start}>
             <Input id={ids.start} type="date" className="tnum" value={startDate} onChange={(event) => setStartDate(event.target.value)} />
           </Field>

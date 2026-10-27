@@ -76,21 +76,24 @@ export function PlanTodayCard() {
           ) : (
             <p className="text-sm muted">{data.done.length > 0 ? t('plan.card_all_done') : t('plan.card_empty')}</p>
           )}
-          {open.length > SHOWN && (
-            <Link to="/plan" className="flex min-h-tap items-center text-xs muted">
-              {t('plan.card_more', { n: open.length - SHOWN })}
-            </Link>
-          )}
-          <Button
-            variant="secondary"
-            size="sm"
-            className="min-h-tap"
-            icon={<IconPlus size={16} />}
-            onClick={() => quickAdd()}
-            data-testid="today-plan-add"
-          >
-            {t('plan.card_add')}
-          </Button>
+          <div className="flex items-center justify-between gap-3">
+            <Button
+              variant="secondary"
+              size="sm"
+              className="min-h-tap"
+              icon={<IconPlus size={16} />}
+              onClick={() => quickAdd()}
+              data-testid="today-plan-add"
+            >
+              {t('plan.card_add')}
+            </Button>
+            {open.length > SHOWN && (
+              <Link to="/plan" className="-mr-2 flex min-h-tap items-center gap-0.5 px-2 text-xs muted">
+                {t('plan.card_more', { n: open.length - SHOWN })}
+                <IconChevronRight size={14} />
+              </Link>
+            )}
+          </div>
         </>
       )}
     </Card>

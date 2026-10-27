@@ -6,6 +6,10 @@
  * the shared toast and sits in the same place; `TaskSheetHost` (mounted once in
  * the app shell) renders it, so any planner screen — and the Today card — can
  * call `planToast.*` without a provider.
+ *
+ * `placement: 'top'` is for toasts raised while a sheet stays open (quick add,
+ * the editor): at the bottom they would cover the sheet's own buttons — and
+ * with the iPhone keyboard up, the top of the screen is what is visible.
  */
 import { useSyncExternalStore } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
@@ -17,11 +21,19 @@ export interface PlanToastAction {
   onClick: () => void
 }
 
+export type PlanToastPlacement = 'top' | 'bottom'
+
+export interface PlanToastOptions {
+  action?: PlanToastAction
+  placement?: PlanToastPlacement
+}
+
 interface PlanToastItem {
   id: string
   tone: 'success' | 'error' | 'info'
   message: string
   action?: PlanToastAction
+  placement: PlanToastPlacement
 }
 
 let items: PlanToastItem[] = []
@@ -43,9 +55,18 @@ function remove(id: string) {
   emit()
 }
 
-function push(message: string, tone: PlanToastItem['tone'], action?: PlanToastAction): string {
+/** The second argument is an action or full options (`{ action, placement }`). */
+type Options = PlanToastAction | PlanToastOptions | undefined
+
+function normalize(options: Options): PlanToastOptions {
+  if (!options) return {}
+  return 'label' in options ? { action: options } : options
+}
+
+function push(message: string, tone: PlanToastItem['tone'], options: Options): string {
+  const { action, placement = 'bottom' } = normalize(options)
   const id = crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`
-  items = [...items.slice(-2), { id, tone, message, action }]
+  items = [...items.slice(-2), { id, tone, message, action, placement }]
   emit()
   // an action needs time to be reached with a thumb
   const duration = action ? 5500 : tone === 'error' ? 5000 : 3200
@@ -54,33 +75,48 @@ function push(message: string, tone: PlanToastItem['tone'], action?: PlanToastAc
 }
 
 export const planToast = {
-  success: (message: string, action?: PlanToastAction) => push(message, 'success', action),
-  info: (message: string, action?: PlanToastAction) => push(message, 'info', action),
-  error: (message: string) => push(message, 'error'),
+  success: (message: string, options?: Options) => push(message, 'success', options),
+  info: (message: string, options?: Options) => push(message, 'info', options),
+  error: (message: string, options?: Omit<PlanToastOptions, 'action'>) => push(message, 'error', options),
   dismiss: remove,
 }
 
 export function PlanToastHost() {
   const list = useSyncExternalStore(subscribe, () => items)
+  return (
+    <>
+      <ToastStack items={list.filter((item) => item.placement === 'top')} placement="top" />
+      <ToastStack items={list.filter((item) => item.placement === 'bottom')} placement="bottom" />
+    </>
+  )
+}
+
+function ToastStack({ items: stack, placement }: { items: PlanToastItem[]; placement: PlanToastPlacement }) {
   const reduce = useReducedMotion()
+  const offset = placement === 'top' ? -16 : 16
   return (
     <div
       className="pointer-events-none fixed inset-x-0 z-[60] flex flex-col items-center gap-2 px-4"
-      style={{ bottom: 'calc(5.5rem + env(safe-area-inset-bottom, 0px))' }}
+      style={
+        placement === 'top'
+          ? { top: 'calc(0.75rem + env(safe-area-inset-top, 0px))' }
+          : { bottom: 'calc(5.5rem + env(safe-area-inset-bottom, 0px))' }
+      }
       aria-live="polite"
       role="status"
     >
       <AnimatePresence initial={false}>
-        {list.map((item) => (
+        {stack.map((item) => (
           <motion.div
             key={item.id}
             layout={!reduce}
-            initial={reduce ? { opacity: 0 } : { opacity: 0, y: 16, scale: 0.97 }}
+            initial={reduce ? { opacity: 0 } : { opacity: 0, y: offset, scale: 0.97 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={reduce ? { opacity: 0 } : { opacity: 0, y: 8, scale: 0.98 }}
+            exit={reduce ? { opacity: 0 } : { opacity: 0, y: offset / 2, scale: 0.98 }}
             transition={{ type: 'spring', stiffness: 500, damping: 34 }}
             className="pointer-events-auto flex w-full max-w-md items-center gap-3 rounded-2xl border border-[rgb(var(--border))] bg-[rgb(var(--bg-elevated))] py-1 pl-4 pr-2 shadow-card"
             data-testid="plan-toast"
+            data-placement={placement}
           >
             <span
               className={

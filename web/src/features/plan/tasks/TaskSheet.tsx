@@ -176,7 +176,7 @@ export function TaskSheet({
   const update = useUpdateTask()
   const remove = useDeleteTask()
   const timerStart = useTimerStart()
-  const { toggle } = useCompleteToggle(today)
+  const { toggle } = useCompleteToggle(today, 'top')
   const contextId = useId()
   const projectId = useId()
   const areaId = useId()
@@ -229,7 +229,8 @@ export function TaskSheet({
   }
 
   const onSaveError = (error: unknown) => {
-    planToast.error(errorMessage(error))
+    // the sheet stays open: keep its footer free
+    planToast.error(errorMessage(error), { placement: 'top' })
     setFormError({ code: error instanceof ApiError ? error.code : undefined, fields: fieldErrors(error) })
     setPendingAction(null)
   }
@@ -305,8 +306,10 @@ export function TaskSheet({
       { task_id: task.id },
       {
         onSuccess: (result) =>
-          result.queued ? planToast.info(t('task.queued')) : planToast.success(t('task.timer_started', { title: task.title })),
-        onError: (error) => planToast.error(errorMessage(error)),
+          result.queued
+            ? planToast.info(t('task.queued'), { placement: 'top' })
+            : planToast.success(t('task.timer_started', { title: task.title }), { placement: 'top' }),
+        onError: (error) => planToast.error(errorMessage(error), { placement: 'top' }),
       },
     )
   }
@@ -322,7 +325,7 @@ export function TaskSheet({
           form.reset()
           onClose()
         },
-        onError: (error) => planToast.error(errorMessage(error)),
+        onError: (error) => planToast.error(errorMessage(error), { placement: 'top' }),
       },
     )
   }
@@ -405,13 +408,15 @@ export function TaskSheet({
 
           <div className="flex items-start gap-1">
             {task && (
-              <TaskCheck
-                done={isClosed(task)}
-                priority={draft.priority}
-                title={task.title}
-                onToggle={() => toggle(task)}
-                testId="task-sheet-check"
-              />
+              <div className="-ml-3 shrink-0">
+                <TaskCheck
+                  done={isClosed(task)}
+                  priority={draft.priority}
+                  title={task.title}
+                  onToggle={() => toggle(task)}
+                  testId="task-sheet-check"
+                />
+              </div>
             )}
             <div className="min-w-0 flex-1">
               <TitleInput
@@ -440,6 +445,7 @@ export function TaskSheet({
             placeholder={t('task.notes_placeholder')}
             error={errors.notes}
             testId="task-notes"
+            collapsible
           />
 
           <FieldSection label={t('task.due')} error={errors.due} testId="task-due">
@@ -468,7 +474,7 @@ export function TaskSheet({
             <PriorityPicker value={draft.priority} onChange={(priority) => set('priority', priority)} />
           </FieldSection>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-3">
             <FieldSection label={t('task.project')} htmlFor={projectId} error={errors.container}>
               <Select
                 id={projectId}

@@ -92,14 +92,14 @@ export function ReminderEditor({
         </Chip>
       </div>
       {absoluteOpen && (
-        <div className="grid grid-cols-[3fr_2fr_auto] items-end gap-2">
-          <div>
+        <div className="grid grid-cols-[minmax(0,3fr)_minmax(0,2fr)_auto] items-end gap-2">
+          <div className="min-w-0">
             <label htmlFor={dateId} className="sr-only">
               {t('task.reminder_date')}
             </label>
             <Input id={dateId} type="date" className="tnum" value={date} onChange={(event) => setDate(event.target.value)} />
           </div>
-          <div>
+          <div className="min-w-0">
             <label htmlFor={timeId} className="sr-only">
               {t('task.reminder_time')}
             </label>

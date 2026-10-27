@@ -3,9 +3,10 @@ import type { ReactNode } from 'react'
 import clsx from 'clsx'
 
 import { IconClock } from '@/components/ui/icons'
-import { blockLabel, dueLabel, formatMinutes, priorityLabel, PRIORITY_STYLES, relativeDay } from '../format'
+import { blockLabel, dueLabel, formatMinutes, priorityLabel, relativeDay } from '../format'
 import { IconBellSmall, IconCalendar, IconFolder, IconLayers, IconRepeat, IconTag, IconTimer } from '../icons'
 import type { ParseResult } from '../types'
+import { PRIORITY_TEXT } from './priority'
 import { leadLabel } from './reminders'
 import { describeRepeat } from './rrule'
 
@@ -34,7 +35,7 @@ export function parseChips(parsed: ParseResult, today: string | undefined): Chip
       key: 'priority',
       kind: 'priority',
       label: priorityLabel(parsed.priority),
-      className: PRIORITY_STYLES[parsed.priority].text,
+      className: PRIORITY_TEXT[parsed.priority],
     })
   }
   for (const tag of parsed.tags) chips.push({ key: `tag-${tag}`, kind: 'tag', label: `#${tag}`, icon: <IconTag size={14} /> })

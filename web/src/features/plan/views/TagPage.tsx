@@ -113,9 +113,14 @@ function TagSheet({ open, tag, onClose }: { open: boolean; tag: Tag; onClose: ()
   )
 }
 
+/** Keyed by id: the filter and the edit sheet never carry over from one tag to the next. */
 export function TagPage() {
-  const { t } = useTranslation()
   const { id } = useParams()
+  return <TagBody key={id} id={id} />
+}
+
+function TagBody({ id }: { id: string | undefined }) {
+  const { t } = useTranslation()
   const [includeDone, setIncludeDone] = useState(false)
   const [editing, setEditing] = useState(false)
   const view = useTagView(id, includeDone)

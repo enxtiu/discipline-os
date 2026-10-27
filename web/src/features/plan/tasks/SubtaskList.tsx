@@ -78,7 +78,7 @@ export function SubtaskList({
 }) {
   const { t } = useTranslation()
   const create = useCreateTask()
-  const { toggle } = useCompleteToggle(today)
+  const { toggle } = useCompleteToggle(today, 'top')
   const rows = flatten(task.subtasks ?? [], 0)
   const canAdd = task.depth < MAX_DEPTH
 
@@ -87,9 +87,9 @@ export function SubtaskList({
       { title, parent_id: task.id },
       {
         onSuccess: (result) => {
-          if (result.queued) planToast.info(t('task.queued'))
+          if (result.queued) planToast.info(t('task.queued'), { placement: 'top' })
         },
-        onError: (error) => planToast.error(errorMessage(error)),
+        onError: (error) => planToast.error(errorMessage(error), { placement: 'top' }),
       },
     )
 

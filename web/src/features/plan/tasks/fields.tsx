@@ -12,8 +12,9 @@ import clsx from 'clsx'
 import { Button, Input } from '@/components/ui'
 import { IconClock } from '@/components/ui/icons'
 import { addDays } from '@/lib/format'
-import { blockLabel, dueLabel, formatMinutes, priorityLabel, PRIORITY_STYLES } from '../format'
+import { blockLabel, dueLabel, formatMinutes, priorityLabel } from '../format'
 import type { BlockIn, Priority, TaskStatusIn } from '../types'
+import { PRIORITY_TEXT } from './priority'
 import { Chip } from './ui'
 
 export function FieldSection({
@@ -87,7 +88,7 @@ export function PriorityPicker({ value, onChange }: { value: Priority; onChange:
           onClick={() => onChange(priority)}
           className={clsx(
             'chip min-h-tap justify-center font-semibold',
-            PRIORITY_STYLES[priority].text,
+            PRIORITY_TEXT[priority],
             value === priority && PRIORITY_ACTIVE[priority],
             value === priority && priority === 4 && 'text-[rgb(var(--text))]',
           )}
@@ -179,8 +180,8 @@ export function DueEditor({
           </Chip>
         )}
       </div>
-      <div className="grid grid-cols-[3fr_2fr] gap-2">
-        <div>
+      <div className="grid grid-cols-[minmax(0,3fr)_minmax(0,2fr)] gap-2">
+        <div className="min-w-0">
           <label htmlFor={dateId} className="sr-only">
             {t('task.due_date')}
           </label>
@@ -193,7 +194,7 @@ export function DueEditor({
             data-testid="due-date"
           />
         </div>
-        <div>
+        <div className="min-w-0">
           <label htmlFor={timeId} className="sr-only">
             {t('task.due_time')}
           </label>
@@ -273,8 +274,8 @@ export function BlockEditor({
           data-testid="block-date"
         />
       </div>
-      <div className="grid grid-cols-2 gap-2">
-        <div className="field">
+      <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2">
+        <div className="field min-w-0">
           <label htmlFor={startId} className="text-xs muted">
             {t('task.block_start')}
           </label>
@@ -291,7 +292,7 @@ export function BlockEditor({
             data-testid="block-start"
           />
         </div>
-        <div className="field">
+        <div className="field min-w-0">
           <label htmlFor={endId} className="text-xs muted">
             {t('task.block_end')}
           </label>

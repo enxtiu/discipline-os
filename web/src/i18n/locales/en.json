@@ -607,7 +607,9 @@
       "rose": "Rose",
       "amber": "Amber",
       "gray": "Grey"
-    }
+    },
+    "badge_overdue": "Overdue: {{n}}",
+    "badge_inbox": "In the inbox: {{n}}"
   },
   "task": {
     "quick_add_title": "Quick add",
@@ -752,7 +754,8 @@
       "failed": "failed",
       "cancelled": "cancelled",
       "suppressed": "skipped"
-    }
+    },
+    "md_add": "Add"
   },
   "stats": {
     "title": "Stats",

@@ -5,6 +5,7 @@
  * runtime-built class names.
  */
 import { useState, type ButtonHTMLAttributes, type ReactNode } from 'react'
+import { IconPlus } from '@/components/ui/icons'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import clsx from 'clsx'
@@ -39,7 +40,11 @@ export function Chip({
     <button
       type="button"
       aria-pressed={active}
-      className={clsx('chip min-h-tap shrink-0 justify-center', active && 'chip-active', className)}
+      className={clsx(
+        'chip min-h-tap shrink-0 justify-center disabled:pointer-events-none disabled:opacity-40',
+        active && 'chip-active',
+        className,
+      )}
       {...rest}
     >
       {children}
@@ -104,6 +109,7 @@ export function MarkdownField({
   placeholder,
   error,
   testId,
+  collapsible = false,
 }: {
   id: string
   label: ReactNode
@@ -112,9 +118,32 @@ export function MarkdownField({
   placeholder?: string
   error?: ReactNode
   testId?: string
+  /** While empty, show one «+ Добавить» row instead of an empty text area. */
+  collapsible?: boolean
 }) {
   const { t } = useTranslation()
   const [mode, setMode] = useState<'edit' | 'preview'>(() => (value.trim() ? 'preview' : 'edit'))
+  const [expanded, setExpanded] = useState(() => !collapsible || value.trim() !== '')
+  if (!expanded && !value) {
+    return (
+      <div className="flex min-h-tap items-center justify-between gap-3">
+        <span className="label">{label}</span>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="min-h-tap"
+          icon={<IconPlus size={16} />}
+          onClick={() => {
+            setMode('edit')
+            setExpanded(true)
+          }}
+          data-testid={testId ? `${testId}-add` : undefined}
+        >
+          {t('task.md_add')}
+        </Button>
+      </div>
+    )
+  }
   return (
     <div className="field">
       <div className="flex items-center justify-between gap-3">
@@ -138,7 +167,8 @@ export function MarkdownField({
       {mode === 'edit' ? (
         <textarea
           id={id}
-          className="input min-h-[8rem] resize-y leading-relaxed"
+          autoFocus={collapsible && !value}
+          className="input min-h-[6.5rem] resize-y leading-relaxed"
           value={value}
           maxLength={20000}
           placeholder={placeholder}

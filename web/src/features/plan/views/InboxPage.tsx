@@ -11,7 +11,7 @@ import { IconPlus } from '@/components/ui/icons'
 import { addDays } from '@/lib/format'
 import { errorMessage } from '@/lib/errors'
 import { quickAdd } from '../events'
-import { IconCalendar, IconFolder, IconInbox } from '../icons'
+import { IconFolder, IconInbox } from '../icons'
 import { useCounts, useInbox } from '../queries'
 import type { Task, TaskPatchIn } from '../types'
 import { ContainerPicker, type ContainerPick } from '../tasks/ContainerPicker'
@@ -89,7 +89,6 @@ export function InboxPage() {
                     }
                     data-testid="clarify-today"
                   >
-                    <IconCalendar size={14} />
                     {t('plan.day.today')}
                   </Chip>
                   <Chip

@@ -24,9 +24,14 @@ import { planToast } from '../tasks/toast'
 import { BackLink, ColorDot, ConfirmButton, MarkdownField } from '../tasks/ui'
 import { ProjectSheet } from './ProjectSheet'
 
+/** Keyed by id: local drafts never carry over from one project to the next. */
 export function ProjectPage() {
-  const { t } = useTranslation()
   const { id } = useParams()
+  return <ProjectBody key={id} id={id} />
+}
+
+function ProjectBody({ id }: { id: string | undefined }) {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const detail = useProject(id)
   const today = useCounts().data?.date
@@ -145,6 +150,7 @@ export function ProjectPage() {
           onChange={setDescription}
           placeholder={t('plan.description_placeholder')}
           testId="project-description"
+          collapsible
         />
         {descriptionDirty && (
           <div className="flex gap-2">

@@ -78,7 +78,7 @@ export function ProjectsPage() {
         <SegmentedControl<Filter>
           value={filter}
           onChange={setFilter}
-          className="flex-1 [&>button]:min-h-tap"
+          className="flex-1 [&>button]:min-h-tap [&>button]:whitespace-nowrap [&>button]:px-2"
           options={[
             { value: 'open', label: t('plan.filter_open') },
             { value: 'completed', label: t('plan.filter_completed') },

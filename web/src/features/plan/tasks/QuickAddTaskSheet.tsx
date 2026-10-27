@@ -81,18 +81,18 @@ export function QuickAddTaskSheet({
         onSuccess: (result) => {
           if (result.queued) {
             setAdded((list) => [{ id, title: shownTitle, queued: true }, ...list].slice(0, 5))
-            planToast.info(t('task.queued'))
+            planToast.info(t('task.queued'), { placement: 'top' })
             return
           }
           const task = result.data.task
           setAdded((list) => [{ id: task.id, title: task.title, queued: false }, ...list].slice(0, 5))
           planToast.success(t('task.added', { title: task.title }), {
-            label: t('task.open'),
-            onClick: () => openTask(task.id),
+            action: { label: t('task.open'), onClick: () => openTask(task.id) },
+            placement: 'top',
           })
         },
         onError: (error) => {
-          planToast.error(errorMessage(error))
+          planToast.error(errorMessage(error), { placement: 'top' })
           // give the line back if nothing new was typed meanwhile
           setText((current) => (current === (request.text ?? '') ? value : current))
         },

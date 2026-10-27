@@ -10,7 +10,7 @@ import { errorMessage } from '@/lib/errors'
 import { blockLabel, dueLabel, relativeDay } from '../format'
 import { patchTaskInCaches, planKeys, useCompleteTask, useReopenTask, useUpdateTask } from '../queries'
 import type { Counts, Task, TaskPatchIn } from '../types'
-import { planToast } from './toast'
+import { planToast, type PlanToastPlacement } from './toast'
 
 type TaskLike = Pick<Task, 'id' | 'title' | 'status'>
 
@@ -34,7 +34,7 @@ function useTodayReader(hint?: string) {
  * Checkbox behaviour: completing answers instantly (every cached copy of the
  * task is patched), the toast offers «Отменить» and names the next repeat.
  */
-export function useCompleteToggle(todayHint?: string) {
+export function useCompleteToggle(todayHint?: string, placement: PlanToastPlacement = 'bottom') {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const complete = useCompleteTask()
@@ -51,11 +51,11 @@ export function useCompleteToggle(todayHint?: string) {
       { id: task.id },
       {
         onSuccess: (result) => {
-          if (result.queued) planToast.info(t('task.queued'))
+          if (result.queued) planToast.info(t('task.queued'), { placement })
         },
         onError: (error) => {
           rollback()
-          planToast.error(errorMessage(error))
+          planToast.error(errorMessage(error), { placement })
         },
       },
     )
@@ -71,21 +71,21 @@ export function useCompleteToggle(todayHint?: string) {
       { id: task.id },
       {
         onSuccess: (result) => {
-          const undo = { label: t('task.undo'), onClick: () => reopenTask(task) }
+          const action = { label: t('task.undo'), onClick: () => reopenTask(task) }
           if (result.queued) {
-            planToast.info(t('task.done_queued'), undo)
+            planToast.info(t('task.done_queued'), { action, placement })
             return
           }
           const next = result.data.next_instance
           const when = next ? nextInstanceLabel(next, readToday()) : ''
           planToast.success(
             next && when ? t('task.done_next', { when }) : t('task.done_toast', { title: task.title }),
-            undo,
+            { action, placement },
           )
         },
         onError: (error) => {
           rollback()
-          planToast.error(errorMessage(error))
+          planToast.error(errorMessage(error), { placement })
         },
       },
     )

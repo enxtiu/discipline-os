@@ -43,17 +43,17 @@ export function InlineQuickAdd({
       { id: newId(), text: value, captured_at: new Date().toISOString(), defaults },
       {
         onSuccess: (result) => {
-          if (result.queued) planToast.info(t('task.queued'))
+          if (result.queued) planToast.info(t('task.queued'), { placement: 'top' })
           else {
             const task = result.data.task
             planToast.success(t('task.added', { title: task.title }), {
-              label: t('task.open'),
-              onClick: () => openTask(task.id),
+              action: { label: t('task.open'), onClick: () => openTask(task.id) },
+              placement: 'top',
             })
           }
         },
         onError: (error) => {
-          planToast.error(errorMessage(error))
+          planToast.error(errorMessage(error), { placement: 'top' })
           setText((current) => current || value)
         },
       },

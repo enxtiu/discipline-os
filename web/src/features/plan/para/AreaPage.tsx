@@ -24,9 +24,14 @@ import { ProjectRow } from './ProjectsPage'
 import { ResourceSheet } from './ResourceSheet'
 import { ResourceRow } from './ResourcesPage'
 
+/** Keyed by id: sheets and drafts never carry over from one area to the next. */
 export function AreaPage() {
-  const { t } = useTranslation()
   const { id } = useParams()
+  return <AreaBody key={id} id={id} />
+}
+
+function AreaBody({ id }: { id: string | undefined }) {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const detail = useArea(id)
   const today = useCounts().data?.date
