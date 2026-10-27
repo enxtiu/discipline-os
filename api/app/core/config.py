@@ -136,6 +136,11 @@ class Settings(BaseSettings):
     # Used only to build links inside notifications/backup mails.
     public_base_url: str = ""
 
+    # ------------------------------------------------- data backups (stage 8)
+    # `restore-backup` refuses a data.json that would unpack to more than this
+    # (checked before anything is inflated: a zip bomb never reaches memory)
+    backup_max_data_bytes: int = 512 * 1024 * 1024
+
     @field_validator("secret_key")
     @classmethod
     def _secret_must_be_set_in_prod(cls, v: str, info) -> str:

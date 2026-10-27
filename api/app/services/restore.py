@@ -27,8 +27,11 @@
   (achievements, quests). A food or exercise found nowhere is recreated as the
   user's own custom row (same id, same values), never as a library row; an
   achievement or quest this server does not know is skipped with its rows.
-* ``data.json`` is read into memory (the export streams; a restore is an offline
-  admin command).
+* **Bounded reading.** Before any member is inflated its declared size and compression
+  ratio are checked (``manifest.json`` ≤ 1 MiB, ``data.json`` ≤ ``BACKUP_MAX_DATA_BYTES``,
+  512 MiB by default, and above 16 MiB at most 200× its compressed size); members are
+  read in 1 MiB steps that stop at the limit even when a header lies. ``data.json`` is
+  then held in memory (the export streams; a restore is an offline admin command).
 """
 
 from __future__ import annotations
@@ -37,6 +40,7 @@ import hashlib
 import os
 import uuid
 import zipfile
+import zlib
 from collections import defaultdict
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
@@ -50,6 +54,7 @@ from sqlalchemy import and_, exists, func, literal_column, select, tuple_
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.models import Achievement, Exercise, Food, Quest, User
 from app.services import export
 from app.services.export import (
@@ -68,6 +73,11 @@ from app.services.planner.common import advisory_lock
 MAX_BIND_PARAMS = 30_000  # PostgreSQL allows 65 535 per statement
 MAX_BATCH = 500
 LOCK_SCOPE = "gamification"  # the engine's per-user lock: no score run interleaves a restore
+MAX_MANIFEST_BYTES = 1 << 20  # the real one is a few KiB
+# deflated exports compress 5-20×; deflate cannot pass ~1 000×. Smaller members are harmless.
+MAX_COMPRESSION_RATIO = 200
+RATIO_CHECKED_FROM = 16 << 20
+READ_STEP = 1 << 20
 
 
 class RestoreError(Exception):
@@ -101,7 +111,7 @@ class Backup:
         return (self.data.get("library") or {}).get(name) or []
 
 
-def _load_json(raw: bytes, name: str) -> dict[str, Any]:
+def _load_json(raw: bytes | bytearray, name: str) -> dict[str, Any]:
     try:
         value = orjson.loads(raw)
     except orjson.JSONDecodeError as exc:
@@ -111,8 +121,47 @@ def _load_json(raw: bytes, name: str) -> dict[str, Any]:
     return value
 
 
+def _member(archive: zipfile.ZipFile, name: str, limit: int) -> zipfile.ZipInfo:
+    """A member's header, checked before a byte of it is inflated: its declared size
+    and its compression ratio (a few KiB must not become gigabytes)."""
+    info = archive.getinfo(name)
+    if info.file_size > limit:
+        raise RestoreError(
+            f"{name} would unpack to {info.file_size:,} bytes, more than the {limit:,} a backup may hold"
+            + (" (BACKUP_MAX_DATA_BYTES)" if name == DATA_FILE else "")
+        )
+    if info.file_size > RATIO_CHECKED_FROM and info.file_size > MAX_COMPRESSION_RATIO * max(info.compress_size, 1):
+        raise RestoreError(
+            f"{name} is compressed {info.file_size // max(info.compress_size, 1):,}× — far more than any export "
+            "(a zip bomb?): refused before unpacking it"
+        )
+    return info
+
+
+def _read(archive: zipfile.ZipFile, info: zipfile.ZipInfo, limit: int, digest: Any = None) -> bytearray:
+    """Inflate a member step by step, never past ``limit`` bytes (whatever its header says)."""
+    out = bytearray()
+    with archive.open(info) as handle:
+        while chunk := handle.read(READ_STEP):
+            if len(out) + len(chunk) > limit:
+                raise RestoreError(f"{info.filename} unpacks to more than {limit:,} bytes — refused")
+            out += chunk
+            if digest is not None:
+                digest.update(chunk)
+    return out
+
+
 def read_backup(path: str | os.PathLike[str]) -> Backup:
-    """Open and verify a backup zip (checksums, formats, account, schema, counts)."""
+    """Open and verify a backup zip (sizes, checksum, formats, account, schema, counts)."""
+    limit = get_settings().backup_max_data_bytes
+    try:
+        on_disk = os.path.getsize(path)
+    except FileNotFoundError:
+        raise RestoreError(f"no such file: {path}") from None
+    except OSError as exc:
+        raise RestoreError(f"not a readable zip archive: {exc}") from None
+    if on_disk > limit + MAX_MANIFEST_BYTES + READ_STEP:  # an archive is never larger than its members + headers
+        raise RestoreError(f"the archive is {on_disk:,} bytes, larger than any backup may be (BACKUP_MAX_DATA_BYTES)")
     try:
         archive = zipfile.ZipFile(path)
     except FileNotFoundError:
@@ -125,29 +174,29 @@ def read_backup(path: str | os.PathLike[str]) -> Backup:
             for required in (MANIFEST_FILE, DATA_FILE):
                 if required not in names:
                     raise RestoreError(f"the archive has no {required} — is it a DisciplineOS backup?")
-            manifest = _load_json(archive.read(MANIFEST_FILE), MANIFEST_FILE)
+            raw_manifest = _read(archive, _member(archive, MANIFEST_FILE, MAX_MANIFEST_BYTES), MAX_MANIFEST_BYTES)
+            manifest = _load_json(raw_manifest, MANIFEST_FILE)
             if manifest.get("format") != BACKUP_FORMAT:
                 raise RestoreError(f"{MANIFEST_FILE}: unknown format {manifest.get('format')!r}")
             if manifest.get("format_version") != FORMAT_VERSION:
                 raise RestoreError(f"{MANIFEST_FILE}: unsupported format version {manifest.get('format_version')!r}")
             files = manifest.get("files")
-            if not isinstance(files, dict) or DATA_FILE not in files:
+            if not isinstance(files, dict) or not isinstance(files.get(DATA_FILE), dict):
                 raise RestoreError(f"{MANIFEST_FILE}: no checksum for {DATA_FILE}")
-            for name, meta in files.items():
-                if name not in names:
-                    raise RestoreError(f"{name} is listed in the manifest but missing from the archive")
-                if not isinstance(meta, dict):
-                    raise RestoreError(f"{MANIFEST_FILE}: bad entry for {name}")
-                digest, size = hashlib.sha256(), 0
-                with archive.open(name) as handle:
-                    for chunk in iter(lambda handle=handle: handle.read(1 << 20), b""):
-                        digest.update(chunk)
-                        size += len(chunk)
-                if digest.hexdigest() != meta.get("sha256") or size != meta.get("bytes"):
-                    raise RestoreError(f"{name}: checksum mismatch — the file is damaged or was changed")
-            data = _load_json(archive.read(DATA_FILE), DATA_FILE)
+            if set(files) != {DATA_FILE}:
+                raise RestoreError(
+                    f"{MANIFEST_FILE}: lists files a backup does not have: {sorted(set(files) - {DATA_FILE})}"
+                )
+            digest = hashlib.sha256()
+            raw = _read(archive, _member(archive, DATA_FILE, limit), limit, digest)
+            if digest.hexdigest() != files[DATA_FILE].get("sha256") or len(raw) != files[DATA_FILE].get("bytes"):
+                raise RestoreError(f"{DATA_FILE}: checksum mismatch — the file is damaged or was changed")
+            data = _load_json(raw, DATA_FILE)
+            del raw
     except zipfile.BadZipFile as exc:  # a CRC error while reading
         raise RestoreError(f"the archive is damaged: {exc}") from None
+    except (zlib.error, EOFError, NotImplementedError, RuntimeError) as exc:  # corrupt, cut, unsupported, encrypted
+        raise RestoreError(f"the archive cannot be read: {exc}") from None
     _check_data(manifest, data)
     return Backup(manifest=manifest, data=data)
 
