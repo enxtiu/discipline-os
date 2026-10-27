@@ -106,7 +106,7 @@ __all__ = [
 # for "other/unknown"; for *rewards* the stricter 1500 applies.
 FLOOR_MALE = 1500
 FLOOR_FEMALE = 1200
-FLOOR_OTHER = 1500
+FLOOR_OTHER = 1200  # stage-1 default for other/unknown (settings_service.default_floor_for)
 # the calorie zone: [max(F, 0.92·T), 1.06·T]
 ZONE_LOW_FACTOR = 0.92
 ZONE_HIGH_FACTOR = 1.06
@@ -122,17 +122,17 @@ def _f(value: Decimal | float | int | None) -> float:
 # Safe floor and calorie zone
 # --------------------------------------------------------------------------- #
 def safe_floor_kcal(settings: UserSettings | None) -> int:
-    """The user's safe floor: ``settings.safe_floor_kcal`` when set (it can only be
-    lowered behind an explicit confirmation), else 1500 (male) / 1200 (female) /
-    1500 (other or unknown). No reward, streak or quest ever counts intake below it."""
-    if settings is not None and settings.safe_floor_kcal:
-        return int(settings.safe_floor_kcal)
-    sex = getattr(getattr(settings, "sex", None), "value", getattr(settings, "sex", None))
-    if sex == "male":
-        return FLOOR_MALE
-    if sex == "female":
-        return FLOOR_FEMALE
-    return FLOOR_OTHER
+    """The user's safe floor — exactly the one the target engine applies and Settings
+    shows: ``settings.safe_floor_kcal`` when set (it can only be lowered behind an explicit
+    confirmation), else 1500 (male) / 1200 (female, other or unknown; the stage-1 default).
+    One source of truth (``settings_service.default_floor_for``) so a target the engine
+    recommends is never "below the floor" for scoring. No reward, streak or quest ever
+    counts intake below it."""
+    if settings is None:
+        return FLOOR_OTHER
+    from app.services.settings_service import default_floor_for
+
+    return default_floor_for(settings)
 
 
 @dataclass(slots=True, frozen=True)

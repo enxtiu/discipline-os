@@ -269,10 +269,11 @@ def test_safe_floor_defaults() -> None:
 
     assert safe_floor_kcal(UserSettings(sex="male")) == 1500
     assert safe_floor_kcal(UserSettings(sex="female")) == 1200
-    assert safe_floor_kcal(UserSettings(sex="other")) == 1500
-    assert safe_floor_kcal(UserSettings(sex=None)) == 1500
+    # the same floor the target engine and Settings use (stage-1 default: 1200 for other/unknown)
+    assert safe_floor_kcal(UserSettings(sex="other")) == 1200
+    assert safe_floor_kcal(UserSettings(sex=None)) == 1200
     assert safe_floor_kcal(UserSettings(sex="female", safe_floor_kcal=1400)) == 1400
-    assert safe_floor_kcal(None) == 1500
+    assert safe_floor_kcal(None) == 1200
 
 
 def test_day_metrics_tracked_minutes_round_half_up() -> None:
