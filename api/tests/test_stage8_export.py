@@ -18,6 +18,8 @@ import csv
 import hashlib
 import io
 import os
+import subprocess
+import sys
 import uuid
 import zipfile
 from datetime import UTC, date, datetime, time, timedelta
@@ -909,3 +911,103 @@ async def test_restore_never_touches_another_users_rows(account, db, tmp_path) -
         await restore_file(path, user_id=other)
     with pytest.raises(RestoreError, match="does not exist here"):
         await restore_file(path, user_id=uuid.uuid4())
+
+
+async def test_damaged_or_foreign_backups_are_refused_and_nothing_is_written(account, db, tmp_path) -> None:
+    client, user_id = account["client"], account["user_id"]
+    original = await save_backup(client, tmp_path / "backup.zip")
+    await wipe(db, user_id)
+
+    def refused(path: Path, match: str) -> None:
+        with pytest.raises(RestoreError, match=match):
+            read_backup(path)
+
+    refused(tmp_path / "missing.zip", "no such file")
+    (tmp_path / "text.zip").write_text("not a zip")
+    refused(tmp_path / "text.zip", "not a readable zip")
+    with zipfile.ZipFile(tmp_path / "other.zip", "w") as other:
+        other.writestr("data.json", "{}")
+    refused(tmp_path / "other.zip", "no manifest.json")
+    data = zipfile.ZipFile(original).read("data.json")
+    damaged = data.replace(b'"Hello"', b'"Hellp"') if b'"Hello"' in data else data[:-3] + b" }\n"
+    refused(rewrite_backup(original, tmp_path / "damaged.zip", data=damaged, checksum=False), "checksum mismatch")
+
+    def mutate(path: str, change) -> Path:
+        return rewrite_backup(original, tmp_path / path, change)
+
+    refused(mutate("format.zip", lambda d, m: m.update(format="something-else")), "unknown format")
+    refused(mutate("version.zip", lambda d, m: m.update(format_version=2)), "unsupported format version")
+    refused(mutate("accounts.zip", lambda d, m: d.update(user_id=str(uuid.uuid4()))), "different accounts")
+    refused(
+        mutate("counts.zip", lambda d, m: m["counts"].update(meal_logs=m["counts"]["meal_logs"] + 1)),
+        "the manifest says",
+    )
+    refused(mutate("table.zip", lambda d, m: d["tables"].pop("tasks")), "tasks is missing")
+
+    # consistent files, but not restorable here: nothing written, whatever fails and wherever
+    schema = mutate("schema.zip", lambda d, m: (d.update(schema_version="0002"), m.update(schema_version="0002")))
+    with pytest.raises(RestoreError, match="schema version 0002"):
+        await restore_file(schema)
+
+    def bad_value(data: dict[str, Any], manifest: dict[str, Any]) -> None:
+        data["tables"]["journal_entries"][0]["rating"] = "five"  # late in the order: earlier tables went in
+
+    with pytest.raises(RestoreError, match=r"journal_entries.rating: bad value 'five'"):
+        await restore_file(mutate("value.zip", bad_value))
+
+    def unknown_column(data: dict[str, Any], manifest: dict[str, Any]) -> None:
+        data["tables"]["water_logs"][0]["temperature_c"] = 4
+
+    with pytest.raises(RestoreError, match=r"water_logs: a row does not match this schema \(missing \[\], unknown"):
+        await restore_file(mutate("column.zip", unknown_column))
+
+    def broken_reference(data: dict[str, Any], manifest: dict[str, Any]) -> None:
+        data["tables"]["meal_items"][0]["meal_log_id"] = str(uuid.uuid4())  # the database refuses it
+
+    with pytest.raises(RestoreError, match="meal_items: the database refused the rows"):
+        await restore_file(mutate("reference.zip", broken_reference))
+    assert sum((await counts(db, user_id)).values()) == 0
+
+    assert (await restore_file(original)).inserted > 0  # the untouched backup still restores
+
+
+# --------------------------------------------------------------------------- #
+# The CLI, as a real process
+# --------------------------------------------------------------------------- #
+def cli(*args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(  # noqa: S603 - our own interpreter and module
+        [sys.executable, "-m", "app.cli", "restore-backup", *args],
+        cwd=Path(__file__).resolve().parents[1],
+        env={**os.environ, "NO_COLOR": "1"},
+        capture_output=True,
+        text=True,
+        timeout=180,
+        check=False,
+    )
+
+
+async def test_cli_restore_backup(account, db, tmp_path) -> None:
+    client, user_id = account["client"], account["user_id"]
+    path = await save_backup(client, tmp_path / "disciplineos-2026-10-01.zip")
+    expected = await counts(db, user_id)
+    total = sum(expected.values())
+    await wipe(db, user_id)
+
+    missing = cli(str(tmp_path / "nope.zip"))
+    assert missing.returncode == 1 and "no such file" in missing.stdout + missing.stderr
+    bad_id = cli(str(path), "--user-id", "not-a-uuid")
+    assert bad_id.returncode == 1 and "--user-id is not a UUID" in bad_id.stdout + bad_id.stderr
+
+    dry = cli(str(path), "--dry-run")
+    assert dry.returncode == 0, dry.stdout + dry.stderr
+    assert "DRY RUN" in dry.stdout and f"would restore: {total} inserted, 0 updated" in dry.stdout
+    assert f"account {user_id} (the backup's own)" in dry.stdout and "meal_logs" in dry.stdout
+    assert sum((await counts(db, user_id)).values()) == 0
+
+    real = cli(str(path))
+    assert real.returncode == 0, real.stdout + real.stderr
+    assert f"restored: {total} inserted, 0 updated, 0 unchanged, 0 skipped" in real.stdout
+    assert await counts(db, user_id) == expected
+
+    again = cli(str(path))
+    assert again.returncode == 0 and f"restored: 0 inserted, 0 updated, {total} unchanged" in again.stdout
