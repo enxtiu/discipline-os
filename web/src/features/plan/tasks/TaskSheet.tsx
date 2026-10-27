@@ -310,7 +310,9 @@ export function TaskSheet({
       setConflict({ fields: details.fields ?? [], current: details.current ?? null, patch })
       return
     }
-    if (patch && error instanceof ApiError && error.status === 404) {
+    const missing = error instanceof ApiError && error.status === 404 ? (error.details as { id?: unknown } | null)?.id : undefined
+    if (patch && error instanceof ApiError && error.status === 404 && (missing === undefined || missing === task?.id)) {
+      // the task itself is gone (deleted on another device), not something it points at
       planToast.error(t('sync.reason.deleted_elsewhere'), { placement: 'top' })
       return
     }
