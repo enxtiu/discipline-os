@@ -248,6 +248,19 @@ is looked up once on Open Food Facts and cached);
 | `VAPID_PUBLIC_KEY` | empty | base64url P-256 public key; the browser subscribes with it (`GET /api/v1/push/config`) |
 | `VAPID_PRIVATE_KEY` | empty | The matching private key as one-line PEM (`\n` escaped) — signs every push (RFC 8292). Secret |
 | `VAPID_SUBJECT` | `mailto:admin@example.com` | Your contact for the push services: `mailto:you@domain` or `https://…` |
+| `PUSH_EXTRA_HOSTS` | empty | More push-service hosts to allow (comma-separated, `*.example.com` for subdomains) — see below |
+
+**Where the API sends pushes.** A browser registers the URL of its push service and the
+server POSTs every notification there, so with `ENV=production` or `staging` only the
+browsers' real push services are accepted — `https://`, port 443, host
+`fcm.googleapis.com` (Chrome, Android, Samsung Internet, Opera), `*.push.apple.com`
+(Safari on iPhone/iPad/Mac), `*.push.services.mozilla.com` (Firefox) or
+`*.notify.windows.com` (Edge on Windows) — plus `PUSH_EXTRA_HOSTS`. Any other endpoint is
+refused when it is registered (422 `push_service_not_allowed`; the app says the server
+does not send to that browser's push service), a stored one is switched off before the
+next send (`last_error=endpoint_not_allowed`), and redirects are never followed. `ENV=development` also accepts plain `http://127.0.0.1` / `localhost` / `[::1]`
+— the local receiver the smoke test and the browser checks use. Endpoints are ASCII, at
+most 2048 bytes.
 
 Generate the pair once and keep it: `docker compose exec api python -m app.cli vapid-keys`
 prints both lines ready for `.env`; restart the API. Push is **on** only when both keys
@@ -591,12 +604,25 @@ reminder that falls inside them is delivered when they end (history marks it
 afterwards, and none is even planned inside them. **Late reminders** (server down
 for more than an hour) are dropped rather than sent stale.
 
+**A phone that was offline** gets a reminder later only while it is still useful: the
+push service keeps it at most an hour after its time (half an hour for a daily nudge)
+and never into your next quiet hours; the app drops one that arrives later anyway (a
+test notification is always shown). On iPhone, WebKit cancels a subscription after
+three pushes that show nothing — if that ever happens, the device list shows it as off
+and «Включить уведомления» brings it back.
+
 How it works: `plan_daily_reminders` (every 15 min) creates today's smart reminders
 for users with push on, DST-safe and idempotent; `dispatch_notifications` (every
 minute) claims due reminders with `FOR UPDATE SKIP LOCKED`, applies prefs, quiet
 hours and the condition, and sends to every active subscription of an active
-device. A push service answering 404/410 deactivates that subscription; 429/5xx or
-a network error are retried (3 attempts). Endpoints: `GET /api/v1/push/config`,
+device (at most 10 per account: registering an 11th switches off the least recently
+registered one). Users are served side by side, nothing is locked while a push service
+answers, and every send gives up after 15 s, so one slow push service never delays
+anyone else. A push service answering 404/410 deactivates that subscription; 401/403
+three times in a row (the VAPID keys changed since that browser subscribed) switches it
+off as `vapid_rejected`, so Settings asks to turn notifications on again on that device;
+429/5xx, a network error or the 15 s limit are retried (3 attempts). Endpoints:
+`GET /api/v1/push/config`,
 `POST|GET /api/v1/push/subscriptions`, `DELETE /api/v1/push/subscriptions/{id}`,
 `POST /api/v1/push/unsubscribe`, `POST /api/v1/push/test`,
 `GET|PUT /api/v1/notifications/prefs`, `GET /api/v1/notifications` (history).
@@ -716,8 +742,13 @@ the migrate/test equivalents).
 6. The device list shows failures in a row → the push service refuses the message:
    401/403 usually means the two VAPID keys do not belong together or were changed
    (look for `vapid_key_mismatch` in the API log) — turn notifications off and on
-   again on the device. A subscription the push service has dropped (404/410) is
-   switched off automatically; enable it again.
+   again on the device. After three refusals in a row the subscription is switched off
+   by itself (`vapid_rejected`; not while the server's own two keys do not match), and
+   so is one the push service has dropped (404/410); enable it again on that device.
+7. «Сервер не отправляет уведомления в push-службу этого браузера» right after allowing
+   notifications (`ENV=production`/`staging`) → that browser's push service is not on the
+   list in [Web push](#web-push-stage-7); the API log names it (`push_service_not_allowed`,
+   `host=…`). Add the host to `PUSH_EXTRA_HOSTS` and restart the API.
 
 **Type errors after pulling a schema change.** Regenerate:
 `make gen-api` (needs the API running) and commit the updated file.
