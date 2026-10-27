@@ -208,12 +208,71 @@ cd api && .venv/bin/python scripts/bench_api.py --runs 30 --explain 4 [--compare
 
 ## 6. EXPLAIN — and why there is no migration
 
+- The slowest SELECTs of the slowest endpoints are the engine's whole-history aggregates:
+  tasks created per day (`Seq Scan on tasks`, 4 069 rows, 2–4 ms), tasks completed per day
+  (`Seq Scan`, 3 711 of 4 069 rows), the XP total (`Seq Scan on xp_events`, 6 996 rows,
+  1.3 ms). Over a 365-day range nearly every row qualifies: a sequential scan is the right
+  plan, an index would not change it.
+- Planner, nutrition, health and training reads use their indexes (index scans of
+  0.02–0.1 ms); there is no N+1 — lookups of projects, areas, tags, subtasks and parents
+  are batched per view.
+- The one read that scans far more than it returns: tasks created per day for a week or a
+  month (`/stats/planner`, `/stats/progress`) — 4 069 rows for ~100. An index
+  `tasks (user_id, created_at)` would make it a range scan, but it costs 1–2 ms at a
+  year of data, so it is not worth a migration now (and the next revision number is
+  taken by the Notion branch's `0004`). Worth adding once tasks reach tens of thousands.
+- Measured inside the requests, the same statements took several times their EXPLAIN
+  execution time (round trip, driver, event loop): the cost of these endpoints is the
+  number of statements and the Python around them, not the plans — hence §3.7–3.8.
+
+## 7. Gates
+
 GATES_TBD
 
-## 7. Not done, and why
+## 8. Not done, and why
 
-NOT_TBD
+- **`/gamification/today`, `/gamification/profile` and `/stats/progress` stay above
+  100 ms p95.** Each read recomputes the whole history (stage 8, "recomputed on read"):
+  eleven range aggregates over every day since the first entry, the streak simulation,
+  the achievement metrics and the quests — still ~38 statements and the Python around
+  them after §3.8. Getting under 100 ms on a year of data needs persisted per-day facts
+  and incremental streaks, i.e. a rewrite of the engine's read path and its tests, not
+  a tuning fix. What was pure waste (repeated inserts, identical upserts, duplicate
+  settings and auth reads) is gone.
+- **Dexie still loads at start** (94 kB / 31 kB gzip, now its own long-cached chunk):
+  `lib/offlineQueue.ts` imports it statically and opens IndexedDB before the first
+  screen. Loading it on demand (the localStorage mirror already holds the pending count)
+  is a change inside `offlineQueue.ts`, which the offline-sync branch rewrites — a
+  follow-up after that merge, worth 31 kB gzip off the start-up path.
+- **Server-side caching.** No hot path serves per-day immutable data on its own: past
+  days are read inside the same engine runs that compute today, and any cache would
+  need invalidation on every write across two uvicorn workers. Not worth the risk.
+- **Merging `day_metrics.collect`'s eleven range queries into one statement**: ~10 ms per
+  engine run at this size, but a rewrite of the series code stage 8 shares with stats
+  and export.
+- **Prefetching other screens' chunks on idle**: the service worker precaches every chunk
+  on the first visit anyway.
+- **Compression**: already on (Caddy `encode zstd gzip`, `GZipMiddleware` ≥ 1 kB).
 
-## 8. Merge notes (for the coordinator)
+## 9. Merge notes (for the coordinator)
 
-MERGE_TBD
+Checked in a scratch clone (no branch touched): this branch + `s8-web-stats` +
+`s9-offline` → `tsc` clean, main chunk 269.6 kB, `node scripts/perf/bundle-report.mjs
+--check` ok (Recharts' 402.5 kB chunk and the stats page load with /stats only).
+
+- `web/vite.config.ts` × `s8-web-stats` (`manualChunks`): keep this branch's function — it
+  carries the stats branch's `vendor`/`charts` rules; their `motion` chunk must not come
+  back (the entry would import all of framer-motion's features at start again).
+- `web/src/components/layout/SyncStatus.tsx` × `s9-offline`: take theirs, then
+  `motion` → `m` (the import and `<motion.span>`), or framer-motion's full bundle returns
+  to the main chunk (`bundle-report.mjs --check` reports it).
+- `web/src/features/today/TodayPage.tsx` × `s9-offline` (imports): theirs, without the
+  static `LogSheet` import (it is lazy here).
+- `web/src/features/plan/queries.ts` × `s9-offline` (import line):
+  `import { mutate, type QueuedMethod, type QueueMeta } from '@/lib/offlineQueue'`.
+- The stats branch's `useStatsAutoRefresh` also invalidates on a queue flush; with the
+  app-wide refresh the dashboards refresh twice after a flush — harmless, its queue part
+  can go.
+- New code: `m.*` instead of `motion.*`; new settings sections lazy like the others in
+  `App.tsx` (the Notion branch's Интеграции section); keep `index.html`'s early-read lists
+  in step with what Today, Food and Plan request on open (`perf-run.mjs` prints them).
