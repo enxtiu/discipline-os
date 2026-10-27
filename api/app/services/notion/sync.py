@@ -533,6 +533,9 @@ class Schema:
         assert database is not None
         lang = self.lang_for(kind)
         data_source = await self.client.retrieve_data_source(database["data_source_id"])
+        if data_source.get("in_trash") or data_source.get("archived"):
+            self.mark_missing(kind)  # the database is in the Notion trash: nothing to repair
+            raise NotionNotFound("the database is in the trash")
         by_id = {prop_id: (name, type_) for name, (prop_id, type_) in self._ids_by_name(data_source).items()}
         names = {name for name, _ in by_id.values()}
         props: dict[str, str] = database.setdefault("props", {})

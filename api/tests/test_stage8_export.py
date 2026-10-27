@@ -104,6 +104,20 @@ from tests.stage8_helpers import (
 
 pytestmark = pytest.mark.anyio
 E = "/api/v1/export"
+
+
+def _alembic_head() -> str:
+    """The schema version a fresh test database is at (exports record it)."""
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+
+    api_dir = Path(__file__).resolve().parents[1]
+    config = Config(str(api_dir / "alembic.ini"))
+    config.set_main_option("script_location", str(api_dir / "alembic"))
+    return str(ScriptDirectory.from_config(config).get_current_head())
+
+
+HEAD = _alembic_head()
 DAY = date(2026, 7, 14)  # inside the engine's open window at NOON (15 July, Bangkok)
 FORMULA_TITLE = '=HYPERLINK("http://evil.example","click")'
 SECRETS = {
@@ -490,7 +504,7 @@ async def test_json_export_has_every_section_and_no_secret(account) -> None:
     document = orjson.loads(response.content)
     assert document["format"] == "disciplineos-export" and document["format_version"] == 1
     assert document["user_id"] == str(user_id) and document["timezone"] == "Asia/Bangkok"
-    assert document["schema_version"] == "0003"  # the alembic head
+    assert document["schema_version"] == HEAD  # the alembic head
     assert list(document["tables"]) == [section.name for section in SECTIONS]
     assert list(document["library"]) == [item.name for item in LIBRARY]
     for section in SECTIONS:
@@ -604,7 +618,7 @@ async def test_backup_zip_manifest_counts_and_checksums(account) -> None:
     data = archive.read("data.json")
     document = orjson.loads(data)
     assert manifest["format"] == "disciplineos-backup" and manifest["format_version"] == 1
-    assert manifest["user_id"] == str(user_id) and manifest["schema_version"] == "0003"
+    assert manifest["user_id"] == str(user_id) and manifest["schema_version"] == HEAD
     assert manifest["app_version"] and manifest["timezone"] == "Asia/Bangkok"
     created = datetime.fromisoformat(manifest["created_at"])
     assert created.tzinfo is not None and before - timedelta(seconds=5) <= created <= datetime.now(UTC)
@@ -772,7 +786,7 @@ async def test_restore_round_trip_and_a_second_restore_changes_nothing(account, 
     assert sum((await counts(db, user_id)).values()) == 0
 
     report = await restore_file(path)
-    assert (report.source_user_id, report.target_user_id, report.schema_version) == (user_id, user_id, "0003")
+    assert (report.source_user_id, report.target_user_id, report.schema_version) == (user_id, user_id, HEAD)
     assert (report.inserted, report.updated, report.unchanged, report.skipped) == (total, 0, 0, 0)
     assert {name: item.rows for name, item in report.tables.items()} == expected
     assert await counts(db, user_id) == expected

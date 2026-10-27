@@ -351,7 +351,17 @@ class FakeNotion:
         kind = kinds[0]
         if "type" in config and config["type"] != kind:
             raise NotionHTTPError(400, "validation_error", f"{name}: type mismatch")
-        if kind not in ("title", "rich_text", "number", "select", "multi_select", "date", "checkbox", "relation", "url"):
+        if kind not in (
+            "title",
+            "rich_text",
+            "number",
+            "select",
+            "multi_select",
+            "date",
+            "checkbox",
+            "relation",
+            "url",
+        ):
             raise NotionHTTPError(400, "validation_error", f"{name}: unknown type {kind}")
         description = config.get("description")
         if description is not None and not (1 <= len(description) <= 280):
@@ -440,9 +450,7 @@ class FakeNotion:
 
     def _update_ds(self, token: str, ds: dict[str, Any], body: dict[str, Any]) -> dict[str, Any]:
         for key, config in (body.get("properties") or {}).items():
-            current = next(
-                (name for name, prop in ds["properties"].items() if prop["id"] == key or name == key), None
-            )
+            current = next((name for name, prop in ds["properties"].items() if prop["id"] == key or name == key), None)
             if config is None:
                 if current is None:
                     raise NotionHTTPError(400, "validation_error", f"{key} is not a property that exists")
@@ -477,7 +485,9 @@ class FakeNotion:
                 if item.get("type", "text") != "text" or not isinstance(content, str):
                     raise NotionHTTPError(400, "validation_error", "rich text item")
                 if _utf16(content) > 2000:
-                    raise NotionHTTPError(400, "validation_error", "body.properties.text.content.length should be ≤ 2000")
+                    raise NotionHTTPError(
+                        400, "validation_error", "body.properties.text.content.length should be ≤ 2000"
+                    )
         elif kind == "number":
             if inner is not None and (not isinstance(inner, (int, float)) or not math.isfinite(inner)):
                 raise NotionHTTPError(400, "validation_error", "number")
@@ -558,6 +568,9 @@ class FakeNotion:
         if unknown:
             raise NotionHTTPError(400, "validation_error", f"unknown body params {sorted(unknown)}")
         in_trash = body.get("in_trash")
+        database = self.databases.get(page["parent"].get("database_id") or "")
+        if database is not None and database["in_trash"]:
+            raise NotionHTTPError(400, "validation_error", "Can't edit block that is archived.")
         if "properties" in body:
             if page["in_trash"] and in_trash is not False:
                 raise NotionHTTPError(400, "validation_error", "Can't edit block that is archived.")
@@ -580,7 +593,12 @@ class FakeNotion:
             text = "".join(item["text"]["content"] for item in raw["rich_text"]) if raw else ""
             if text == wanted:
                 results.append(page)
-        return {"object": "list", "results": results[: body.get("page_size", 100)], "has_more": False, "next_cursor": None}
+        return {
+            "object": "list",
+            "results": results[: body.get("page_size", 100)],
+            "has_more": False,
+            "next_cursor": None,
+        }
 
     # ---------------------------------------------------------- owner moves
     def trash_database(self, title: str) -> None:
