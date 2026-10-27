@@ -119,16 +119,33 @@ export default defineConfig({
     chunkSizeWarningLimit: 900,
     rollupOptions: {
       output: {
-        // Fixed chunks for the big libraries that change far less often than the app:
-        // an update then re-downloads the app chunk only. Both load at start (the
-        // offline queue opens its IndexedDB through Dexie before the first screen).
-        // framer-motion and Recharts are deliberately left to the automatic split: the
-        // motion features load lazily (src/lib/motion.tsx) and the charts belong to the
-        // lazy /stats chunk. A manual chunk would pull a library's dependencies (clsx for
-        // Recharts) into it, and the entry would then import the whole chunk at start.
-        manualChunks: {
-          vendor: ['react', 'react-dom', 'react-router-dom'],
-          dexie: ['dexie'],
+        // Fixed chunks for libraries that change far less often than the app (an update
+        // then re-downloads the app chunk only): React and the small helpers the app shares
+        // with other libraries (`vendor`) and Dexie (`dexie` — the offline queue opens its
+        // IndexedDB before the first screen), both loaded at start; Recharts and what only
+        // it uses (`charts`, loaded with /stats). A function, not lists: a list also takes
+        // every dependency not placed elsewhere, so `{ charts: ['recharts'] }` pulled clsx
+        // (and with it the whole charts chunk) into the start-up path. framer-motion is left
+        // to the automatic split on purpose: `m` and LazyMotion load at start, the animation
+        // features lazily (src/lib/motion.tsx) — a `motion` chunk would bring them all back.
+        manualChunks(id) {
+          if (!id.includes('/node_modules/')) return undefined
+          if (
+            /\/node_modules\/(react|react-dom|react-router|react-router-dom|scheduler|@remix-run\/router|clsx|prop-types|react-is|object-assign|tslib)\//.test(
+              id,
+            )
+          ) {
+            return 'vendor'
+          }
+          if (/\/node_modules\/dexie\//.test(id)) return 'dexie'
+          if (
+            /\/node_modules\/(recharts|recharts-scale|react-smooth|victory-vendor|d3-[a-z-]+|internmap|decimal\.js-light|lodash|eventemitter3|tiny-invariant|fast-equals|react-transition-group|dom-helpers)\//.test(
+              id,
+            )
+          ) {
+            return 'charts'
+          }
+          return undefined
         },
       },
     },
