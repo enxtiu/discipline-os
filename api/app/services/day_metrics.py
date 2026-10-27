@@ -85,6 +85,7 @@ __all__ = [
     "kcal_zone",
     "logged_meals",
     "nutrition_by_day",
+    "nutrition_credit",
     "personal_records",
     "plan_by_day",
     "required_workouts",
@@ -158,6 +159,16 @@ class KcalZone:
     @property
     def high_int(self) -> int | None:
         return round(self.high) if self.high is not None else None
+
+
+def nutrition_credit(m: DayMetrics, floor: int) -> bool:
+    """The one nutrition-credit predicate of stage 8: at least one meal logged **and**
+    intake at or above the safe floor. Score credit (the overall streak, perfect days,
+    strong weeks) and every nutrition reward — the protein, fiber and water XP, the
+    water streak, the water/protein day counts of achievements and weekly quests, the
+    completion of the daily water quest — require it: neither not logging food nor
+    eating below the floor is ever rewarded (water alone is not nutrition credit)."""
+    return m.meals >= 1 and m.kcal >= floor
 
 
 def kcal_zone(target_kcal: int | float | None, floor: int) -> KcalZone:

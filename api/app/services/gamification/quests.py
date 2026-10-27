@@ -10,7 +10,11 @@
   otherwise); unclaimed quests expire with their period (``expired``).
 * Rotation is idempotent: a period that already has its quests gets no new ones,
   even when the eligible set changed during the day.
-* Intake-tied quests (protein) count only days at or above the safe floor.
+* Nutrition quests need nutrition credit (a meal and intake at or above the safe
+  floor, ``day_metrics.nutrition_credit``): protein and water day counts count only
+  such days, and the daily water quest *completes* only on such a day — its progress
+  still shows the millilitres drunk (review 8, H1). Finished days are judged against
+  the targets they were finalised with (``GameContext.rules_for``).
 """
 
 from __future__ import annotations
@@ -142,21 +146,21 @@ def unit_of(quest: Quest) -> str:
     return unit if unit in ("count", "ml", "steps", "min", "days") else "count"
 
 
+def _days(first: date, last: date, history: dict[date, DayMetrics], ctx: GameContext) -> list[DayMetrics]:
+    return [history[day] for day in iter_days(first, min(last, ctx.today)) if day in history]
+
+
 def progress_of(quest: Quest, first: date, last: date, history: dict[date, DayMetrics], ctx: GameContext) -> float:
-    """Progress over ``[first, min(last, today)]`` from the per-day metrics."""
-    t = ctx.targets
-    days = [history[day] for day in iter_days(first, min(last, ctx.today)) if day in history]
-
-    def protein_ok(m: DayMetrics) -> bool:
-        return bool(t.protein_g) and m.meals >= 1 and m.kcal >= ctx.floor and m.protein_g >= (t.protein_g or 0)
-
+    """Progress over ``[first, min(last, today)]`` from the per-day metrics (what the
+    quest shows; :func:`counted_progress` is what completes it)."""
+    days = _days(first, last, history, ctx)
     metric = _criteria(quest).get("metric")
     if metric == "meals_logged":
-        return float(sum(m.meals for m in days))
+        return float(sum(m.meals for m in days))  # logging, whatever the amount (D1)
     if metric == "water_ml":
         return float(sum(m.water_ml for m in days))
     if metric == "protein_target" or metric == "days_protein_target":
-        return float(sum(1 for m in days if protein_ok(m)))
+        return float(sum(1 for m in days if ctx.rules_for(m.day).protein_met(m)))
     if metric == "steps":
         return float(sum(m.steps or 0 for m in days))
     if metric == "tasks_completed":
@@ -172,10 +176,20 @@ def progress_of(quest: Quest, first: date, last: date, history: dict[date, DayMe
     if metric == "workouts":
         return float(sum(m.workouts for m in days))
     if metric == "days_steps_target":
-        return float(sum(1 for m in days if t.steps and m.steps is not None and m.steps >= t.steps))
+        return float(sum(1 for m in days if ctx.rules_for(m.day).steps_met(m)))
     if metric == "days_water_target":
-        return float(sum(1 for m in days if t.water_ml and m.water_ml >= t.water_ml))
+        return float(sum(1 for m in days if ctx.rules_for(m.day).water_met(m)))
     return 0.0
+
+
+def counted_progress(quest: Quest, first: date, last: date, history: dict[date, DayMetrics], ctx: GameContext) -> float:
+    """The progress that completes a quest: :func:`progress_of`, except that water drunk
+    on a day without nutrition credit (no meal at or above the safe floor) never
+    completes a water quest — a day of water and no food earns nothing (H1)."""
+    if _criteria(quest).get("metric") != "water_ml":
+        return progress_of(quest, first, last, history, ctx)
+    days = _days(first, last, history, ctx)
+    return float(sum(m.water_ml for m in days if ctx.rules_for(m.day).credit(m)))
 
 
 @dataclass(slots=True)
@@ -300,7 +314,7 @@ async def refresh(
         target = target_of(quest, ctx, week_required)
         if row.status in OPEN:
             progress = progress_of(quest, row.period_start, row.period_end, history, ctx)
-            status = _status_for(progress, target)
+            status = _status_for(counted_progress(quest, row.period_start, row.period_end, history, ctx), target)
             completed_at = row.completed_at if status == QuestStatus.COMPLETED else None
             if status == QuestStatus.COMPLETED and completed_at is None:
                 completed_at = ctx.now
@@ -354,7 +368,7 @@ async def claim(db: AsyncSession, ctx: GameContext, user_quest_id: uuid.UUID) ->
     last = min(row.period_end, ctx.today)
     history = await day_metrics.collect(db, ctx.user_id, row.period_start, last, ctx.tz, now=ctx.now)
     progress = progress_of(quest, row.period_start, row.period_end, history, ctx)
-    if progress < target:
+    if counted_progress(quest, row.period_start, row.period_end, history, ctx) < target:
         raise Conflict(
             "This quest is not completed yet",
             code="quest_not_completed",

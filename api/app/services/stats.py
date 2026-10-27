@@ -135,7 +135,6 @@ async def nutrition(db: AsyncSession, ctx: GameContext, span: Span) -> Nutrition
     """Food and water per day (two grouped queries). Burned calories are not here."""
     food = await day_metrics.nutrition_by_day(db, ctx.user_id, span.first, span.last)
     water = await day_metrics.water_by_day(db, ctx.user_id, span.first, span.last)
-    targets, zone, floor = ctx.targets, ctx.zone, ctx.floor
     days: list[NutritionDay] = []
     adherence = {"zone_days": 0, "protein_days": 0, "water_days": 0, "logged_days": 0}
     finished: list[NutritionDay] = []
@@ -145,9 +144,19 @@ async def nutrition(db: AsyncSession, ctx: GameContext, span: Span) -> Nutrition
         ml = water.get(day)
         meals = n.meals if n is not None else 0
         logged = n is not None and meals > 0
+        # the day's verdicts go through the same predicates as XP, streaks and achievements
+        rules = ctx.rules_for(day)
+        metrics = day_metrics.DayMetrics(
+            day=day,
+            kcal=n.kcal if n is not None else 0.0,
+            protein_g=n.protein_g if n is not None else 0.0,
+            fiber_g=n.fiber_g if n is not None else 0.0,
+            meals=meals,
+            water_ml=ml or 0,
+        )
         in_zone = None
-        if logged and day < span.today and zone.target is not None:
-            in_zone = zone.contains(n.kcal)
+        if logged and day < span.today and rules.zone.target is not None:
+            in_zone = rules.in_zone(metrics)
         item = NutritionDay(
             day=day,
             kcal=round(n.kcal, 2) if logged else None,
@@ -164,12 +173,13 @@ async def nutrition(db: AsyncSession, ctx: GameContext, span: Span) -> Nutrition
             continue
         if logged:
             adherence["logged_days"] += 1
-            # never rewarded below the floor — the same rule as the protein XP and achievements
-            if targets.protein_g and n.kcal >= floor and n.protein_g >= targets.protein_g:
+            # nutrition credit (a meal at or above the floor) — the same rule as the XP,
+            # the streaks, the quests and the achievements
+            if rules.protein_met(metrics):
                 adherence["protein_days"] += 1
             if in_zone:
                 adherence["zone_days"] += 1
-        if targets.water_ml and ml is not None and ml >= targets.water_ml:
+        if rules.water_met(metrics):
             adherence["water_days"] += 1
         if day < span.today:
             if logged:

@@ -40,7 +40,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.ids import new_id
 from app.models import DailyScore
 from app.schemas.gamification import DEFAULT_SCORE_WEIGHTS, SCORE_KEYS
-from app.services.day_metrics import DayMetrics, KcalZone
+from app.services.day_metrics import DayMetrics, KcalZone, nutrition_credit
 from app.services.gamification.context import GameContext
 
 SCORE_VERSION = 1
@@ -130,8 +130,10 @@ class DayScore:
 
 def credit_ok(metrics: DayMetrics, floor: int) -> bool:
     """Score-based credit needs a logged day at or above the floor (never not-logging,
-    never intake below the floor)."""
-    return metrics.meals >= 1 and metrics.kcal >= floor
+    never intake below the floor) — the shared ``day_metrics.nutrition_credit``. There is
+    deliberately no upper bound (review 8, D2): above 1.6·T the kcal part is already 0,
+    and credit stays "a meal at or above the floor"."""
+    return nutrition_credit(metrics, floor)
 
 
 def _components(m: DayMetrics, ctx: GameContext, provisional: bool) -> list[Component]:
