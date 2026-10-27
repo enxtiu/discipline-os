@@ -23,6 +23,14 @@ raise the score. Burned calories never enter the kcal part (the target is the
 target). Score-based *credit* (the overall streak, perfect days, strong weeks) also
 requires ``credit``: at least one meal and intake at or above the safe floor —
 whatever the user's weights are.
+
+Stored rows (``daily_scores``) are the memory of finished days: ``components.final``
+marks the last computation, the breakdown keeps the targets, floor and zone the day
+was judged with (``detail.target``, ``detail.floor``) — read back by
+:func:`load_flags` so streaks, achievements, quests and /stats judge a finished day
+against *its* targets, never today's — and the row of a finished week's last day
+keeps that week's workout requirement (``components.week``), frozen the first time the
+engine sees the week finished (no migration: JSON keys of an existing column).
 """
 
 from __future__ import annotations
@@ -33,7 +41,8 @@ from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 
-from sqlalchemy import Float, cast, func, select
+from sqlalchemy import Float, bindparam, cast, func, literal_column, select, update
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -41,8 +50,16 @@ from app.core.ids import new_id
 from app.core.tz import ensure_utc
 from app.models import DailyScore
 from app.schemas.gamification import DEFAULT_SCORE_WEIGHTS, SCORE_KEYS
-from app.services.day_metrics import DayMetrics, KcalZone, nutrition_credit
-from app.services.gamification.context import GameContext
+from app.services.day_metrics import (
+    DayMetrics,
+    KcalZone,
+    WeekPlan,
+    kcal_zone,
+    nutrition_credit,
+    required_workouts,
+    week_start_for,
+)
+from app.services.gamification.context import DayRules, GameContext, Targets
 
 SCORE_VERSION = 1
 OVERALL_THRESHOLD = 60.0  # a day counts for the overall streak
@@ -244,10 +261,11 @@ def rings(score: DayScore, weights: dict[str, float]) -> dict[str, float]:
 # --------------------------------------------------------------------------- #
 # Storage (daily_scores)
 # --------------------------------------------------------------------------- #
-def to_json(score: DayScore, *, final: bool = False) -> dict[str, Any]:
+def to_json(score: DayScore, *, final: bool = False, week: WeekPlan | None = None) -> dict[str, Any]:
     """The stored breakdown. ``final``: the day's last computation (after its grace day)
-    — such a row is never recomputed again, whatever the timezone does later."""
-    return {
+    — such a row is never recomputed again, whatever the timezone does later. ``week``:
+    the requirement of the finished week this day closes (its last day)."""
+    out: dict[str, Any] = {
         "version": SCORE_VERSION,
         "final": final,
         "provisional": score.provisional,
@@ -262,6 +280,18 @@ def to_json(score: DayScore, *, final: bool = False) -> dict[str, Any]:
             }
             for item in score.components
         ],
+    }
+    if week is not None:
+        out["week"] = week_json(week)
+    return out
+
+
+def week_json(week: WeekPlan) -> dict[str, Any]:
+    return {
+        "start": week.week_start.isoformat(),
+        "planned": week.planned,
+        "has_plan": week.has_plan,
+        "required": required_workouts(week),
     }
 
 
@@ -329,6 +359,25 @@ def legacy_final_at(day: date) -> datetime:
 
 
 @dataclass(slots=True, frozen=True)
+class FrozenTargets:
+    """The targets and floor a stored day was computed with (``None`` = none then, or
+    unreadable: that part cannot count)."""
+
+    kcal: int | None
+    protein_g: int | None
+    fiber_g: int | None
+    water_ml: int | None
+    steps: int | None
+    floor: int | None
+
+    def rules(self, fallback_floor: int) -> DayRules:
+        """The day's judge; a missing or damaged floor falls back to the current one."""
+        floor = self.floor if self.floor is not None else fallback_floor
+        targets = Targets(self.kcal, self.protein_g, self.fiber_g, self.water_ml, self.steps)
+        return DayRules(targets, floor, kcal_zone(self.kcal, floor))
+
+
+@dataclass(slots=True, frozen=True)
 class ScoreFlag:
     """The light view of a stored day: enough for streaks and achievements."""
 
@@ -337,6 +386,8 @@ class ScoreFlag:
     credit: bool
     computed_at: datetime
     final_mark: bool | None = None  # the stored ``final`` key; None: stored before it existed
+    targets: FrozenTargets | None = None  # what the day was judged with
+    week: WeekPlan | None = None  # the finished week this row closes, as frozen
 
     @property
     def counts_for_overall(self) -> bool:
@@ -354,9 +405,17 @@ class ScoreFlag:
         return self.day <= today - timedelta(days=2) and ensure_utc(self.computed_at) >= legacy_final_at(self.day)
 
 
+def _item(key: str, field: str) -> Any:
+    """``detail.<field>`` of the ``key`` component — a scalar JSON path, NULL when absent
+    or when the stored JSON has another shape (lax mode never raises)."""
+    path = f"'$.items[*] ? (@.key == \"{key}\").detail.{field}'::jsonpath"
+    return func.jsonb_path_query_first(DailyScore.components, literal_column(path))
+
+
 async def load_flags(db: AsyncSession, user_id, first: date, last: date) -> dict[date, ScoreFlag]:
-    """Stored score, credit and finality per day — without the breakdown (years of
-    history stay a small read). Malformed JSON degrades (no credit, not final)."""
+    """Stored score, credit, finality, the targets the day was judged with and a frozen
+    week requirement per day — without the breakdown (years of history stay a small
+    read). Malformed JSON degrades (no credit, not final, no target)."""
     components = DailyScore.components
     rows = await db.execute(
         select(
@@ -365,6 +424,13 @@ async def load_flags(db: AsyncSession, user_id, first: date, last: date) -> dict
             components["credit"].astext,
             DailyScore.computed_at,
             components["final"].astext,
+            _item("kcal", "target"),
+            _item("protein", "target"),
+            _item("fiber", "target"),
+            _item("water", "target"),
+            _item("activity", "target"),
+            _item("kcal", "floor"),
+            components["week"],
         ).where(DailyScore.user_id == user_id, DailyScore.local_day.between(first, last))
     )
     return {
@@ -374,9 +440,32 @@ async def load_flags(db: AsyncSession, user_id, first: date, last: date) -> dict
             credit=row[2] == "true",
             computed_at=row[3],
             final_mark=_mark(row[4]),
+            targets=FrozenTargets(*(_positive_int(value) for value in row[5:11])),
+            week=_week(row[11], row[0]),
         )
         for row in rows
     }
+
+
+def _positive_int(value: Any) -> int | None:
+    number = finite_number(value)
+    return int(number) if number is not None and number > 0 else None
+
+
+def _week(value: Any, day: date) -> WeekPlan | None:
+    """A stored week requirement, only when well-formed and closed by this very row."""
+    if not isinstance(value, dict):
+        return None
+    try:
+        start = date.fromisoformat(str(value.get("start")))
+    except ValueError:
+        return None
+    planned, has_plan = value.get("planned"), value.get("has_plan")
+    if start + timedelta(days=6) != day or not isinstance(has_plan, bool):
+        return None
+    if isinstance(planned, bool) or not isinstance(planned, int) or not 0 <= planned <= 7:
+        return None
+    return WeekPlan(start, planned, has_plan)
 
 
 def _mark(value: str | None) -> bool | None:
@@ -385,6 +474,58 @@ def _mark(value: str | None) -> bool | None:
     if value is None:
         return None
     return value == "true"
+
+
+def freeze(ctx: GameContext, flags: dict[date, ScoreFlag]) -> None:
+    """Final days are judged against the targets they were finalised with from now on
+    (``ctx.rules_for``); the open window keeps the current ones."""
+    for day, flag in flags.items():
+        if flag.targets is not None and flag.is_final(ctx.today):
+            ctx.frozen[day] = flag.targets.rules(ctx.floor)
+
+
+def frozen_weeks(ctx: GameContext, flags: dict[date, ScoreFlag]) -> dict[date, WeekPlan]:
+    """Finished weeks (of the current week start) with the requirement frozen when they
+    ended; the current week always follows the current plan."""
+    out: dict[date, WeekPlan] = {}
+    for flag in flags.values():
+        week = flag.week
+        if week is None or week.week_start >= ctx.week_start_day:
+            continue
+        if week_start_for(week.week_start, ctx.week_start) == week.week_start:  # same alignment
+            out[week.week_start] = week
+    return out
+
+
+async def load_frozen(db: AsyncSession, ctx: GameContext, first: date, last: date) -> dict[date, WeekPlan]:
+    """For readers outside the engine (quest claims, /stats): put the frozen targets of
+    the final days of ``[first, last]`` into ``ctx`` and return the frozen weeks."""
+    flags = await load_flags(db, ctx.user_id, first, last)
+    freeze(ctx, flags)
+    return frozen_weeks(ctx, flags)
+
+
+async def annotate_weeks(db: AsyncSession, ctx: GameContext, weeks: dict[date, WeekPlan]) -> int:
+    """Store the requirement of finished weeks whose last day's row is already final
+    without one (rows from before review 8, or weeks re-bucketed by a new week start):
+    the plan in force now — what they were judged with until now — from now on for
+    good. Keys are the last days. One statement (executemany)."""
+    if not weeks:
+        return 0
+    table = DailyScore.__table__
+    stmt = (
+        update(table)
+        .where(table.c.user_id == bindparam("owner"), table.c.local_day == bindparam("last_day"))
+        .values(components=table.c.components.op("||")(bindparam("patch", type_=JSONB)))
+    )
+    await db.execute(
+        stmt,
+        [
+            {"owner": ctx.user_id, "last_day": day, "patch": {"week": week_json(week)}}
+            for day, week in sorted(weeks.items())
+        ],
+    )
+    return len(weeks)
 
 
 async def load_rows(db: AsyncSession, user_id, first: date, last: date) -> dict[date, DailyScore]:
@@ -402,19 +543,22 @@ async def store(
     streak_days: dict[date, int] | None = None,
     *,
     final: Collection[date] = (),
+    weeks: dict[date, WeekPlan] | None = None,
 ) -> int:
     """Upsert the given days (chunked statements). ``streak_days`` = the overall streak
-    length reached on that day; ``final`` = the days computed for the last time. A row
-    that is already final is never overwritten. Returns the number of rows sent."""
+    length reached on that day; ``final`` = the days computed for the last time;
+    ``weeks`` = finished weeks' requirements keyed by their last day. A row that is
+    already final is never overwritten. Returns the number of rows sent."""
     streak_days = streak_days or {}
     final = set(final)
+    weeks = weeks or {}
     values = [
         {
             "id": new_id(),
             "user_id": ctx.user_id,
             "local_day": score.day,
             "score": score.value,
-            "components": to_json(score, final=score.day in final),
+            "components": to_json(score, final=score.day in final, week=weeks.get(score.day)),
             "weights": score.weights,
             "xp_earned": int(xp_by_day.get(score.day, 0)),
             "streak_days": int(streak_days.get(score.day, 0)),

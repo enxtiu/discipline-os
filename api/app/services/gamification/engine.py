@@ -11,7 +11,12 @@ two jobs, a job and a request — simply take turns; every write is idempotent):
    again after a move west keeps its frozen row). Score and XP of a day are always
    finalised together.
 2. **streaks** — recomputed from the history; rows upserted (longest never
-   decreases); overall-streak milestones paid once per run.
+   decreases); overall-streak milestones paid once per run. A finished day is judged
+   against the targets it was finalised with (its stored row), a finished week against
+   the requirement frozen with its last day's row the first time the engine saw the
+   week finished; the current targets apply to the open window only and the current
+   plan to the current week only — so a weigh-in or a plan edit never re-judges the
+   past (review 8, M1).
 3. **achievements** — metrics, unlocks, permanent XP (repeated while a level-up
    unlocks more).
 4. **quests** — expire past periods, rotate today/this week, refresh progress.
@@ -89,6 +94,12 @@ def _pending(
     return sorted(day for day in candidates if day not in final)
 
 
+def _closed_week(ctx: GameContext, day: date) -> date | None:
+    """The start of the finished week ``day`` is the last day of, if any."""
+    week = week_start_for(day, ctx.week_start)
+    return week if day == week + timedelta(days=6) and week < ctx.week_start_day else None
+
+
 async def sync_user(
     db,
     user_id: uuid.UUID,
@@ -118,8 +129,10 @@ async def sync_user(
     week_end = ctx.week_start_day + timedelta(days=6)
     plan = await day_metrics.plan_by_day(db, user_id, start, week_end)  # whole weeks, this one included
     history = await day_metrics.collect(db, user_id, start, today, ctx.tz, now=ctx.now, plan=plan)
-    plans = day_metrics.weeks_from_plan(plan, start, today, ctx.week_start)
     stored = await score.load_flags(db, user_id, start, today)
+    score.freeze(ctx, stored)  # final days: their own targets from now on
+    plans = day_metrics.weeks_from_plan(plan, start, today, ctx.week_start)  # the current plan …
+    plans.update({week: frozen for week, frozen in score.frozen_weeks(ctx, stored).items() if week in plans})
 
     # a final row is never recomputed — even when a move west makes its day "yesterday"
     final = {day for day, flag in stored.items() if flag.is_final(today)}
@@ -138,6 +151,13 @@ async def sync_user(
     states = streaks.compute(history, overall_days, plans, ctx, longest, track=set(computed))
     snapshot = GameSnapshot(ctx=ctx, history=history, computed=computed, flags=flags, plans=plans, streaks=states)
 
+    if persist and "days" in stages:
+        # finished weeks whose last day is final but carries no requirement (rows from
+        # before review 8, weeks re-bucketed by a new week start): frozen now, once
+        unfrozen = {
+            day: plans[week] for day in final if (week := _closed_week(ctx, day)) in plans and stored[day].week is None
+        }
+        await score.annotate_weeks(db, ctx, unfrozen)
     if persist and "days" in stages and writable:
         refs = await xp.load_refs(db, ctx, writable[0], today)
         awards = [
@@ -174,7 +194,8 @@ async def sync_user(
     if persist and "days" in stages and writable:  # last, so xp_earned includes this run's permanent awards
         xp_by_day = await xp.per_day(db, user_id, writable[0], today)
         rows = [computed[day] for day in writable]
-        await score.store(db, ctx, rows, xp_by_day, states[0].count_on, final=pending)
+        weeks = {day: plans[week] for day in writable if (week := _closed_week(ctx, day)) in plans}
+        await score.store(db, ctx, rows, xp_by_day, states[0].count_on, final=pending, weeks=weeks)
         snapshot.xp_today = xp_by_day.get(today, 0)
     else:
         snapshot.xp_today = (await xp.per_day(db, user_id, today, today)).get(today, 0)

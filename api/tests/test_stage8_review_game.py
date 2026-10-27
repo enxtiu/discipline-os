@@ -23,6 +23,7 @@ from decimal import Decimal
 
 import httpx
 import pytest
+import sqlalchemy as sa
 from sqlalchemy import select, update
 
 from app.core.errors import Conflict
@@ -36,6 +37,7 @@ from app.models import (
     UserAchievement,
     UserQuest,
     UserSettings,
+    WeeklyPlan,
     XpKind,
 )
 from app.services.day_metrics import week_start_for
@@ -45,11 +47,13 @@ from app.services.planner.containers import week_start_for as planner_week_start
 from tests.stage8_helpers import (
     NOON,
     TODAY,
+    YESTERDAY,
     _fresh_seed_cache,  # noqa: F401  (autouse fixture)
     configure,
     eat_day,
     meal,
     owner_id,
+    plan,
     run,
     water,
     workout,
@@ -57,6 +61,17 @@ from tests.stage8_helpers import (
 )
 
 pytestmark = pytest.mark.anyio
+
+
+async def _owner(db) -> uuid.UUID:
+    """The owner account without a device (engine-level tests)."""
+    from app.db import SessionLocal
+    from app.services.bootstrap import create_owner
+
+    async with SessionLocal() as session:
+        result = await create_owner(session, display_name="Owner")
+        await session.commit()
+        return result.user.id
 
 
 # --------------------------------------------------------------------------- #
@@ -493,3 +508,158 @@ async def test_store_never_overwrites_a_final_row(owner, db) -> None:
         await score.store(session, snapshot.ctx, [empty], {d: 0})
         await session.commit()
     assert await day_state(db, uid, d) == before
+
+
+# --------------------------------------------------------------------------- #
+# M1 — finished days/weeks keep the targets/plan of their time
+# --------------------------------------------------------------------------- #
+async def test_a_weigh_in_never_rejudges_finished_days(authed: httpx.AsyncClient, owner, db) -> None:
+    """Adapted from probe R1. Auto targets follow the weight: 80 kg → 2640 ml, 85 kg →
+    2800 ml. Eleven days of 2700 ml (with food: water counts with nutrition credit, H1).
+    After the weigh-in the nine finished days keep their verdict (the frozen score says
+    2700/2640); only the open window (yesterday, today) is judged with the new target —
+    yesterday falls short and a freeze token saves it, today counts once topped up."""
+    from app.services.settings_service import recompute_targets
+
+    uid = owner.id
+    row = await configure(db, uid, targets_manual=False, weight_kg=80, goal_water_ml_per_kg=33)
+    await recompute_targets(db, row)
+    await db.commit()
+    for back in range(0, 11):
+        await eat_day(db, uid, TODAY - timedelta(days=back))
+        await water(db, uid, TODAY - timedelta(days=back), 2700)
+    before = await run(db, uid, NOON)
+    assert before.ctx.targets.water_ml == 2640
+    assert streak_of(before, StreakKind.WATER).current == 11
+
+    response = await authed.put(f"/api/v1/health/weight/{TODAY}", json={"weight_kg": 85})
+    assert response.status_code == 200, response.text
+    after = await run(db, uid, NOON + timedelta(minutes=5))
+    assert after.ctx.targets.water_ml == 2800  # 85 kg × 33 ml, rounded by the target engine
+    state = streak_of(after, StreakKind.WATER)
+    assert (state.current, state.longest, state.freeze_used, state.today_met) == (9, 11, [YESTERDAY], False)
+    assert after.metrics is not None and after.metrics["days_water_target"] == 9  # the finished days
+    frozen = (
+        await db.scalars(
+            select(DailyScore).where(DailyScore.user_id == uid, DailyScore.local_day == TODAY - timedelta(days=5))
+        )
+    ).one()
+    water_part = next(item for item in frozen.components["items"] if item["key"] == "water")
+    assert (water_part["detail"]["amount"], water_part["detail"]["target"]) == (2700, 2640)
+
+    body = (await authed.get("/api/v1/stats/nutrition", params={"date": "2026-07-08"})).json()  # 6–12 July
+    assert body["target_water_ml"] == 2800 and body["adherence"]["water_days"] == 7  # as the streak counts them
+
+    await water(db, uid, TODAY, 100)  # today meets the new target
+    assert streak_of(await run(db, uid, NOON + timedelta(minutes=10)), StreakKind.WATER).current == 10
+
+
+async def test_a_plan_added_today_never_rejudges_finished_weeks(authed: httpx.AsyncClient, db) -> None:
+    """Adapted from probe R2: eight past weeks with one workout each and no plan (3
+    required) never become an 8-week streak because a plan is added today; the current
+    week follows the new plan; removing it again changes nothing either."""
+    uid = await owner_id(db)
+    await configure(db, uid)
+    this_monday = date(2026, 7, 13)  # TODAY is Wednesday 15 July
+    for weeks in range(1, 9):
+        await workout(db, uid, this_monday - timedelta(weeks=weeks))
+    before = streak_of(await run(db, uid, NOON), StreakKind.WORKOUT)
+    assert (before.current, before.longest) == (0, 0)
+    xp_before = sum(row.points for row in (await xp_rows(db, uid)).values())
+    last_day = (
+        await db.scalars(select(DailyScore).where(DailyScore.user_id == uid, DailyScore.local_day == date(2026, 7, 12)))
+    ).one()
+    assert last_day.components["week"] == {"start": "2026-07-06", "planned": 0, "has_plan": False, "required": 3}
+
+    await plan(db, uid, 0)  # today: "Monday — workout"
+    after = await run(db, uid, NOON + timedelta(minutes=5))
+    state = streak_of(after, StreakKind.WORKOUT)
+    assert (state.current, state.longest, state.period_required) == (0, 0, 1)  # the current week: the new plan
+    assert "streak_workout_8" not in await unlocked_codes(db, uid)
+    assert sum(row.points for row in (await xp_rows(db, uid)).values()) == xp_before
+    weeks = (await authed.get("/api/v1/stats/activity", params={"period": "month", "date": "2026-07-01"})).json()
+    by_week = {week["week_start"]: week for week in weeks["weeks"]}
+    assert (by_week["2026-07-06"]["planned"], by_week["2026-07-06"]["required"]) == (0, 3)  # as it was judged
+    current = (await authed.get("/api/v1/stats/activity", params={"date": "2026-07-15"})).json()["weeks"]
+    assert (current[0]["planned"], current[0]["required"]) == (1, 1)  # the current week: the current plan
+
+    await db.execute(sa.delete(WeeklyPlan).where(WeeklyPlan.user_id == uid))
+    await db.commit()
+    again = streak_of(await run(db, uid, NOON + timedelta(minutes=10)), StreakKind.WORKOUT)
+    assert (again.current, again.longest, again.period_required) == (0, 0, 3)
+
+
+async def test_a_week_is_frozen_the_first_time_it_is_seen_finished(db) -> None:
+    """The week 13–19 July ends on Sunday night; the first run on Monday stores its
+    requirement with Sunday's row (still in the open window) — a plan edited on Monday
+    applies to the new week only, and the row keeps the requirement when it turns final."""
+    uid = await _owner(db)
+    await configure(db, uid)
+    for day in (date(2026, 7, 13), date(2026, 7, 15), date(2026, 7, 17)):
+        await workout(db, uid, day)  # 3 workouts: enough without a plan
+    monday_night = datetime(2026, 7, 19, 17, 30, tzinfo=UTC)  # Monday 20 July 00:30 in Bangkok
+    first = await run(db, uid, monday_night)
+    assert streak_of(first, StreakKind.WORKOUT).current == 1
+    sunday = await day_state(db, uid, date(2026, 7, 19))
+    assert sunday[2]["final"] is False and sunday[2]["week"]["required"] == 3
+
+    for weekday in range(5):  # Monday: "five workouts a week" from now on
+        await plan(db, uid, weekday)
+    later = await run(db, uid, monday_night + timedelta(hours=10))
+    state = streak_of(later, StreakKind.WORKOUT)
+    assert (state.current, state.period_required) == (1, 5)  # 13–19 July still counts with its 3
+    tuesday = await run(db, uid, monday_night + timedelta(days=1))  # Sunday's row turns final
+    assert streak_of(tuesday, StreakKind.WORKOUT).current == 1
+    sunday = await day_state(db, uid, date(2026, 7, 19))
+    assert sunday[2]["final"] is True and sunday[2]["week"]["required"] == 3
+
+
+async def test_finished_weeks_from_before_the_fix_are_frozen_once(db) -> None:
+    """Final rows without a stored requirement (written before review 8) get the plan
+    in force at the first run that sees them — what they were judged with until then —
+    and keep it."""
+    uid = await _owner(db)
+    await configure(db, uid)
+    for weeks in range(1, 4):
+        await workout(db, uid, date(2026, 7, 13) - timedelta(weeks=weeks))
+    await run(db, uid, NOON)
+    await db.execute(
+        sa.update(DailyScore).where(DailyScore.user_id == uid).values(components=DailyScore.components.op("-")("week"))
+    )
+    await db.commit()
+    await run(db, uid, NOON + timedelta(minutes=5))  # annotates the three finished weeks
+    db.expire_all()
+    rows = (
+        await db.scalars(select(DailyScore).where(DailyScore.user_id == uid, DailyScore.components.has_key("week")))
+    ).all()
+    assert sorted(row.local_day for row in rows) == [date(2026, 6, 28), date(2026, 7, 5), date(2026, 7, 12)]
+    await plan(db, uid, 0)
+    state = streak_of(await run(db, uid, NOON + timedelta(minutes=10)), StreakKind.WORKOUT)
+    assert (state.current, state.longest) == (0, 0)
+
+
+async def test_a_quest_claim_judges_finished_days_like_the_engine(db) -> None:
+    """Sunday 19 July: water at 2600 ml on Monday–Friday (target 2500) completes «Норма
+    воды: 5 дней»; raising the target to 3000 ml afterwards does not un-complete it — on
+    read or on claim (both judge the finished days against their own target)."""
+    uid = await _owner(db)
+    await configure(db, uid)
+    week = date(2026, 7, 13)
+    for offset in range(5):
+        await eat_day(db, uid, week + timedelta(days=offset))
+        await water(db, uid, week + timedelta(days=offset), 2600)
+    sunday = datetime(2026, 7, 19, 5, 0, tzinfo=UTC)  # 12:00 in Bangkok
+    await run(db, uid, sunday)
+    row_id = await _quest_row(db, uid, "weekly_water_5", week, week + timedelta(days=6))
+    await configure(db, uid, target_water_ml=3000)
+    snapshot = await run(db, uid, sunday + timedelta(minutes=5))
+    view = next(view for view in snapshot.quests if view.quest.code == "weekly_water_5")
+    assert (view.progress, view.row.status) == (5, QuestStatus.COMPLETED)
+
+    from app.db import SessionLocal
+
+    async with SessionLocal() as session:
+        ctx = await build_context(session, uid, sunday + timedelta(minutes=10))
+        claimed, awarded = await quests.claim(session, ctx, row_id)
+        await session.commit()
+    assert (claimed.progress, awarded) == (5, 60)

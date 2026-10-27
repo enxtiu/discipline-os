@@ -15,6 +15,12 @@ workout  completed workouts ≥ planned that week (no plan → 3)             we
 Rest is part of a plan: the only training streak is weekly and plan-aware, and a
 week planned entirely as rest is neutral (it neither counts nor breaks).
 
+Targets of their time: a finished day is judged against the targets it was finalised
+with (its stored score row, ``GameContext.rules_for``) and a finished week against the
+requirement frozen when it ended (``score.frozen_weeks``); the current targets apply to
+the open window (yesterday, today) and the current plan to the current week only — a
+weigh-in or a plan edit never re-judges the past.
+
 Freeze tokens: +1 every week (on the user's week start), at most 2; a missed past
 day/week uses one automatically (``freeze_used_dates``) instead of breaking the
 streak — a saved day does not add to the count. Today (this week) counts as soon as

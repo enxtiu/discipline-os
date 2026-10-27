@@ -35,7 +35,7 @@ from app.core.tz import iter_days
 from app.models import Quest, QuestKind, QuestStatus, Task, TaskStatus, TimeEntry, UserQuest, XpKind
 from app.services import day_metrics
 from app.services.day_metrics import DayMetrics
-from app.services.gamification import xp
+from app.services.gamification import score, xp
 from app.services.gamification.context import GameContext
 
 DAILY_COUNT = 3
@@ -367,6 +367,7 @@ async def claim(db: AsyncSession, ctx: GameContext, user_quest_id: uuid.UUID) ->
         )
     last = min(row.period_end, ctx.today)
     history = await day_metrics.collect(db, ctx.user_id, row.period_start, last, ctx.tz, now=ctx.now)
+    await score.load_frozen(db, ctx, row.period_start, last)  # finished days: their own targets, as on read
     progress = progress_of(quest, row.period_start, row.period_end, history, ctx)
     if counted_progress(quest, row.period_start, row.period_end, history, ctx) < target:
         raise Conflict(
