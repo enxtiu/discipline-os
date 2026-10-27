@@ -98,11 +98,11 @@ export function ConflictView({ fields, mine, current, busy, onKeepTheirs, onKeep
           </div>
         ))}
       </dl>
-      <div className="grid grid-cols-2 gap-2">
-        <Button variant="secondary" className="min-h-tap" disabled={busy} onClick={onKeepTheirs} data-testid="conflict-keep-theirs">
+      <div className="grid gap-2">
+        <Button variant="secondary" block className="min-h-tap" disabled={busy} onClick={onKeepTheirs} data-testid="conflict-keep-theirs">
           {t('sync.keep_theirs')}
         </Button>
-        <Button className="min-h-tap" loading={busy} onClick={onKeepMine} data-testid="conflict-keep-mine">
+        <Button block className="min-h-tap" loading={busy} onClick={onKeepMine} data-testid="conflict-keep-mine">
           {t('sync.keep_mine')}
         </Button>
       </div>

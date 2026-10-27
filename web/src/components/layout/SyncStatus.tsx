@@ -38,7 +38,7 @@ export function SyncStatus() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="-my-1.5 flex min-h-tap items-center"
+        className="-my-1.5 flex min-h-tap min-w-tap items-center justify-center"
         aria-label={label}
         aria-haspopup="dialog"
         title={label}

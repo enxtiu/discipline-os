@@ -376,15 +376,16 @@ type Outcome =
   | { kind: 'sent'; data: unknown }
   | { kind: 'failed'; error: QueueError }
   | { kind: 'conflict'; error: QueueError; conflict: QueueConflict }
-  | { kind: 'transient'; message: string; retryAfterMs: number | null }
+  | { kind: 'transient'; message: string; retryAfterMs: number | null; cause: 'network' | 'server' }
   | { kind: 'auth' }
 
 /** What an error means for a queued write (exported for the tests of the rules). */
 export function classify(error: unknown, write?: Pick<QueuedRequest, 'method'>): Outcome {
   if (!(error instanceof ApiError)) {
-    return { kind: 'transient', message: error instanceof Error ? error.message : 'unknown', retryAfterMs: null }
+    const message = error instanceof Error ? error.message : 'unknown'
+    return { kind: 'transient', message, retryAfterMs: null, cause: 'network' }
   }
-  if (error.isOffline) return { kind: 'transient', message: error.message, retryAfterMs: null }
+  if (error.isOffline) return { kind: 'transient', message: error.message, retryAfterMs: null, cause: 'network' }
   if (error.status === 401) return { kind: 'auth' }
   const details = error.details as Record<string, unknown> | null | undefined
   if (
@@ -393,7 +394,7 @@ export function classify(error: unknown, write?: Pick<QueuedRequest, 'method'>):
     error.status === 429 ||
     (error.status === 409 && details?.retryable === true)
   ) {
-    return { kind: 'transient', message: error.message, retryAfterMs: error.retryAfterMs }
+    return { kind: 'transient', message: error.message, retryAfterMs: error.retryAfterMs, cause: 'server' }
   }
   const failure: QueueError = { status: error.status, code: error.code, message: error.message, details: details ?? undefined }
   if (error.status === 409 && error.code === 'edit_conflict') {
@@ -409,7 +410,9 @@ async function send(entry: QueuedRequest): Promise<Outcome> {
     const data = await api.request(entry.path, { method: entry.method, body: entry.body, clientUuid: entry.clientUuid })
     return { kind: 'sent', data }
   } catch (error) {
-    if ((error as Error)?.name === 'AbortError') return { kind: 'transient', message: 'aborted', retryAfterMs: null }
+    if ((error as Error)?.name === 'AbortError') {
+      return { kind: 'transient', message: 'aborted', retryAfterMs: null, cause: 'network' }
+    }
     return classify(error, entry)
   }
 }
@@ -421,6 +424,10 @@ export const MIN_RETRY_MS = 2_000
 export const MAX_RETRY_MS = 5 * 60_000
 let failures = 0
 let retryTimer: number | undefined
+/** Why the last replay stopped: the network (any answered request proves it is back) or the server. */
+let lastFailure: 'network' | 'server' | null = null
+/** The server asked us to wait until then (`Retry-After`): automatic triggers respect it. */
+let notBefore = 0
 
 /** 2 s, 4 s, 8 s … ≤ 5 min, ±20 % jitter; a `Retry-After` from the server wins. */
 export function backoffDelay(attempt: number, retryAfterMs: number | null = null, random = Math.random()): number {
@@ -434,8 +441,10 @@ function clearRetry(): void {
   retryTimer = undefined
 }
 
-function scheduleRetry(retryAfterMs: number | null): void {
+function scheduleRetry(retryAfterMs: number | null, cause: 'network' | 'server'): void {
   failures += 1
+  lastFailure = cause
+  notBefore = retryAfterMs != null ? Date.now() + retryAfterMs : 0
   clearRetry()
   if (!navigator.onLine) {
     publish({ nextRetryAt: null }, false) // the `online` event will replay
@@ -524,6 +533,8 @@ async function runFlush(): Promise<{ sent: number; remaining: number }> {
         await offlineDb.queue.delete(entry.id)
         sent += 1
         failures = 0
+        lastFailure = null
+        notBefore = 0
         for (const listener of sentListeners) listener(entry, outcome.data)
         await refresh()
         continue
@@ -553,7 +564,7 @@ async function runFlush(): Promise<{ sent: number; remaining: number }> {
         refusedToken = getToken() // resumes once the device is paired again (a new token)
         publish({ authBlocked: true }, false)
       } else {
-        scheduleRetry(outcome.retryAfterMs)
+        scheduleRetry(outcome.retryAfterMs, outcome.cause)
       }
       break
     }
@@ -564,10 +575,22 @@ async function runFlush(): Promise<{ sent: number; remaining: number }> {
   return { sent, remaining: state.pending }
 }
 
-/** Replay now: the scheduled retry (if any) is replaced. */
+/** Replay now: the scheduled retry (if any) is replaced (the user asked, or a decision was made). */
 export function flushNow(): Promise<{ sent: number; remaining: number }> {
   clearRetry()
   return flushQueue()
+}
+
+/**
+ * An automatic trigger (back online, page visible, a request answered): replay now unless
+ * the server asked to wait (`Retry-After`) — then the scheduled retry stands. `proof` is a
+ * request that was answered: it only cuts a wait that was about the network.
+ */
+function kick(proof = false): void {
+  if (state.pending === 0 || flushing) return
+  if (Date.now() < notBefore) return
+  if (proof && retryTimer !== undefined && lastFailure !== 'network') return
+  void flushNow()
 }
 
 // --------------------------------------------------------------------------- //
@@ -623,7 +646,7 @@ export async function mutate<T>(
     if (outcome.kind === 'transient' || outcome.kind === 'auth') {
       // the write is kept: replayed when the server is reachable (or the device paired) again
       await enqueue(input)
-      if (outcome.kind === 'transient') scheduleRetry(outcome.retryAfterMs)
+      if (outcome.kind === 'transient') scheduleRetry(outcome.retryAfterMs, outcome.cause)
       else {
         refusedToken = getToken()
         publish({ authBlocked: true }, false)
@@ -732,6 +755,7 @@ export async function sendAllNow(): Promise<void> {
     .filter((entry) => statusOf(entry) === 'failed')
     .modify({ status: 'pending', error: null, sending: null })
   failures = 0
+  notBefore = 0
   await refresh()
   await flushNow()
 }
@@ -743,12 +767,9 @@ let lastKick = 0
 
 /** Called once at startup: replay on reconnect, on return to the page and after any answered request. */
 export function installOfflineSync(): () => void {
-  const replay = () => {
-    if (state.pending > 0) void flushNow()
-  }
   const onOnline = () => {
     publish({ online: true }, false)
-    void flushNow()
+    kick()
   }
   const onOffline = () => {
     clearRetry()
@@ -756,13 +777,13 @@ export function installOfflineSync(): () => void {
     void refresh()
   }
   const onVisible = () => {
-    if (document.visibilityState === 'visible' && navigator.onLine) replay()
+    if (document.visibilityState === 'visible' && navigator.onLine) kick()
   }
   const stopSuccess = onApiSuccess(() => {
-    // the server answers again: a write waiting for its retry goes now (not from inside a replay)
+    // the server answers again: a write waiting for the network goes now (not from inside a replay)
     if (flushing || state.pending === 0 || Date.now() - lastKick < 1_000) return
     lastKick = Date.now()
-    window.setTimeout(() => void flushNow(), 0)
+    window.setTimeout(() => kick(true), 0)
   })
   window.addEventListener('online', onOnline)
   window.addEventListener('offline', onOffline)
