@@ -12,7 +12,7 @@
  */
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { motion, MotionConfig, useReducedMotion } from 'framer-motion'
+import { motion, MotionConfig } from 'framer-motion'
 
 import { Button, Sheet } from '@/components/ui'
 import { IconChevronRight } from '@/components/ui/icons'
@@ -21,6 +21,26 @@ import { IconTrophy } from './icons'
 import { AchievementBadge, RarityPill } from './parts'
 import { useMarkSeen } from './queries'
 import type { Achievement } from './types'
+
+const REDUCED_MOTION = '(prefers-reduced-motion: reduce)'
+
+/**
+ * The live reduced-motion preference. framer-motion's `useReducedMotion` keeps
+ * the value from the first render, and this sheet is mounted long before it
+ * opens — a setting changed in between must still count.
+ */
+function usePrefersReducedMotion(): boolean {
+  const [reduced, setReduced] = useState(() => typeof window !== 'undefined' && !!window.matchMedia?.(REDUCED_MOTION).matches)
+  useEffect(() => {
+    const media = window.matchMedia?.(REDUCED_MOTION)
+    if (!media) return
+    const update = () => setReduced(media.matches)
+    update()
+    media.addEventListener?.('change', update)
+    return () => media.removeEventListener?.('change', update)
+  }, [])
+  return reduced
+}
 
 /** Ids offered automatically in this app session (a reload offers the unseen ones again). */
 const offered = new Set<string>()
@@ -64,13 +84,13 @@ function hero(items: Achievement[]): Achievement {
 
 export function CelebrationSheet({ items, onClose }: { items: Achievement[] | null; onClose: () => void }) {
   const { t } = useTranslation()
-  const reduced = !!useReducedMotion()
+  const reduced = usePrefersReducedMotion()
   const lead = items?.length ? hero(items) : null
   const rest = lead ? (items ?? []).filter((item) => item.id !== lead.id) : []
   const title = (items?.length ?? 0) > 1 ? t('game.celebrate.title_many', { count: items?.length }) : t('game.celebrate.title')
 
   return (
-    <MotionConfig reducedMotion="user">
+    <MotionConfig reducedMotion={reduced ? 'always' : 'never'}>
       <Sheet
         open={!!lead}
         onClose={onClose}

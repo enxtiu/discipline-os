@@ -324,8 +324,17 @@ export async function run(ctx) {
     } else {
       const notDone = snapshot.quests.find((item) => item.status === 'active')
       if (notDone) {
-        const early = await apiFetch(`/v1/gamification/quests/${notDone.id}/claim`, { method: 'POST' })
-        check(early.status === 409 && early.body?.error?.code === 'quest_not_completed', 'an unfinished quest cannot be claimed (409 quest_not_completed)', notDone.code)
+        // from Node, not the page: an expected 409 must not show up as a browser console error
+        const token = await page.evaluate(() => window.localStorage.getItem('dsos.device_token'))
+        const early = await page.request.post(`${WEB_URL}/api/v1/gamification/quests/${notDone.id}/claim`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        const earlyBody = await early.json().catch(() => null)
+        check(
+          early.status() === 409 && earlyBody?.error?.code === 'quest_not_completed',
+          'an unfinished quest cannot be claimed (409 quest_not_completed)',
+          notDone.code,
+        )
       }
       await openToday()
       const row = card.locator(`[data-testid="quest-row"][data-quest="${quest.code}"]`)
