@@ -5,7 +5,8 @@
  * the user's timezone: calorie ring vs target, macro rings, water, the meal
  * list grouped by type, and the "burned is not budget" card (workouts since
  * stage 4, from `GET /v1/training/today`), steps, weight and sleep since
- * stage 5 (`GET /v1/health/today`), gamification in stage 8.
+ * stage 5 (`GET /v1/health/today`), the planner card and the running timer since
+ * stage 6, gamification in stage 8.
  */
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -29,7 +30,6 @@ import type { MealLog, MealType, Recipe } from '@/api/types'
 import { useAuth } from '@/features/auth/AuthProvider'
 import { number, time, today } from '@/lib/format'
 import { errorMessage } from '@/lib/errors'
-import { StageCard } from '@/features/shared/StageCard'
 import { useAddWater, useDay, useDeleteMeal, useRecipes } from '@/features/food/useNutrition'
 import { LogSheet } from '@/features/food/LogSheet'
 import { PhotoTrigger, useAiCapture } from '@/features/ai/AiCapture'
@@ -39,6 +39,8 @@ import { useTrainingToday } from '@/features/train/useTraining'
 import { HealthTodayCard } from '@/features/health/HealthTodayCard'
 import { SleepSheet, StepsSheet, WeightSheet } from '@/features/health/sheets'
 import { useHealthQueueRefresh, useHealthToday } from '@/features/health/useHealth'
+import { PlanTodayCard } from '@/features/plan/PlanTodayCard'
+import { TimerBar } from '@/features/plan/timer/TimerBar'
 
 const MEAL_ORDER: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack', 'other']
 
@@ -104,6 +106,8 @@ export function TodayPage() {
 
   return (
     <div className="space-y-5">
+      <TimerBar variant="today" />
+
       <section className="flex flex-col items-center gap-4">
         {dayQuery.isLoading ? (
           <Skeleton className="h-[196px] w-[196px] rounded-full" />
@@ -329,7 +333,7 @@ export function TodayPage() {
 
       <div className="grid gap-3 sm:grid-cols-2">
         <TrainingTodayCard data={training.data} loading={training.isLoading} />
-        <StageCard stage={6} title={t('plan.title')} description={t('plan.subtitle_planned')} to="/plan" icon={<IconPlus size={18} />} />
+        <PlanTodayCard />
       </div>
 
       <Card className="space-y-3">

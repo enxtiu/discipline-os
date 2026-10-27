@@ -866,6 +866,28 @@ try {
   check(cleaned.every((status) => status === 200) && restored === profileWeightBefore, 'stage-5 test data removed, profile weight restored', `${restored} kg`)
 
   // 8. Reload keeps the session (token persisted).
+  // Stage 6+: feature checks live in scripts/ui-checks/<module>.mjs, one module
+  // per workstream, each exporting `run(ctx)` with the helpers below.
+  for (const module of ['stage6-plan', 'stage6-calendar']) {
+    const { run } = await import(`./ui-checks/${module}.mjs`)
+    await run({
+      page,
+      context,
+      WEB_URL,
+      SHOTS,
+      check,
+      ok,
+      bad,
+      shot,
+      text,
+      hasText,
+      setOffline: async (value) => {
+        offlineMode = value
+        await context.setOffline(value)
+      },
+    })
+  }
+
   console.log('\n8. session persistence')
   await page.goto(`${WEB_URL}/today`, { waitUntil: 'networkidle' })
   await page.reload({ waitUntil: 'networkidle' })

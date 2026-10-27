@@ -436,8 +436,30 @@
     "tags": "Tags",
     "search": "Search",
     "quick_add_placeholder": "Tomorrow 18:00 gym #health p2",
-    "subtitle_planned": "PARA: projects, areas, tasks, calendar, time tracker and journal."
+    "subtitle_planned": "PARA: projects, areas, tasks, calendar, time tracker and journal.",
+    "add_task": "New task",
+    "views": "Planner views",
+    "sections": "Planner sections",
+    "time": "Time",
+    "journal": "Journal",
+    "journal_review": "Daily review",
+    "archive": "Archive",
+    "day": {
+      "today": "Today",
+      "tomorrow": "Tomorrow",
+      "yesterday": "Yesterday"
+    },
+    "recurrence": {
+      "daily": "Every day",
+      "weekdays": "Weekdays",
+      "weekly": "Every week",
+      "biweekly": "Every two weeks",
+      "monthly": "Every month",
+      "yearly": "Every year",
+      "custom": "Custom repeat"
+    }
   },
+  "task": {},
   "stats": {
     "title": "Stats",
     "day": "Day",
@@ -776,5 +798,8 @@
     "manual": "If the Shortcut fails, steps can be typed in on Today — nothing depends on the Shortcut.",
     "copy_failed": "Could not copy — select the text by hand",
     "copy_label": "Copy: {{label}}"
-  }
+  },
+  "calendar": {},
+  "timer": {},
+  "journal": {}
 }
