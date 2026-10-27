@@ -61,7 +61,7 @@ export function PlanLayout() {
 
       <TimerBar />
 
-      <nav className="segmented" aria-label={t('plan.views')}>
+      <nav className="segmented" aria-label={t('plan.views')} data-testid="plan-views">
         {primary.map((item) => (
           <NavLink
             key={item.to}
@@ -69,7 +69,7 @@ export function PlanLayout() {
             end={item.end}
             className={({ isActive }) =>
               clsx(
-                'relative flex min-h-[2.5rem] flex-1 items-center justify-center gap-1 rounded-xl px-1 text-[13px] font-medium transition-colors',
+                'relative flex min-h-tap min-w-0 flex-1 items-center justify-center gap-1 rounded-xl px-1 text-[13px] font-medium transition-colors',
                 isActive
                   ? 'bg-[rgb(var(--bg-elevated))] text-[rgb(var(--text))] shadow-card'
                   : 'text-[rgb(var(--text-muted))]',
