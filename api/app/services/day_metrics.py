@@ -55,6 +55,7 @@ from app.models import (
     WorkoutLog,
     WorkoutStatus,
 )
+from app.services.planner.containers import week_start_for as planner_week_start_for
 
 __all__ = [
     "DEFAULT_WEEKLY_WORKOUTS",
@@ -190,10 +191,10 @@ def _local_date(column, tz: str | None):
 
 def week_start_for(day: date, week_start: int) -> date:
     """First day of the week containing ``day``; ``week_start`` follows the settings
-    (1 = Monday, 0 = Sunday — the same convention as stage 4)."""
-    if week_start == 0:
-        return day - timedelta(days=(day.weekday() + 1) % 7)
-    return day - timedelta(days=day.weekday())
+    (0 = Sunday, 1 = Monday … 6 = Saturday). One helper for the whole server: the
+    planner's, which ``/stats`` uses too — so the weekly streak, the freeze-token refills,
+    the weekly quests and the achievements run on exactly the weeks the stats show."""
+    return planner_week_start_for(day, week_start)
 
 
 def journal_has_content():
