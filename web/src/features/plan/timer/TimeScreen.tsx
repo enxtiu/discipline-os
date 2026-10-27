@@ -6,8 +6,7 @@
  * client never computes a week. Summary: total, by day, by area against the
  * area's target, by project. Below: the running entry pinned (in the period
  * it started in), then the entries of the period grouped by their local day,
- * tap to edit; «Добавить
- * вручную» opens the manual entry sheet.
+ * tap to edit; «Добавить вручную» opens the manual entry sheet.
  */
 import { useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
