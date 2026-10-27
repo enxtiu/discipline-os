@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date, timedelta
+from datetime import date, time, timedelta
 from typing import Any
 
 from app.api.deps import Principal
@@ -16,6 +16,8 @@ from app.models import (
     FoodRecent,
     MealLog,
     MealType,
+    NotificationLog,
+    PushSubscription,
     Recipe,
     User,
     UserSettings,
@@ -45,6 +47,13 @@ from app.schemas.health import (
     WeightOut,
     WeightSeriesOut,
 )
+from app.schemas.notifications import (
+    NotificationOut,
+    NotificationPrefsOut,
+    PushSubscriptionOut,
+    QuietHoursOut,
+    endpoint_host,
+)
 from app.schemas.training import (
     BestsOut,
     BurnedDayOut,
@@ -67,6 +76,7 @@ from app.services import health as health_service
 from app.services import training as training_service
 from app.services.ai_meal import AiBudget, MealAnalysis, ResolvedItem, confidence_level
 from app.services.food_search import FoodHit
+from app.services.notifications import Prefs
 
 
 def device_out(device: Device, *, current_id: uuid.UUID | None = None) -> DeviceOut:
@@ -581,4 +591,77 @@ def health_today_out(
         weight_change_7d_kg=change_7d_kg,
         sleep=sleep_out(sleep) if sleep is not None else None,
         last_sync_at=last_sync_at,
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Notifications (stage 7)
+# --------------------------------------------------------------------------- #
+def _hhmm(value: time) -> str:
+    return value.strftime("%H:%M")
+
+
+def push_subscription_out(
+    sub: PushSubscription, device: Device | None, *, current_device_id: uuid.UUID | None
+) -> PushSubscriptionOut:
+    """Never the full endpoint or the keys — the host is enough to recognise the push service."""
+    return PushSubscriptionOut(
+        id=sub.id,
+        device_id=sub.device_id,
+        device_name=device.name if device is not None else None,
+        device_active=bool(device is not None and device.is_active),
+        is_current_device=bool(current_device_id and sub.device_id == current_device_id),
+        endpoint_host=endpoint_host(sub.endpoint),
+        is_active=sub.is_active,
+        failure_count=sub.failure_count,
+        last_success_at=sub.last_success_at,
+        last_failure_at=sub.last_failure_at,
+        last_error=sub.last_error,
+        expiration_time=sub.expiration_time,
+        created_at=sub.created_at,
+        updated_at=sub.updated_at,
+    )
+
+
+def notification_prefs_out(
+    prefs: Prefs, row: UserSettings, *, push_enabled: bool, active_subscriptions: int
+) -> NotificationPrefsOut:
+    return NotificationPrefsOut(
+        task_reminders=prefs.task_reminders,
+        meal_logging=prefs.meal_logging,
+        water=prefs.water,
+        workout=prefs.workout,
+        evening_review=prefs.evening_review,
+        streak_at_risk=prefs.streak_at_risk,
+        meal_times=list(prefs.meal_times),
+        water_times=list(prefs.water_times),
+        workout_time=prefs.workout_time,
+        evening_review_time=prefs.evening_review_time,
+        quiet_hours=QuietHoursOut(
+            enabled=row.quiet_hours_enabled,
+            start=_hhmm(row.quiet_hours_start),
+            end=_hhmm(row.quiet_hours_end),
+        ),
+        timezone=row.timezone,
+        push_enabled=push_enabled,
+        active_subscriptions=active_subscriptions,
+    )
+
+
+def notification_out(row: NotificationLog) -> NotificationOut:
+    payload = row.payload if isinstance(row.payload, dict) else {}
+    url = payload.get("url")
+    return NotificationOut(
+        id=row.id,
+        kind=row.kind,
+        title=row.title,
+        body=row.body,
+        url=url if isinstance(url, str) else None,
+        status=row.status,
+        sent_at=row.sent_at,
+        scheduled_for=row.scheduled_for,
+        quiet_hours_suppressed=row.quiet_hours_suppressed,
+        error=row.error,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
     )

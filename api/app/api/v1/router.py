@@ -10,6 +10,8 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from app.api.v1 import ai, auth, devices, foods, health, ingest, meta, nutrition, recipes, settings, tokens, training
+from app.api.v1 import notifications as notifications_api
+from app.api.v1 import push as push_api
 
 api_router = APIRouter()
 
@@ -33,5 +35,9 @@ api_router.include_router(training.router)
 # --- stage 5: health ingest -------------------------------------------------------
 api_router.include_router(health.router)
 api_router.include_router(ingest.router)
+
+# --- stage 7: notifications ------------------------------------------------------
+api_router.include_router(push_api.router)
+api_router.include_router(notifications_api.router)
 
 __all__ = ["api_router"]
