@@ -9,7 +9,7 @@
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import clsx from 'clsx'
-import { motion } from 'framer-motion'
+import { m } from 'framer-motion'
 
 import {
   IconFood,
@@ -43,7 +43,7 @@ export function BottomTabBar({ onQuickAdd }: { onQuickAdd: () => void }) {
         ))}
 
         <div className="relative flex w-20 items-center justify-center">
-          <motion.button
+          <m.button
             type="button"
             whileTap={{ scale: 0.92 }}
             onClick={onQuickAdd}
@@ -51,7 +51,7 @@ export function BottomTabBar({ onQuickAdd }: { onQuickAdd: () => void }) {
             className="absolute -top-6 z-10 flex h-14 w-14 items-center justify-center rounded-full bg-[rgb(var(--accent))] text-ink-950 shadow-glow"
           >
             <IconPlus size={26} />
-          </motion.button>
+          </m.button>
           <button
             type="button"
             onClick={() => navigate('/stats')}

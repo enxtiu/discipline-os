@@ -4,7 +4,7 @@
  */
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence, m } from 'framer-motion'
 
 import { IconCloudCheck, IconRefresh, IconWifiOff } from '@/components/ui/icons'
 import { countPending, flushQueue, onQueueChange } from '@/lib/offlineQueue'
@@ -67,7 +67,7 @@ export function SyncStatus() {
       title={label}
     >
       <AnimatePresence mode="wait" initial={false}>
-        <motion.span
+        <m.span
           key={offline ? 'off' : hasPending ? 'pending' : 'ok'}
           initial={{ opacity: 0, scale: 0.8 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -83,7 +83,7 @@ export function SyncStatus() {
             <IconCloudCheck size={15} />
           )}
           {hasPending && <span className="tnum">{pending}</span>}
-        </motion.span>
+        </m.span>
       </AnimatePresence>
     </button>
   )

@@ -13,7 +13,7 @@
 import { useEffect, useState } from 'react'
 import clsx from 'clsx'
 import { useTranslation } from 'react-i18next'
-import { motion, MotionConfig } from 'framer-motion'
+import { m, MotionConfig } from 'framer-motion'
 
 import { Button, Sheet } from '@/components/ui'
 import { IconChevronRight } from '@/components/ui/icons'
@@ -127,14 +127,14 @@ export function CelebrationSheet({ items, onClose }: { items: Achievement[] | nu
               <div className="relative flex h-36 w-36 items-center justify-center">
                 <span className={clsx('absolute inset-0 rounded-full', HALO[lead.rarity])} aria-hidden="true" />
                 {!reduced && (
-                  <motion.span
+                  <m.span
                     className={clsx('absolute inset-3 rounded-full border-2', RING[lead.rarity])}
                     initial={{ scale: 0.8, opacity: 0.8 }}
                     animate={{ scale: 1.35, opacity: 0 }}
                     transition={{ duration: 1.4, repeat: 2, ease: 'easeOut', delay: 0.3 }}
                   />
                 )}
-                <motion.div
+                <m.div
                   initial={reduced ? false : { scale: 0.4, rotate: -14, opacity: 0 }}
                   animate={{ scale: 1, rotate: 0, opacity: 1 }}
                   transition={{ type: 'spring', stiffness: 260, damping: 13, delay: 0.12 }}
@@ -143,7 +143,7 @@ export function CelebrationSheet({ items, onClose }: { items: Achievement[] | nu
                   <span className="block rounded-full bg-[rgb(var(--bg-elevated))]">
                     <AchievementBadge item={lead} size={96} glow />
                   </span>
-                </motion.div>
+                </m.div>
               </div>
               <RarityPill rarity={lead.rarity} />
               <h3 className="text-xl font-semibold leading-tight">{achievementName(lead)}</h3>

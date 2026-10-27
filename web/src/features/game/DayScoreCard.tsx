@@ -8,7 +8,7 @@
  * refetches after any write in the app (`useGameAutoRefresh`). Light on
  * purpose — it lives in the Today chunk: SVG rings, no charts.
  */
-import { useEffect, useRef, useState, type RefObject } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState, type RefObject } from 'react'
 import clsx from 'clsx'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
@@ -22,9 +22,12 @@ import { IconFlameLit, IconSnowflake } from './icons'
 import { levelTitle, percent01, RING_TONES, streakLength } from './format'
 import { ProvisionalPill } from './parts'
 import { QuestList, useQuestClaimer } from './QuestList'
-import { ScoreSheet } from './ScoreSheet'
 import { useGameAutoRefresh, useGameToday } from './queries'
 import type { Ring, Streak, XpToday } from './types'
+import { useOnceTrue } from '@/lib/lazy'
+
+// stage 9: the score breakdown loads when it is first opened
+const ScoreSheet = lazy(() => import('./ScoreSheet').then((module) => ({ default: module.ScoreSheet })))
 
 export function DayScoreCard() {
   const { t } = useTranslation()
@@ -33,6 +36,7 @@ export function DayScoreCard() {
   const data = query.data
   const { claim, claimedIds, pendingId } = useQuestClaimer()
   const [sheetOpen, setSheetOpen] = useState(false)
+  const sheetUsed = useOnceTrue(sheetOpen)
   // new achievements are celebrated once the score itself has been on screen for a moment —
   // never over the meals and quick actions at the top of Today (the pill opens them any time)
   const scoreRow = useRef<HTMLDivElement>(null)
@@ -130,7 +134,11 @@ export function DayScoreCard() {
         </section>
       </Card>
 
-      <ScoreSheet score={score} open={sheetOpen} onClose={() => setSheetOpen(false)} />
+      {sheetUsed && (
+        <Suspense fallback={null}>
+          <ScoreSheet score={score} open={sheetOpen} onClose={() => setSheetOpen(false)} />
+        </Suspense>
+      )}
       <CelebrationSheet items={celebration.showing} onClose={celebration.close} />
     </>
   )

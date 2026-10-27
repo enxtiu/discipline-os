@@ -15,17 +15,31 @@ import { useTranslation } from 'react-i18next'
 import { AppShell } from '@/components/layout/AppShell'
 import { Spinner } from '@/components/ui'
 import { AuthProvider, useAuth } from '@/features/auth/AuthProvider'
-import { PairingScreen } from '@/features/auth/PairingScreen'
-import { OnboardingWizard } from '@/features/auth/OnboardingWizard'
 import { TodayPage } from '@/features/today/TodayPage'
-import { SettingsPage } from '@/features/settings/SettingsPage'
-import { ProfileSection } from '@/features/settings/ProfileSection'
-import { AppearanceSection } from '@/features/settings/AppearanceSection'
-import { NotificationsSection } from '@/features/settings/NotificationsSection'
-import { DevicesSection } from '@/features/settings/DevicesSection'
-import { TokensSection } from '@/features/settings/TokensSection'
-import { ShortcutSection } from '@/features/settings/ShortcutSection'
-import { DataSection } from '@/features/settings/DataSection'
+// stage 9: what a paired phone does not need for its first screen loads on demand —
+// pairing, the onboarding wizard and every settings screen are chunks of their own
+const PairingScreen = lazy(() => import('@/features/auth/PairingScreen').then((module) => ({ default: module.PairingScreen })))
+const OnboardingWizard = lazy(() =>
+  import('@/features/auth/OnboardingWizard').then((module) => ({ default: module.OnboardingWizard })),
+)
+const SettingsPage = lazy(() => import('@/features/settings/SettingsPage').then((module) => ({ default: module.SettingsPage })))
+const ProfileSection = lazy(() =>
+  import('@/features/settings/ProfileSection').then((module) => ({ default: module.ProfileSection })),
+)
+const AppearanceSection = lazy(() =>
+  import('@/features/settings/AppearanceSection').then((module) => ({ default: module.AppearanceSection })),
+)
+const NotificationsSection = lazy(() =>
+  import('@/features/settings/NotificationsSection').then((module) => ({ default: module.NotificationsSection })),
+)
+const DevicesSection = lazy(() =>
+  import('@/features/settings/DevicesSection').then((module) => ({ default: module.DevicesSection })),
+)
+const TokensSection = lazy(() => import('@/features/settings/TokensSection').then((module) => ({ default: module.TokensSection })))
+const ShortcutSection = lazy(() =>
+  import('@/features/settings/ShortcutSection').then((module) => ({ default: module.ShortcutSection })),
+)
+const DataSection = lazy(() => import('@/features/settings/DataSection').then((module) => ({ default: module.DataSection })))
 // stage 4: the training screens load on first visit (Today stays light)
 const TrainPage = lazy(() => import('@/features/train/TrainPage').then((m) => ({ default: m.TrainPage })))
 const WorkoutPage = lazy(() => import('@/features/train/WorkoutPage').then((m) => ({ default: m.WorkoutPage })))
@@ -34,7 +48,8 @@ const HealthPage = lazy(() => import('@/features/health/HealthPage').then((m) =>
 const PlanRoutes = lazy(() => import('@/features/plan/PlanRoutes'))
 // stage 8: the Stats tab (dashboards, achievements) is one lazy chunk with nested routes
 const StatsRoutes = lazy(() => import('@/features/stats/StatsRoutes'))
-import { FoodPage } from '@/features/food/FoodPage'
+// stage 9: the Food tab (and its log, recipe and custom-food sheets) is a chunk of its own
+const FoodPage = lazy(() => import('@/features/food/FoodPage').then((module) => ({ default: module.FoodPage })))
 import { SettingsHeader } from '@/features/settings/SettingsHeader'
 
 export default function App() {
@@ -49,14 +64,20 @@ function Shell() {
   const { status } = useAuth()
 
   if (status === 'loading') return <BootSplash />
-  if (status === 'unauthenticated') return <PairingScreen />
+  if (status === 'unauthenticated') {
+    return (
+      <Suspense fallback={<BootSplash />}>
+        <PairingScreen />
+      </Suspense>
+    )
+  }
 
   return (
     <Routes>
       <Route element={<AuthenticatedLayout />}>
         <Route path="/" element={<Navigate to="/today" replace />} />
         <Route path="/today" element={<TodayPage />} />
-        <Route path="/food" element={<FoodPage />} />
+        <Route path="/food" element={<Lazy><FoodPage /></Lazy>} />
         <Route path="/train" element={<Lazy><TrainPage /></Lazy>} />
         <Route path="/train/workout/:id" element={<Lazy><WorkoutPage /></Lazy>} />
         <Route path="/health" element={<Lazy><HealthPage /></Lazy>} />
@@ -95,7 +116,11 @@ function AuthenticatedLayout() {
     !!session && (!session.settings.onboarding_completed || forceOnboarded)
 
   if (needsOnboarding) {
-    return <OnboardingWizard onDone={() => setForceOnboarded(false)} />
+    return (
+      <Suspense fallback={<BootSplash />}>
+        <OnboardingWizard onDone={() => setForceOnboarded(false)} />
+      </Suspense>
+    )
   }
 
   return <AppShell />
@@ -111,7 +136,9 @@ function SettingsLayout() {
   return (
     <>
       {location.pathname !== '/settings' && <SettingsHeader title={t('settings.title')} />}
-      <Outlet />
+      <Lazy>
+        <Outlet />
+      </Lazy>
     </>
   )
 }

@@ -1,13 +1,43 @@
-import { defineConfig } from 'vite'
+import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import path from 'node:path'
 
 const API_TARGET = process.env.VITE_DEV_API_TARGET ?? 'http://127.0.0.1:8000'
 
+/**
+ * Stage 9 (performance): each locale is a chunk of its own (src/i18n/index.ts loads
+ * only the active one). This puts a tiny inline script into the built index.html
+ * that preloads the locale the device will ask for — the language i18next detects
+ * (stored on the device, else the browser's, else Russian) — so it downloads in
+ * parallel with the app code instead of after it. A wrong guess (the server's
+ * language differs) only costs that preload: the app then loads the other locale.
+ */
+function localePreload(): Plugin {
+  return {
+    name: 'dsos-locale-preload',
+    apply: 'build',
+    transformIndexHtml: {
+      order: 'post',
+      handler(_html, ctx) {
+        const files: Record<string, string> = {}
+        for (const chunk of Object.values(ctx.bundle ?? {})) {
+          const match = chunk.type === 'chunk' && chunk.facadeModuleId?.match(/\/i18n\/locales\/(ru|en)\.json$/)
+          if (match) files[match[1]] = `/${chunk.fileName}`
+        }
+        if (!files.ru || !files.en) throw new Error('localePreload: the ru/en locale chunks were not found')
+        // the stored language, else the first ru/en among the browser's languages, else ru
+        const script = `(function(){var f=${JSON.stringify(files)},l='ru';try{var c=[localStorage.getItem('dsos.language')].concat(navigator.languages||[navigator.language]);for(var i=0;i<c.length;i++){var x=String(c[i]||'').slice(0,2).toLowerCase();if(x==='ru'||x==='en'){l=x;break}}}catch(e){}var k=document.createElement('link');k.rel='modulepreload';k.href=f[l];document.head.appendChild(k)})()`
+        return [{ tag: 'script', children: script, injectTo: 'head-prepend' }]
+      },
+    },
+  }
+}
+
 export default defineConfig({
   plugins: [
     react(),
+    localePreload(),
     VitePWA({
       strategies: 'generateSW',
       registerType: 'prompt',
@@ -68,6 +98,8 @@ export default defineConfig({
   resolve: {
     alias: { '@': path.resolve(__dirname, 'src') },
   },
+  // the locales are big flat objects: JSON.parse reads them faster than an object literal
+  json: { stringify: true },
   server: {
     host: true,
     port: 5173,
@@ -87,10 +119,16 @@ export default defineConfig({
     chunkSizeWarningLimit: 900,
     rollupOptions: {
       output: {
+        // Fixed chunks for the big libraries that change far less often than the app:
+        // an update then re-downloads the app chunk only. Both load at start (the
+        // offline queue opens its IndexedDB through Dexie before the first screen).
+        // framer-motion and Recharts are deliberately left to the automatic split: the
+        // motion features load lazily (src/lib/motion.tsx) and the charts belong to the
+        // lazy /stats chunk. A manual chunk would pull a library's dependencies (clsx for
+        // Recharts) into it, and the entry would then import the whole chunk at start.
         manualChunks: {
           vendor: ['react', 'react-dom', 'react-router-dom'],
-          charts: ['recharts'],
-          motion: ['framer-motion'],
+          dexie: ['dexie'],
         },
       },
     },

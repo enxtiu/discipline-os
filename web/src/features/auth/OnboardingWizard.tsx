@@ -7,7 +7,7 @@
  * saved. The final action posts everything through `/settings/onboarding`.
  */
 import { useMemo, useState } from 'react'
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence, m } from 'framer-motion'
 import { useTranslation } from 'react-i18next'
 import { useMutation } from '@tanstack/react-query'
 
@@ -129,7 +129,7 @@ export function OnboardingWizard({ onDone }: { onDone: () => void }) {
 
       <div className="mx-auto mt-6 w-full max-w-md flex-1">
         <AnimatePresence mode="wait">
-          <motion.div
+          <m.div
             key={step}
             initial={{ opacity: 0, x: 24 }}
             animate={{ opacity: 1, x: 0 }}
@@ -327,7 +327,7 @@ export function OnboardingWizard({ onDone }: { onDone: () => void }) {
                 <PushStatusCard variant="onboarding" />
               </>
             )}
-          </motion.div>
+          </m.div>
         </AnimatePresence>
       </div>
 

@@ -5,7 +5,7 @@
  * Caps at 100 % visually but reports the raw percentage to screen readers, so
  * "142 % of protein" is still announced correctly.
  */
-import { motion } from 'framer-motion'
+import { m } from 'framer-motion'
 import clsx from 'clsx'
 import type { ReactNode } from 'react'
 
@@ -68,7 +68,7 @@ export function ProgressRing({
           stroke="rgb(var(--border))"
           strokeWidth={thickness}
         />
-        <motion.circle
+        <m.circle
           cx={size / 2}
           cy={size / 2}
           r={radius}
