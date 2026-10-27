@@ -96,6 +96,7 @@ __all__ = [
     "water_by_day",
     "week_plans",
     "week_start_for",
+    "weeks_from_plan",
     "weigh_ins_by_day",
     "workouts_by_day",
 ]
@@ -484,6 +485,19 @@ def required_workouts(plan: WeekPlan) -> int:
     return plan.planned if plan.has_plan else DEFAULT_WEEKLY_WORKOUTS
 
 
+def weeks_from_plan(plan: dict[date, str], first_week: date, last_week: date, week_start: int) -> dict[date, WeekPlan]:
+    """Week plans (keys are week starts) from a per-day plan that covers whole weeks."""
+    first_week = week_start_for(first_week, week_start)
+    last_week = week_start_for(last_week, week_start)
+    out: dict[date, WeekPlan] = {}
+    cursor = first_week
+    while cursor <= last_week:
+        values = [plan[day] for day in (cursor + timedelta(days=offset) for offset in range(7)) if day in plan]
+        out[cursor] = WeekPlan(cursor, sum(1 for value in values if value == "workout"), bool(values))
+        cursor += timedelta(days=7)
+    return out
+
+
 async def week_plans(
     db: AsyncSession, user_id: uuid.UUID, first_week: date, last_week: date, week_start: int
 ) -> dict[date, WeekPlan]:
@@ -491,14 +505,7 @@ async def week_plans(
     first_week = week_start_for(first_week, week_start)
     last_week = week_start_for(last_week, week_start)
     plan = await plan_by_day(db, user_id, first_week, last_week + timedelta(days=6))
-    out: dict[date, WeekPlan] = {}
-    cursor = first_week
-    while cursor <= last_week:
-        days = [cursor + timedelta(days=offset) for offset in range(7)]
-        values = [plan[day] for day in days if day in plan]
-        out[cursor] = WeekPlan(cursor, sum(1 for value in values if value == "workout"), bool(values))
-        cursor += timedelta(days=7)
-    return out
+    return weeks_from_plan(plan, first_week, last_week, week_start)
 
 
 # --------------------------------------------------------------------------- #
@@ -730,9 +737,11 @@ async def collect(
     tz: str | None,
     *,
     now: datetime | None = None,
+    plan: dict[date, str] | None = None,
 ) -> dict[date, DayMetrics]:
     """Every day of ``[first, last]`` with all series (11 queries for any range length).
-    With ``now`` the running timer counts towards its day's ``running_seconds``."""
+    With ``now`` the running timer counts towards its day's ``running_seconds``; pass
+    ``plan`` (from :func:`plan_by_day`) when you already have it."""
     series = _Series(
         nutrition=await nutrition_by_day(db, user_id, first, last),
         water=await water_by_day(db, user_id, first, last),
@@ -743,7 +752,7 @@ async def collect(
         tasks=await tasks_by_day(db, user_id, first, last, tz),
         tracked=await tracked_seconds_by_day(db, user_id, first, last),
         journal=await journal_days(db, user_id, first, last),
-        plan=await plan_by_day(db, user_id, first, last),
+        plan=plan if plan is not None else await plan_by_day(db, user_id, first, last),
     )
     running = await running_timer(db, user_id, now) if now is not None else None
     out: dict[date, DayMetrics] = {}
