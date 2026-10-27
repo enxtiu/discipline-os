@@ -1204,3 +1204,69 @@ async def test_a_new_secret_during_a_run_does_not_show_an_interrupted_run(authed
     assert response.status_code == 201
     await lock.release()
     assert (await authed.get(N)).json()["sync"]["result"] != "interrupted"
+
+
+# --------------------------------------------------------------------------- #
+# The client's retry rules (https://developers.notion.com/reference/request-limits)
+# --------------------------------------------------------------------------- #
+async def _client(fake: FakeNotion, budget: int | None = None):
+    from app.services.notion.client import NotionClient, RequestBudget
+
+    return NotionClient(SECRET, budget=RequestBudget(budget))
+
+
+async def test_client_retries_what_the_docs_allow_and_nothing_else(fake, clock) -> None:
+    from app.services.notion.client import BudgetExhausted, NotionRateLimited
+
+    page_id = fake.add_page(shared_with=(SECRET,))
+    client = await _client(fake)
+    # 409 conflict_error: the transaction failed, nothing was saved → retried
+    fake.fail("GET", f"/pages/{page_id}", 409, "conflict_error")
+    assert (await client.retrieve_page(page_id))["id"] == page_id
+    # 529 service_overload with Retry-After → waited and retried like a 429
+    fake.fail("GET", "/users/me", 529, "service_overload", headers={"Retry-After": "2"})
+    await client.me()
+    assert 2.0 in clock.sleeps
+    # the wait can come in the body only (additional_data.retry_after, a string)
+    fake.fail("GET", "/users/me", 429, "rate_limited", extra={"retry_after": "5"})
+    await client.me()
+    assert 5.0 in clock.sleeps
+    # a blocked request is not retried
+    before = len(fake.requests)
+    fake.fail("GET", "/users/me", 429, "public_api_request_blocked")
+    with pytest.raises(NotionRateLimited):
+        await client.me()
+    assert len(fake.requests) == before + 1
+    # a connection error happens before anything is sent: even a create is repeated
+    ds_owner = fake.add_page(shared_with=(SECRET,))
+    created = await client.create_database(
+        page_id=ds_owner, title="T", icon=None, properties={"Name": {"type": "title", "title": {}}}
+    )
+    ds_id = created["data_sources"][0]["id"]
+    fake.fail("POST", "/pages", 0, "", exception=httpx.ConnectError)
+    page = await client.create_page(ds_id, {"title": {"title": [{"type": "text", "text": {"content": "x"}}]}})
+    assert len(fake.rows(ds_id)) == 1 and page["id"] == fake.rows(ds_id)[0]["id"]
+    # 500 on a create is not repeated (it may have been saved)
+    from app.services.notion.client import NotionUncertain
+
+    fake.fail("POST", "/pages", 500, "internal_server_error")
+    with pytest.raises(NotionUncertain):
+        await client.create_page(ds_id, {"title": {"title": [{"type": "text", "text": {"content": "y"}}]}})
+    assert len([r for r in fake.calls("POST", "/pages") if r.status == 500]) == 1
+    await client.aclose()
+    # the budget is spent before sending, retries included
+    small = await _client(fake, budget=2)
+    fake.fail("GET", "/users/me", 502, "bad_gateway", times=5)
+    with pytest.raises(BudgetExhausted):
+        await small.me()
+    assert small.requests == 2
+    await small.aclose()
+
+
+def test_ids_never_reach_a_path_unchecked() -> None:
+    from app.services.notion.client import norm_id
+
+    assert norm_id("1F2E3D4C5B6A49878A1B2C3D4E5F6A7B") == "1f2e3d4c-5b6a-4987-8a1b-2c3d4e5f6a7b"
+    for bad in ("../users/me", "1f2e3d4c-5b6a-4987-8a1b-2c3d4e5f6a7b/../x", "", "https://evil.example/x"):
+        with pytest.raises(ValueError):
+            norm_id(bad)

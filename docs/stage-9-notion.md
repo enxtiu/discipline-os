@@ -23,7 +23,7 @@
 | 3 | Client | `app/services/notion/client.py`: fixed `https://api.notion.com/v1`, `Notion-Version: 2026-03-11` in one constant, ids normalised to UUIDs before they reach a path, no redirects, read timeout 30 s / write 75 s (longer than Notion's own 60 s, so a slow create gets its 503 + `committed_resource_id`), pace ≤ 3 req/s, a per-run request budget, `Retry-After` honoured up to 60 s (longer → the run stops and the next one resumes), 429/529 and `conflict_error` retried, 5xx and timeouts retried **only for idempotent requests**, typed errors. |
 | 4 | Sync engine | `app/services/notion/sync.py` + `schema.py` + `mapping.py` — see §6. Kinds `areas`, `projects`, `tasks`, `journal`, `days`; `days` reuses `day_metrics.collect` and the stored daily scores (nothing recomputed); burned kcal are their own columns. Connect validates locally (secret format, page link or id), then `GET /users/me` and `GET /pages/{id}`. Setup creates one database per enabled kind in dependency order with a Russian-first schema (English when the owner's language is English), reads the property ids back and writes by id; relations task→project/area/parent and project→area are two-way. Each run hashes every row, creates / updates / trashes only what changed, records each result at once; idempotent, resumable, one run per user (advisory lock); a 404/403 database is marked missing and «Создать заново» is offered; a deleted column is repaired. Notes go into a rich_text property, split into ≤ 2 000-character text objects (UTF-16), capped at 10. |
 | 5 | Job + endpoints | `notion_sync` every 10 min via `app/services/hooks.py` (no integration → nothing at all). `GET /integrations`, `GET /integrations/notion`, `POST /integrations/notion/connect` (201), `POST /integrations/notion/setup {kinds}`, `PATCH /integrations/notion {kinds}`, `POST /integrations/notion/sync` (202 + run id; 409 `notion_sync_running`), `DELETE /integrations/notion` (204; Notion content stays). Device principal only (API token → 403 `device_only`), writes 20/min, connects 6/min per user. Error codes: `notion_secret_invalid`, `notion_page_invalid`, `notion_unauthorized`, `notion_forbidden`, `notion_page_not_shared`, `notion_page_in_trash`, `notion_rate_limited`, `notion_unavailable`, `notion_not_connected`, `notion_sync_running`, `notion_secret_unreadable`, `notion_database_missing` (run result), `notion_rejected`, `notion_error`. |
-| 6 | Tests | `api/tests/test_stage9_notion.py` (57) with `tests/stage9_notion_helpers.py` (`FakeNotion`, `FakeClock`) — every item of the brief's list, see §5. |
+| 6 | Tests | `api/tests/test_stage9_notion.py` (59) with `tests/stage9_notion_helpers.py` (`FakeNotion`, `FakeClock`) — every item of the brief's list, see §5. |
 | F | Settings → Интеграции | `web/src/features/integrations/` (lazy chunk): the not-connected card (what it does, one-way, the verified steps, a link to the Developer portal, a password field for the secret, the page link, «Подключить»), the connected card (page with «Открыть в Notion», connection/workspace names, per-kind switches with «Открыть в Notion», «Создать базы» / «Создать заново», the last run in words, «Синхронизировать сейчас» polling until done, «Отключить» with a confirmation saying the Notion data stays, the error state with «Ввести новый секрет»). ru + en, 48 px targets, existing tokens/components only. |
 | F | Browser checks | `scripts/ui-checks/stage9-notion.mjs` (in the module list): 40 checks, screenshots 390×844 dark + light. |
 
@@ -43,12 +43,12 @@ api/app/api/v1/integrations.py              ★ /integrations/* (device only, ra
 api/app/api/v1/presenters.py · router.py    + notion_integration_out / integration_summary_out, the mount
 api/app/services/hooks.py                   + notion_sync (every 10 min)
 api/requirements.txt                        + cryptography==50.0.2 (same version, explicit)
-api/tests/test_stage9_notion.py · stage9_notion_helpers.py   ★ 57 tests, the fake Notion
+api/tests/test_stage9_notion.py · stage9_notion_helpers.py   ★ 59 tests, the fake Notion
 api/tests/test_stage8_export.py             the schema version is the alembic head (was a fixed 0003)
 web/src/features/integrations/              ★ types (OpenAPI drift guard), api, queries, IntegrationsScreen
 web/src/App.tsx · features/settings/SettingsPage.tsx   + the lazy route and the hub row
 web/src/api/generated/schema.d.ts           regenerated (+ /integrations/*)
-web/src/i18n/locales/{ru,en}.json           + integrations.* and errors.notion_* (90 keys each)
+web/src/i18n/locales/{ru,en}.json           + integrations.* and errors.notion_* (86 keys each, 1 521 per locale)
 scripts/ui-checks/stage9-notion.mjs         ★ 40 browser checks; scripts/ui-check.mjs loads it
 README.md · .env.example                    «Notion (optional)», the three settings
 docs/screenshots/60–64-notion-*.png         ★ not connected (dark, light), an error, connected (dark, light)
@@ -87,7 +87,7 @@ docker compose exec api python -m app.cli run-job notion_sync
 See the final report of this branch for the exact gate output; the module itself:
 
 ```
-api   tests/test_stage9_notion.py — 57 passed (the fake Notion, no network)
+api   tests/test_stage9_notion.py — 59 passed (the fake Notion, no network)
 web   tsc clean (incl. the OpenAPI drift guard) · vite build: IntegrationsScreen is its own
       lazy chunk (13.4 kB) · i18n complete and in sync
 browser  stage9-notion: 40/40 (not connected, validation, the server's 422s in words, no
@@ -120,7 +120,11 @@ put back; a refused row is counted and not retried until it changes; notes split
 a new secret for the same page keeps the databases and links; missing capabilities
 reported; a secret sealed with another key reported; two users mirror only their own rows
 with their own secrets; an API token gets 403 everywhere; write and connect rate limits;
-the secret in no response, OpenAPI document, structlog event or stdlib log record.
+the secret in no response, OpenAPI document, structlog event or stdlib log record; the
+client's retry rules one by one (409 `conflict_error` and 529 retried, a wait given only in
+`additional_data.retry_after` honoured, a blocked 429 not retried, a connection error
+before sending repeats even a create, a 500 on a create does not, the budget counts
+retries) and ids that could never reach a path unchecked.
 
 ## 6. Decisions worth knowing
 
