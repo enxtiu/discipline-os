@@ -286,7 +286,7 @@ export async function run(ctx) {
       'sheet: below the floor scores 0, burned kcal never count as food, today is progress',
     )
     await shot('51-score-sheet')
-    await page.locator('[role="dialog"]').getByRole('button', { name: 'Close' }).click()
+    await page.locator('[role="dialog"]').getByRole('button', { name: /^(Закрыть|Close)$/ }).click()
     await sheet.waitFor({ state: 'detached', timeout: 5000 }).catch(() => {})
 
     // 5. claim a completed quest: +XP toast, XP grows once; a second claim is a no-op
@@ -488,7 +488,7 @@ export async function run(ctx) {
     const detailSheet = page.locator('[data-testid="achievement-sheet"]')
     await detailSheet.waitFor({ timeout: 5000 })
     check((await detailSheet.innerText()).includes('Секретное — откроется, когда заработаете'), 'a secret tile opens without revealing it')
-    await page.locator('[role="dialog"]').getByRole('button', { name: 'Close' }).click()
+    await page.locator('[role="dialog"]').getByRole('button', { name: /^(Закрыть|Close)$/ }).click()
     await detailSheet.waitFor({ state: 'detached', timeout: 5000 }).catch(() => {})
     await page.locator('[data-testid="achievements-grid"]').scrollIntoViewIfNeeded()
     await shot('55-achievements-grid')
