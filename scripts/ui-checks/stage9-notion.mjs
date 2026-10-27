@@ -145,7 +145,7 @@ export async function run(ctx) {
     // 3. the form checks itself before sending anything
     const before = connectCalls.length
     await connectButton.click()
-    await page.waitForTimeout(300)
+    await page.getByText('Вставьте ссылку на страницу').waitFor({ timeout: 10_000 }).catch(() => {})
     check(
       (await hasText('Вставьте секрет подключения')) && (await hasText('Вставьте ссылку на страницу')),
       'empty fields → both errors inline',
@@ -162,7 +162,8 @@ export async function run(ctx) {
         page.waitForResponse((r) => r.url().includes('/integrations/notion/connect'), { timeout: 10_000 }),
         connectButton.click(),
       ])
-      await page.waitForTimeout(400)
+      // the browser logs the 422 as a failed resource: stay quiet until the app has shown it
+      await page.getByText('Это не похоже на секрет подключения Notion').waitFor({ timeout: 10_000 }).catch(() => {})
       return { status: response.status(), body: await response.json().catch(() => null) }
     })
     check(
@@ -182,7 +183,7 @@ export async function run(ctx) {
         page.waitForResponse((r) => r.url().includes('/integrations/notion/connect'), { timeout: 10_000 }),
         connectButton.click(),
       ])
-      await page.waitForTimeout(400)
+      await page.getByText('Это не ссылка на страницу Notion').waitFor({ timeout: 10_000 }).catch(() => {})
       return { status: response.status(), body: await response.json().catch(() => null) }
     })
     check(
@@ -258,8 +259,14 @@ export async function run(ctx) {
     check(await hasText('Сервер синхронизирует сам каждые 10 мин'), 'the automatic interval is stated')
     const journal = page.getByTestId('notion-kind-journal').getByRole('switch')
     check((await journal.getAttribute('aria-checked')) === 'false', 'a switched-off kind shows off')
-    await journal.click()
-    await page.waitForTimeout(400)
+    await Promise.all([
+      page
+        .waitForResponse((r) => r.request().method() === 'PATCH' && r.url().includes('/integrations/notion'), {
+          timeout: 10_000,
+        })
+        .catch(() => null),
+      journal.click(),
+    ])
     check(
       (await journal.getAttribute('aria-checked')) === 'true' && patches.at(-1)?.includes('journal'),
       'a switch saves the kinds (PATCH /integrations/notion)',
@@ -267,14 +274,22 @@ export async function run(ctx) {
     )
     await shot('63-notion-connected')
     await page.getByTestId('notion-disconnect').click()
-    await page.waitForTimeout(500)
+    await page.getByRole('dialog').waitFor({ timeout: 10_000 }).catch(() => {})
     check(
       await hasText('Всё, что уже скопировано в Notion, останется там'),
       '«Отключить» asks first and says the Notion data stays',
     )
     await page.getByRole('dialog').getByRole('button', { name: /^(Отмена|Cancel)$/ }).click()
-    await page.waitForTimeout(400)
-    check((await page.getByRole('dialog').count()) === 0, 'cancel keeps the connection')
+    // the sheet slides out (framer-motion): wait for it to leave the DOM instead of a fixed pause
+    const closed = await page
+      .getByRole('dialog')
+      .waitFor({ state: 'detached', timeout: 10_000 })
+      .then(() => true)
+      .catch(() => false)
+    check(
+      closed && (await page.getByTestId('notion-card').getAttribute('data-state')) === 'connected',
+      'cancel keeps the connection',
+    )
 
     // 7. an error that needs the owner: in words, with the way out
     fixture = connectedFixture({ status: 'error', error: 'notion_unauthorized' })
@@ -282,8 +297,8 @@ export async function run(ctx) {
     await page.getByTestId('notion-card').waitFor({ timeout: 10_000 }).catch(() => {})
     check(await hasText('Notion не принял секрет'), 'error state: the reason in plain words')
     await page.getByRole('button', { name: 'Ввести новый секрет' }).click()
-    await page.waitForTimeout(300)
     const replaceSecret = page.locator('input[name="notion-secret"]')
+    await replaceSecret.waitFor({ timeout: 10_000 }).catch(() => {})
     check(
       (await replaceSecret.count()) === 1 &&
         (await replaceSecret.inputValue()) === '' &&

@@ -231,7 +231,7 @@ function NotionConnected({ data }: { data: NotionIntegration }) {
         await refresh()
         return
       }
-      toast.error(code(error))
+      toast.error(apiErrorText(error))
     },
   })
 
@@ -243,7 +243,7 @@ function NotionConnected({ data }: { data: NotionIntegration }) {
       sync.mutate() // fill the new databases right away
     },
     onError: async (error) => {
-      toast.error(code(error))
+      toast.error(apiErrorText(error))
       await refresh()
     },
   })
@@ -404,7 +404,7 @@ function NotionConnected({ data }: { data: NotionIntegration }) {
 }
 
 /** An API failure in words; `notion_*` codes say what to do. */
-function code(error: unknown): string {
+function apiErrorText(error: unknown): string {
   if (error instanceof ApiError && error.code.startsWith('notion_')) return notionErrorText(error.code)
   return errorMessage(error)
 }
