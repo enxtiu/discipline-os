@@ -1,6 +1,7 @@
 /**
  * Application shell: sticky header (greeting, sync status, settings), the
- * routed page, the bottom tab bar and the quick-add sheet.
+ * routed page, the bottom tab bar, the quick-add sheet and (stage 6) the
+ * task sheets any screen can open.
  *
  * Page content is inset by `pb-tabbar` so nothing hides behind the navigation,
  * and the whole shell respects iOS safe-area insets.
@@ -16,6 +17,7 @@ import { SyncStatus } from './SyncStatus'
 import { useAuth } from '@/features/auth/AuthProvider'
 import { IconButton } from '@/components/ui'
 import { AiCaptureProvider } from '@/features/ai/AiCapture'
+import { TaskSheetHost } from '@/features/plan/tasks/TaskSheetHost'
 
 export function AppShell() {
   const { t } = useTranslation()
@@ -58,6 +60,8 @@ export function AppShell() {
 
         <BottomTabBar onQuickAdd={() => setQuickAddOpen(true)} />
         <QuickAddSheet open={quickAddOpen} onClose={() => setQuickAddOpen(false)} />
+        {/* stage 6: task editor + quick add, opened from any screen (features/plan/events.ts) */}
+        <TaskSheetHost />
       </div>
     </AiCaptureProvider>
   )

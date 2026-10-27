@@ -4,13 +4,16 @@
  * Stage 1 wired the *navigation* half of every action; each lands on the screen
  * that implements it. Delivered stages show no badge; actions of later stages
  * keep their stage number so nothing looks broken. Stage 3: photo opens the
- * camera directly, text and barcode open their sheets in place.
+ * camera directly, text and barcode open their sheets in place. Stage 6: the
+ * task tile opens the natural-language quick add right here, the review tile
+ * the daily journal.
  */
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 
 import { Sheet, Badge } from '@/components/ui'
 import { PhotoTrigger, useAiCapture } from '@/features/ai/AiCapture'
+import { quickAdd } from '@/features/plan/events'
 import {
   IconCamera,
   IconScan,
@@ -39,9 +42,9 @@ const ACTIONS: Action[] = [
   { key: 'search', labelKey: 'food.search', icon: <IconSearch size={22} />, to: '/food?action=search', stage: 2 },
   { key: 'water', labelKey: 'today.add_water', icon: <IconDroplet size={22} />, to: '/food?action=water', stage: 2 },
   { key: 'workout', labelKey: 'train.start', icon: <IconTrain size={22} />, to: '/train?action=start', stage: 4 },
-  { key: 'task', labelKey: 'plan.quick_add_placeholder', icon: <IconPlus size={22} />, to: '/plan?action=task', stage: 6 },
+  { key: 'task', labelKey: 'plan.add_task', icon: <IconPlus size={22} />, to: '/plan?action=task', stage: 6 },
   { key: 'steps', labelKey: 'today.steps', icon: <IconFootprints size={22} />, to: '/today?action=steps', stage: 5 },
-  { key: 'review', labelKey: 'today.score', icon: <IconToday size={22} />, to: '/today?action=review', stage: 6 },
+  { key: 'review', labelKey: 'plan.journal_review', icon: <IconToday size={22} />, to: '/plan/journal', stage: 6 },
 ]
 
 export function QuickAddSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -61,9 +64,9 @@ export function QuickAddSheet({ open, onClose }: { open: boolean; onClose: () =>
       <span className={action.primary ? 'text-aqua-300' : 'text-[rgb(var(--text-muted))]'}>{action.icon}</span>
       <span className="flex w-full items-center justify-between gap-2">
         <span className="text-sm font-medium leading-tight">
-          {action.key === 'task' ? t('plan.quick_add_placeholder') : t(action.labelKey)}
+          {t(action.labelKey)}
         </span>
-        {action.stage && action.stage > 5 && (
+        {action.stage && action.stage > 6 && (
           <Badge tone="violet" className="shrink-0">
             {action.stage}
           </Badge>
@@ -89,6 +92,7 @@ export function QuickAddSheet({ open, onClose }: { open: boolean; onClose: () =>
                 onClose()
                 if (action.key === 'text') capture.openText()
                 else if (action.key === 'barcode') capture.openBarcode()
+                else if (action.key === 'task') quickAdd()
                 else navigate(action.to)
               }}
               className={tileClass(action)}

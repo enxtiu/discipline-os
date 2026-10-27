@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from app.api.deps import Principal
@@ -45,6 +45,36 @@ from app.schemas.health import (
     WeightOut,
     WeightSeriesOut,
 )
+from app.schemas.planner import (
+    AreaCountsOut,
+    AreaOut,
+    BlockOut,
+    CountsOut,
+    JournalAreaMinutesOut,
+    JournalDaySummaryOut,
+    JournalOut,
+    OccurrenceBlockOut,
+    OccurrenceOut,
+    ParseBlockOut,
+    ParseOut,
+    ParseProjectOut,
+    ParseReminderOut,
+    ParseTokenOut,
+    ProjectCountsOut,
+    ProjectOut,
+    RefOut,
+    ReminderOut,
+    ResourceOut,
+    RunningTimerOut,
+    SubtaskCountsOut,
+    TagOut,
+    TagRefOut,
+    TaskDetailOut,
+    TaskOut,
+    TaskRefOut,
+    TaskTimeOut,
+    TimeEntryOut,
+)
 from app.schemas.training import (
     BestsOut,
     BurnedDayOut,
@@ -67,6 +97,16 @@ from app.services import health as health_service
 from app.services import training as training_service
 from app.services.ai_meal import AiBudget, MealAnalysis, ResolvedItem, confidence_level
 from app.services.food_search import FoodHit
+from app.services.planner import recur as planner_recur
+from app.services.planner.common import Clock as PlannerClock
+from app.services.planner.common import RefTuple, minutes
+from app.services.planner.containers import AreaStats, ProjectStats
+from app.services.planner.journal import DaySummary
+from app.services.planner.journal import has_note as journal_has_note
+from app.services.planner.loader import EntryRefs, TaskRefs, TaskTree
+from app.services.planner.tasks import CLOSED as TASK_CLOSED
+from app.services.planner.time_tracking import entry_total_seconds
+from app.services.planner.views import Counts, Occurrence
 
 
 def device_out(device: Device, *, current_id: uuid.UUID | None = None) -> DeviceOut:
@@ -581,4 +621,304 @@ def health_today_out(
         weight_change_7d_kg=change_7d_kg,
         sleep=sleep_out(sleep) if sleep is not None else None,
         last_sync_at=last_sync_at,
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Planner (stage 6)
+# --------------------------------------------------------------------------- #
+def _utc(value: datetime | None) -> datetime | None:
+    """Instants leave the API in UTC, whatever the database session's timezone is."""
+    return value.astimezone(UTC) if value is not None else None
+
+
+def planner_ref_out(ref: RefTuple | None) -> RefOut | None:
+    return RefOut(id=ref[0], name=ref[1], color=ref[2]) if ref is not None else None
+
+
+def reminder_out(reminder) -> ReminderOut:
+    payload = reminder.payload or {}
+    lead = payload.get("lead_minutes")
+    absolute = lead is None and payload.get("date") and payload.get("time")
+    return ReminderOut(
+        id=reminder.id,
+        lead_minutes=int(lead) if lead is not None else None,
+        date=date.fromisoformat(payload["date"]) if absolute else None,
+        time=payload["time"] if absolute else None,
+        remind_at=_utc(reminder.remind_at),
+        status=reminder.status.value,
+        sent_at=_utc(reminder.sent_at),
+    )
+
+
+def task_block_out(task, clock: PlannerClock) -> BlockOut | None:
+    if task.scheduled_start is None or task.scheduled_end is None:
+        return None
+    start, end = clock.local(task.scheduled_start), clock.local(task.scheduled_end)
+    return BlockOut(
+        date=start.date(),
+        start=start.strftime("%H:%M"),
+        end=end.strftime("%H:%M"),
+        minutes=minutes((task.scheduled_end - task.scheduled_start).total_seconds()),
+        start_at=_utc(task.scheduled_start),
+        end_at=_utc(task.scheduled_end),
+        ends_next_day=end.date() > start.date(),
+    )
+
+
+def _overdue(task, clock: PlannerClock) -> bool:
+    if task.status in TASK_CLOSED:
+        return False
+    if task.due_at is not None:
+        return task.due_at < clock.now
+    return task.due_date is not None and task.due_date < clock.today
+
+
+def task_out(task, refs: TaskRefs) -> TaskOut:
+    clock = refs.clock
+    done, total = refs.counts.get(task.id, (0, 0))
+    parent = refs.parents.get(task.parent_id) if task.parent_id is not None else None
+    if task.recurrence_parent_id is not None:
+        series_id = task.recurrence_parent_id
+    else:
+        series_id = task.id if task.recurrence_rule else None
+    return TaskOut(
+        id=task.id,
+        title=task.title,
+        notes_md=task.notes_md,
+        status=task.status.value,
+        priority=task.priority,
+        project=planner_ref_out(refs.projects.get(task.project_id)) if task.project_id else None,
+        area=planner_ref_out(refs.areas.get(task.area_id)) if task.area_id else None,
+        parent_id=task.parent_id,
+        parent_title=parent[0] if parent is not None else None,
+        depth=refs.depth(task),
+        due_date=task.due_date,
+        due_time=clock.hhmm(task.due_at) if task.due_at is not None else None,
+        due_at=_utc(task.due_at),
+        block=task_block_out(task, clock),
+        estimate_minutes=task.estimate_minutes,
+        actual_minutes=task.actual_minutes or 0,
+        completed_at=_utc(task.completed_at),
+        completed_day=clock.local_day(task.completed_at) if task.completed_at is not None else None,
+        recurrence_rule=task.recurrence_rule,
+        recurrence_until=task.recurrence_until,
+        recurrence_preset=(planner_recur.preset_of(task.recurrence_rule) or "custom") if task.recurrence_rule else None,
+        is_recurring=bool(task.recurrence_rule),
+        series_id=series_id,
+        series_index=task.series_index or 0,
+        tags=[TagRefOut(id=tag[0], name=tag[1], color=tag[2]) for tag in refs.tags.get(task.id, [])],
+        context=task.context,
+        energy=task.energy,
+        is_pinned=task.is_pinned,
+        sort_order=task.sort_order,
+        overdue=_overdue(task, clock),
+        subtask_counts=SubtaskCountsOut(done=done, total=total),
+        reminders=[reminder_out(row) for row in refs.reminders.get(task.id, [])],
+        source=task.source if task.source in ("manual", "quick_add", "recurrence", "import") else "manual",
+        created_at=_utc(task.created_at),
+        updated_at=_utc(task.updated_at),
+    )
+
+
+def task_detail_out(tree: TaskTree, task=None) -> TaskDetailOut:
+    node = task if task is not None else tree.root
+    base = task_out(node, tree.refs)
+    return TaskDetailOut(
+        **base.model_dump(),
+        subtasks=[task_detail_out(tree, child) for child in tree.children.get(node.id, [])],
+        time=TaskTimeOut(
+            total_minutes=node.actual_minutes or 0,
+            entries=[time_entry_out(entry, tree.entry_refs) for entry in tree.entries.get(node.id, [])],
+        ),
+    )
+
+
+def time_entry_out(entry, refs: EntryRefs) -> TimeEntryOut:
+    clock = refs.clock
+    start = clock.local(entry.started_at)
+    end = clock.local(entry.ended_at) if entry.ended_at is not None else None
+    title = refs.tasks.get(entry.task_id) if entry.task_id is not None else None
+    return TimeEntryOut(
+        id=entry.id,
+        task=TaskRefOut(id=entry.task_id, title=title) if entry.task_id is not None and title is not None else None,
+        project=planner_ref_out(refs.projects.get(entry.project_id)) if entry.project_id else None,
+        area=planner_ref_out(refs.areas.get(entry.area_id)) if entry.area_id else None,
+        description=entry.description,
+        note=entry.note,
+        started_at=_utc(entry.started_at),
+        ended_at=_utc(entry.ended_at),
+        duration_s=entry.duration_s if entry.ended_at is not None else None,
+        date=entry.local_day,
+        start=start.strftime("%H:%M"),
+        end=end.strftime("%H:%M") if end is not None else None,
+        ends_next_day=bool(end is not None and end.date() > entry.local_day),
+        source=entry.source.value,
+        running=entry.ended_at is None,
+    )
+
+
+def running_timer_out(entry, refs: EntryRefs) -> RunningTimerOut:
+    return RunningTimerOut(
+        entry=time_entry_out(entry, refs),
+        elapsed_s=int(entry_total_seconds(entry, refs.clock)),
+        server_now=refs.clock.now,
+    )
+
+
+def area_out(area, stats: AreaStats) -> AreaOut:
+    return AreaOut(
+        id=area.id,
+        name=area.name,
+        description=area.description,
+        color=area.color,
+        icon=area.icon,
+        sort_order=area.sort_order,
+        is_archived=area.is_archived,
+        weekly_target_minutes=area.weekly_target_minutes,
+        counts=AreaCountsOut(
+            open_tasks=stats.open_tasks.get(area.id, 0), active_projects=stats.active_projects.get(area.id, 0)
+        ),
+        week_minutes=minutes(stats.week_minutes.get(area.id, 0)),
+        created_at=_utc(area.created_at),
+        updated_at=_utc(area.updated_at),
+    )
+
+
+def project_out(project, stats: ProjectStats) -> ProjectOut:
+    open_count, done_count = stats.counts.get(project.id, (0, 0))
+    total = open_count + done_count
+    return ProjectOut(
+        id=project.id,
+        name=project.name,
+        outcome=project.outcome,
+        description_md=project.description_md,
+        area=planner_ref_out(stats.areas.get(project.area_id)) if project.area_id else None,
+        status=project.status.value,
+        deadline=project.deadline,
+        start_date=project.start_date,
+        completed_at=_utc(project.completed_at),
+        color=project.color,
+        icon=project.icon,
+        is_archived=project.is_archived,
+        sort_order=project.sort_order,
+        counts=ProjectCountsOut(open=open_count, done=done_count, total=total),
+        progress=round(done_count / total, 4) if total else 0.0,
+        tracked_minutes=minutes(stats.tracked.get(project.id, 0)),
+        overdue=bool(
+            project.deadline is not None
+            and project.deadline < stats.today
+            and project.status.value in ("active", "on_hold")
+        ),
+        created_at=_utc(project.created_at),
+        updated_at=_utc(project.updated_at),
+    )
+
+
+def resource_out(resource, areas: dict) -> ResourceOut:
+    return ResourceOut(
+        id=resource.id,
+        name=resource.name,
+        notes_md=resource.notes_md,
+        url=resource.url,
+        area=planner_ref_out(areas.get(resource.area_id)) if resource.area_id else None,
+        tags=list(resource.tags or []),
+        is_archived=resource.is_archived,
+        created_at=_utc(resource.created_at),
+        updated_at=_utc(resource.updated_at),
+    )
+
+
+def tag_out(tag, open_tasks: int = 0) -> TagOut:
+    return TagOut(id=tag.id, name=tag.name, color=tag.color, open_tasks=open_tasks)
+
+
+def occurrence_out(item: Occurrence, refs: TaskRefs) -> OccurrenceOut:
+    task = item.task
+    return OccurrenceOut(
+        task_id=task.id,
+        title=task.title,
+        date=item.day,
+        due_time=item.due_time,
+        block=OccurrenceBlockOut(start=item.block[0], end=item.block[1], minutes=item.block[2]) if item.block else None,
+        priority=task.priority,
+        project=planner_ref_out(refs.projects.get(task.project_id)) if task.project_id else None,
+        area=planner_ref_out(refs.areas.get(task.area_id)) if task.area_id else None,
+    )
+
+
+def counts_out(counts: Counts) -> CountsOut:
+    return CountsOut(
+        date=counts.day,
+        inbox=counts.inbox,
+        today=counts.today,
+        overdue=counts.overdue,
+        timer_running=counts.timer_running,
+    )
+
+
+def journal_out(entry) -> JournalOut:
+    return JournalOut(
+        id=entry.id,
+        date=entry.entry_date,
+        note_md=entry.note_md,
+        rating=entry.rating,
+        mood=entry.mood,
+        energy=entry.energy,
+        wins_md=entry.wins_md,
+        improvements_md=entry.improvements_md,
+        tags=list(entry.tags or []),
+        created_at=_utc(entry.created_at),
+        updated_at=_utc(entry.updated_at),
+    )
+
+
+def journal_has_note_out(entry) -> bool:
+    return journal_has_note(entry)
+
+
+def journal_day_summary_out(summary: DaySummary) -> JournalDaySummaryOut:
+    return JournalDaySummaryOut(
+        date=summary.day,
+        tasks_done=summary.tasks_done,
+        tasks_done_titles=summary.tasks_done_titles,
+        tasks_open_due=summary.tasks_open_due,
+        time_minutes=minutes(summary.time_seconds),
+        time_by_area=[
+            JournalAreaMinutesOut(area=planner_ref_out(ref), minutes=minutes(seconds))
+            for ref, seconds in summary.time_by_area
+        ],
+        kcal=round(summary.kcal),
+        target_kcal=summary.target_kcal,
+        workouts=summary.workouts,
+        workout_kcal=round(summary.workout_kcal) if summary.workout_kcal is not None else None,
+        steps=summary.steps,
+        sleep_minutes=summary.sleep_minutes,
+    )
+
+
+def parse_out(parsed, preset: str | None) -> ParseOut:
+    block = None
+    block_date = parsed.block_date or parsed.due_date
+    if parsed.block_start is not None and parsed.block_end is not None and block_date is not None:
+        block = ParseBlockOut(
+            date=block_date, start=parsed.block_start.strftime("%H:%M"), end=parsed.block_end.strftime("%H:%M")
+        )
+    container = parsed.container
+    return ParseOut(
+        title=parsed.title,
+        due_date=parsed.due_date,
+        due_time=parsed.due_time.strftime("%H:%M") if parsed.due_time is not None else None,
+        block=block,
+        estimate_minutes=parsed.estimate_minutes,
+        priority=parsed.priority,
+        tags=list(parsed.tags),
+        project=ParseProjectOut(id=container.id, name=container.name, kind=container.kind) if container else None,
+        context=parsed.context,
+        recurrence_rule=parsed.recurrence_rule,
+        recurrence_preset=preset,
+        reminders=[ParseReminderOut(lead_minutes=lead) for lead in parsed.reminder_leads],
+        tokens=[
+            ParseTokenOut(start=token.start, end=token.end, kind=token.kind, text=token.text) for token in parsed.tokens
+        ],
     )

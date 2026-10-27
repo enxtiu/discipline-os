@@ -12,6 +12,7 @@ import {
 } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import clsx from 'clsx'
+import { useTranslation } from 'react-i18next'
 import { IconCheck, IconClose, IconInfo } from './icons'
 
 // --------------------------------------------------------------------------- //
@@ -421,6 +422,7 @@ export function Sheet({
   footer?: ReactNode
   size?: 'auto' | 'tall'
 }) {
+  const { t } = useTranslation()
   return (
     <AnimatePresence>
       {open && (
@@ -457,7 +459,7 @@ export function Sheet({
             {title && (
               <header className="flex items-center justify-between gap-3 px-5 pb-2 pt-3">
                 <h2 className="h2">{title}</h2>
-                <IconButton label="Close" icon={<IconClose size={20} />} onClick={onClose} />
+                <IconButton label={t('app.close')} icon={<IconClose size={20} />} onClick={onClose} />
               </header>
             )}
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-4">{children}</div>

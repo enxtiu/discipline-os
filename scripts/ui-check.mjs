@@ -297,7 +297,11 @@ try {
   const todayText = await text()
   // the sheet pre-fills the food's default serving (150 g → 165 kcal)
   check(/165/.test(todayText), 'Today ring shows the logged 165 kcal (150 g buckwheat)')
-  check(await hasText('Завтрак') || await hasText('Обед') || await hasText('Ужин'), 'meal appears under its type')
+  // the log sheet picks the type from the browser's clock (Moscow here), so after 22:00 it is a snack
+  check(
+    (await hasText('Завтрак')) || (await hasText('Обед')) || (await hasText('Ужин')) || (await hasText('Перекус')),
+    'meal appears under its type',
+  )
   await shot('12-today-with-meal')
 
   // water quick-add from the dashboard
@@ -533,7 +537,7 @@ try {
   await page.getByRole('button', { name: 'Распознать' }).click()
   await page.waitForTimeout(600)
   check(await hasText('ИИ-функции доступны только онлайн'), 'offline: AI shows a clear message')
-  await page.locator('[role="dialog"]').getByRole('button', { name: 'Close' }).click()
+  await page.locator('[role="dialog"]').getByRole('button', { name: /^(Закрыть|Close)$/ }).click()
   await page.waitForTimeout(800)
   // the photo tile says so before the camera opens (no picture taken in vain)
   let chooserOpened = false
@@ -549,7 +553,7 @@ try {
   await page.waitForTimeout(700)
   page.off('filechooser', onChooser)
   check(!chooserOpened && (await hasText('ИИ-функции доступны только онлайн')), 'offline: photo tile warns before opening the camera')
-  await page.locator('[role="dialog"]').getByRole('button', { name: 'Close' }).click()
+  await page.locator('[role="dialog"]').getByRole('button', { name: /^(Закрыть|Close)$/ }).click()
   await context.setOffline(false)
   await page.waitForTimeout(800)
   offlineMode = false
@@ -866,6 +870,37 @@ try {
   check(cleaned.every((status) => status === 200) && restored === profileWeightBefore, 'stage-5 test data removed, profile weight restored', `${restored} kg`)
 
   // 8. Reload keeps the session (token persisted).
+  // Stage 6+: feature checks live in scripts/ui-checks/<module>.mjs, one module
+  // per workstream, each exporting `run(ctx)` with the helpers below.
+  for (const module of ['stage6-plan', 'stage6-calendar']) {
+    const { run } = await import(`./ui-checks/${module}.mjs`)
+    await run({
+      page,
+      context,
+      WEB_URL,
+      SHOTS,
+      check,
+      ok,
+      bad,
+      shot,
+      text,
+      hasText,
+      setOffline: async (value) => {
+        offlineMode = value
+        await context.setOffline(value)
+      },
+      /** Run `action` while the browser logs a 4xx the check provokes on purpose (not an app error). */
+      allowErrors: async (action) => {
+        offlineMode = true
+        try {
+          return await action()
+        } finally {
+          offlineMode = false
+        }
+      },
+    })
+  }
+
   console.log('\n8. session persistence')
   await page.goto(`${WEB_URL}/today`, { waitUntil: 'networkidle' })
   await page.reload({ waitUntil: 'networkidle' })

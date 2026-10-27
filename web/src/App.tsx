@@ -26,11 +26,13 @@ import { DevicesSection } from '@/features/settings/DevicesSection'
 import { TokensSection } from '@/features/settings/TokensSection'
 import { ShortcutSection } from '@/features/settings/ShortcutSection'
 import { DataSection } from '@/features/settings/DataSection'
-import { PlanPage, StatsPage } from '@/features/shared/Placeholders'
+import { StatsPage } from '@/features/shared/Placeholders'
 // stage 4: the training screens load on first visit (Today stays light)
 const TrainPage = lazy(() => import('@/features/train/TrainPage').then((m) => ({ default: m.TrainPage })))
 const WorkoutPage = lazy(() => import('@/features/train/WorkoutPage').then((m) => ({ default: m.WorkoutPage })))
 const HealthPage = lazy(() => import('@/features/health/HealthPage').then((m) => ({ default: m.HealthPage })))
+// stage 6: the planner is one lazy chunk with its own nested routes
+const PlanRoutes = lazy(() => import('@/features/plan/PlanRoutes'))
 import { FoodPage } from '@/features/food/FoodPage'
 import { SettingsHeader } from '@/features/settings/SettingsHeader'
 
@@ -57,7 +59,7 @@ function Shell() {
         <Route path="/train" element={<Lazy><TrainPage /></Lazy>} />
         <Route path="/train/workout/:id" element={<Lazy><WorkoutPage /></Lazy>} />
         <Route path="/health" element={<Lazy><HealthPage /></Lazy>} />
-        <Route path="/plan" element={<PlanPage />} />
+        <Route path="/plan/*" element={<Lazy><PlanRoutes /></Lazy>} />
         <Route path="/stats" element={<StatsPage />} />
 
         <Route path="/settings" element={<SettingsLayout />}>
