@@ -127,6 +127,10 @@ class Settings(BaseSettings):
     vapid_public_key: str = ""
     vapid_private_key: str = ""
     vapid_subject: str = "mailto:admin@example.com"
+    # Outside development the API only POSTs to the browsers' push services (FCM, Apple,
+    # Mozilla, WNS — app.schemas.notifications.PUSH_SERVICE_HOSTS). Another one can be
+    # added here: exact hosts or "*.example.com" (https on port 443 is still required).
+    push_extra_hosts: CsvList = Field(default_factory=list)
 
     # --------------------------------------------------------------- frontend
     # Used only to build links inside notifications/backup mails.

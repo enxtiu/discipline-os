@@ -661,7 +661,8 @@
       "unsupported": "This browser does not support push notifications",
       "needs_install": "Add the app to the Home Screen first",
       "push_disabled": "Push notifications are not configured on the server",
-      "subscription_conflict": "This device was subscribed under another account. Please try again."
+      "subscription_conflict": "This device was subscribed under another account. Please try again.",
+      "push_service_not_allowed": "The server does not send notifications to this browser's push service. It can be allowed with the server setting PUSH_EXTRA_HOSTS."
     }
   },
   "common": {

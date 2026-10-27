@@ -9,9 +9,9 @@ from __future__ import annotations
 
 import base64
 import binascii
-import ipaddress
 import re
 import uuid
+from collections.abc import Iterable
 from datetime import datetime
 from typing import Literal
 from urllib.parse import urlsplit
@@ -23,8 +23,24 @@ from app.schemas.common import ApiModel
 # ``H:MM``/``HH:MM``; seconds (``<input type=time step=1>``) are accepted and dropped
 _HHMM = re.compile(r"^([01]?\d|2[0-3]):([0-5]\d)(?::[0-5]\d)?$")
 _B64URL = re.compile(r"^[A-Za-z0-9_\-+/]+={0,2}$")
+# RFC 3986 characters only: no spaces, quotes, backslashes, braces or anything non-ASCII
+_URL_CHARS = re.compile(r"[A-Za-z0-9\-._~:/?#\[\]@!$&'()*+,;=%]+")
+_DNS_NAME = re.compile(r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,62}")
 
-MAX_ENDPOINT_LENGTH = 2048
+# Bytes, and the endpoint is ASCII: the unique btree index on push_subscriptions.endpoint
+# holds at most ~2.7 KB per entry, so this always fits (real endpoints are 150–500 bytes).
+MAX_ENDPOINT_BYTES = 2048
+MAX_ENDPOINT_LENGTH = MAX_ENDPOINT_BYTES  # characters = bytes for an ASCII endpoint
+# The push services browsers use (RFC 8030). Outside development the API POSTs nowhere
+# else — https on port 443 only; PUSH_EXTRA_HOSTS adds more. "*.x" = any subdomain of x.
+PUSH_SERVICE_HOSTS: tuple[str, ...] = (
+    "fcm.googleapis.com",  # Chrome, Chrome/Edge on Android, Samsung Internet, Opera, Brave
+    "*.push.apple.com",  # Safari: iOS/iPadOS 16.4+ Home Screen apps, macOS (web.push.apple.com)
+    "*.push.services.mozilla.com",  # Firefox (updates.push.services.mozilla.com)
+    "*.notify.windows.com",  # Edge on Windows (WNS)
+)
+# development only: the local receiver the smoke test and the browser checks POST to
+LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
 MAX_MEAL_TIMES = 6
 MAX_WATER_TIMES = 8
 
@@ -60,38 +76,66 @@ def endpoint_host(endpoint: str) -> str:
     return urlsplit(endpoint).hostname or ""
 
 
-def check_endpoint(endpoint: str, *, allow_local: bool) -> str:
-    """A push service URL: ``https://host/…``.
+def push_host_allowed(host: str, extra_hosts: Iterable[str] = ()) -> bool:
+    """Is ``host`` (lower case) one of the push services (``PUSH_SERVICE_HOSTS`` + ``extra_hosts``)?"""
+    if not _DNS_NAME.fullmatch(host):
+        return False
+    for pattern in (*PUSH_SERVICE_HOSTS, *extra_hosts):
+        pattern = pattern.strip().lower()
+        if pattern.startswith("*."):
+            if host.endswith(pattern[1:]):  # at least one label in front (the name is valid)
+                return True
+        elif pattern and host == pattern:
+            return True
+    return False
 
-    ``allow_local`` (development) also accepts ``http://127.0.0.1``/``localhost`` so a
-    fake receiver can stand in for the push service. Outside development, IP literals
-    of private/loopback/link-local networks are refused (the server POSTs to this URL).
-    """
+
+def check_endpoint_format(endpoint: str) -> str:
+    """What every endpoint must look like (``ValueError`` otherwise): ASCII, at most
+    ``MAX_ENDPOINT_BYTES``, RFC 3986 characters, an ``https://`` URL — plain ``http://``
+    only to a loopback host — with a host and without credentials."""
     value = endpoint.strip()
-    if len(value) > MAX_ENDPOINT_LENGTH:
+    if not value.isascii():
+        raise ValueError("endpoint must be ASCII")
+    if len(value.encode()) > MAX_ENDPOINT_BYTES:
         raise ValueError("endpoint is too long")
+    if not _URL_CHARS.fullmatch(value):
+        raise ValueError("endpoint is not a URL")
     try:
         parts = urlsplit(value)
         _ = parts.port  # raises ValueError for a malformed port
     except ValueError as exc:
         raise ValueError("endpoint is not a URL") from exc
     host = (parts.hostname or "").lower()
-    if not host or parts.username or parts.password or any(ch.isspace() for ch in value):
+    if not host or "@" in parts.netloc:
         raise ValueError("endpoint is not a push service URL")
-    local = host in {"localhost", "127.0.0.1", "::1"}
-    if parts.scheme == "http" and allow_local and local:
+    if not (parts.scheme == "https" or (parts.scheme == "http" and host in LOOPBACK_HOSTS)):
+        raise ValueError("endpoint must use https://")
+    return value
+
+
+def check_endpoint(endpoint: str, *, allow_local: bool, extra_hosts: Iterable[str] = ()) -> str:
+    """The URL the server will POST every notification to; ``ValueError`` when it may not.
+
+    ``check_endpoint_format``, then: ``allow_local`` (ENV=development) accepts any of
+    those — also plain ``http://`` to the loopback receiver the smoke test and the
+    browser checks use. Otherwise (production, staging) only a known push service will
+    do — ``https://``, port 443, host in ``PUSH_SERVICE_HOSTS`` or ``extra_hosts``
+    (``PUSH_EXTRA_HOSTS``) — so no URL a device registers can make the server reach an
+    internal address. Checked when a subscription is registered (``422
+    push_service_not_allowed``) and again before every POST, which never follows a
+    redirect (``app.services.push``).
+    """
+    value = check_endpoint_format(endpoint)
+    if allow_local:
         return value
+    parts = urlsplit(value)
     if parts.scheme != "https":
         raise ValueError("endpoint must use https://")
-    if not allow_local:
-        if host == "localhost" or host.endswith(".localhost"):
-            raise ValueError("endpoint must be a public push service")
-        try:
-            address = ipaddress.ip_address(host)
-        except ValueError:
-            address = None
-        if address is not None and not address.is_global:
-            raise ValueError("endpoint must be a public push service")
+    if parts.port not in (None, 443):
+        raise ValueError("endpoint must use the standard https port")
+    if not push_host_allowed((parts.hostname or "").lower(), extra_hosts):
+        raise ValueError("endpoint is not a known push service")
     return value
 
 
@@ -139,9 +183,9 @@ class PushSubscriptionIn(ApiModel):
     @field_validator("endpoint")
     @classmethod
     def _endpoint(cls, value: str) -> str:
-        from app.core.config import get_settings
-
-        return check_endpoint(value, allow_local=get_settings().env == "development")
+        # where the server may send (known push services outside development) is checked
+        # on registration: 422 push_service_not_allowed (app.services.push)
+        return check_endpoint_format(value)
 
 
 class PushUnsubscribeIn(ApiModel):

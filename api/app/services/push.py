@@ -36,12 +36,12 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
-from app.core.errors import Conflict, NotFound, ServiceUnavailable
+from app.core.errors import Conflict, NotFound, ServiceUnavailable, Unprocessable
 from app.core.ids import new_id
 from app.core.logging import get_logger
 from app.core.tz import utcnow
 from app.models import Device, PushSubscription
-from app.schemas.notifications import PushSubscriptionIn, endpoint_host
+from app.schemas.notifications import PushSubscriptionIn, check_endpoint, endpoint_host
 
 log = get_logger(__name__)
 
@@ -329,6 +329,17 @@ async def deliver(
 # --------------------------------------------------------------------------- #
 # Subscriptions
 # --------------------------------------------------------------------------- #
+def policy_error(endpoint: str) -> str | None:
+    """Why the server may not POST to ``endpoint`` under the current ENV (``None``: it may).
+    See ``app.schemas.notifications.check_endpoint``."""
+    settings = get_settings()
+    try:
+        check_endpoint(endpoint, allow_local=settings.env == "development", extra_hosts=settings.push_extra_hosts)
+    except ValueError as exc:
+        return str(exc)
+    return None
+
+
 def _active_filter(user_id: uuid.UUID):
     return (
         PushSubscription.user_id == user_id,
@@ -412,10 +423,21 @@ async def upsert_subscription(
     Upsert by endpoint: re-subscribing the same browser updates the keys,
     reactivates the row and re-binds it to this device. An endpoint that belongs
     to another user is refused (``409 subscription_conflict``) — the client then
-    drops its browser subscription and creates a new one.
+    drops its browser subscription and creates a new one. An endpoint the server
+    may not send to (outside development: anything but a known push service) is
+    refused with ``422 push_service_not_allowed``.
     """
     if not is_configured():
         raise PushNotConfigured("Web push is not configured on this server (VAPID keys)")
+    refused = policy_error(payload.endpoint)
+    if refused is not None:
+        host = endpoint_host(payload.endpoint)
+        log.warning("push_service_not_allowed", user_id=str(user_id), host=host, reason=refused)
+        raise Unprocessable(
+            f"This server does not send notifications to {host or 'this endpoint'}: {refused}",
+            code="push_service_not_allowed",
+            details={"host": host},
+        )
     now = utcnow()
     previous = (
         await db.execute(
