@@ -24,10 +24,10 @@ function stateOf(day: StreakDay, today: string): CellState {
 }
 
 const CELL: Record<CellState, string> = {
-  overall: 'bg-[rgb(var(--accent))] text-ink-950',
-  freeze: 'bg-[rgb(var(--chart-sleep))] text-ink-950 [[data-theme=light]_&]:text-white',
+  overall: 'bg-[rgb(var(--accent))] text-on-accent',
+  freeze: 'bg-[rgb(var(--chart-sleep))] text-on-accent [[data-theme=light]_&]:text-white',
   missed: 'bg-[rgb(var(--bg-sunken))] text-[rgb(var(--text-muted))] border border-[rgb(var(--border))]',
-  future: 'border border-dashed border-[rgb(var(--border))] text-[rgb(var(--text-muted))]/60',
+  future: 'border border-dashed border-[rgb(var(--border))] text-[rgb(var(--text-muted))]',
 }
 
 export function StreakCalendar({

@@ -606,7 +606,7 @@ function ExerciseCard({
                   className={clsx(
                     'flex h-tap w-tap shrink-0 items-center justify-center rounded-2xl border transition-colors',
                     saved && !row.dirty
-                      ? 'border-transparent bg-[rgb(var(--accent))] text-ink-950'
+                      ? 'border-transparent bg-[rgb(var(--accent))] text-on-accent'
                       : 'border-[rgb(var(--border))] text-[rgb(var(--text-muted))]',
                   )}
                   data-testid="save-set"

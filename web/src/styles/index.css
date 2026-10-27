@@ -17,10 +17,22 @@
     --text: 232 238 247;         /* #E8EEF7 */
     --text-muted: 132 146 171;   /* #8492AB */
     --accent: 56 224 200;        /* #38E0C8 */
-    --accent-2: 139 92 246;      /* #8B5CF6 */
+    --accent-2: 161 130 249;     /* #A182F9 — was #8B5CF6 (4.1:1 as text on cards) */
     --warn: 251 191 36;          /* #FBBF24 */
+    --on-accent: 8 13 22;        /* text on --accent fills */
+    --on-accent-2: 8 13 22;      /* text on --accent-2 fills */
     --chart-burn: 201 122 6;     /* #C97A06 — burned-kcal bars (validated for dark) */
     --chart-sleep: 96 165 250;   /* #60A5FA — sleep bars, 6.9:1 on cards */
+    /* palette shades used as text (tailwind.config.js); dark = the original hex values */
+    --aqua-300: 125 243 225;     /* #7DF3E1 */
+    --aqua-400: 56 224 200;      /* #38E0C8 */
+    --violet-300: 196 181 253;   /* #C4B5FD */
+    --violet-400: 167 139 250;   /* #A78BFA */
+    --amber-200: 253 230 138;    /* #FDE68A */
+    --amber-300: 252 211 77;     /* #FCD34D */
+    --amber-400: 251 191 36;     /* #FBBF24 */
+    --rose-200: 254 205 211;     /* #FECDD3 */
+    --rose-400: 251 113 133;     /* #FB7185 */
   }
 
   :root[data-theme='light'] {
@@ -30,11 +42,23 @@
     --border: 214 222 235;
     --text: 17 26 43;
     --text-muted: 90 104 128;
-    --accent: 14 163 147;
-    --accent-2: 124 58 237;
-    --warn: 217 119 6;
+    --accent: 11 107 99;         /* #0B6B63 — was #0EA393 (3.1:1 as text on white) */
+    --accent-2: 109 40 217;      /* #6D28D9 — was #7C3AED (4.0:1 on its tint) */
+    --warn: 146 64 14;           /* #92400E — was #D97706 (3.2:1 as text on white) */
+    --on-accent: 255 255 255;
+    --on-accent-2: 255 255 255;
     --chart-burn: 217 119 6;     /* #D97706 */
     --chart-sleep: 37 99 235;    /* #2563EB, 5.2:1 on white */
+    /* the dark theme's light pastel text shades read as dark shades of the same hue here */
+    --aqua-300: 17 94 89;        /* #115E59 */
+    --aqua-400: 15 118 110;      /* #0F766E */
+    --violet-300: 91 33 182;     /* #5B21B6 */
+    --violet-400: 109 40 217;    /* #6D28D9 */
+    --amber-200: 120 53 15;      /* #78350F */
+    --amber-300: 146 64 14;      /* #92400E */
+    --amber-400: 180 83 9;       /* #B45309 */
+    --rose-200: 136 19 55;       /* #881337 */
+    --rose-400: 190 18 60;       /* #BE123C */
   }
 
   * {
@@ -150,7 +174,7 @@
       disabled:opacity-50;
   }
   .btn-primary {
-    @apply btn bg-[rgb(var(--accent))] text-ink-950 hover:brightness-110;
+    @apply btn bg-[rgb(var(--accent))] text-on-accent hover:brightness-110;
     box-shadow: 0 0 24px -8px rgb(var(--accent) / 0.7);
   }
   .btn-secondary {

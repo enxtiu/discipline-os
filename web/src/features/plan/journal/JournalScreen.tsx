@@ -334,7 +334,7 @@ function ScaleField({ scale, value, onChange }: { scale: Scale; value: number | 
               className={clsx(
                 'tnum min-h-tap rounded-2xl border text-lg font-semibold transition-colors',
                 active
-                  ? 'border-transparent bg-[rgb(var(--accent))] text-ink-950'
+                  ? 'border-transparent bg-[rgb(var(--accent))] text-on-accent'
                   : filled
                     ? 'border-[rgb(var(--accent))]/40 bg-[rgb(var(--accent))]/10 text-[rgb(var(--accent))]'
                     : 'border-[rgb(var(--border))] bg-[rgb(var(--bg-sunken))] text-[rgb(var(--text-muted))]',

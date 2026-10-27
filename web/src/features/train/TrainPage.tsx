@@ -341,7 +341,7 @@ function WeekDay({ day, onClick }: { day: PlanDay; onClick: () => void }) {
         className={clsx(
           'mt-auto flex h-5 w-5 items-center justify-center rounded-full text-[10px]',
           done
-            ? 'bg-[rgb(var(--accent))] text-ink-950'
+            ? 'bg-[rgb(var(--accent))] text-on-accent'
             : day.template
               ? 'border border-aqua-400/60'
               : day.is_rest_day

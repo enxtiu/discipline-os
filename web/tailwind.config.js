@@ -1,3 +1,6 @@
+/** A palette shade that follows the theme: the value lives in `src/styles/index.css`. */
+const token = (name) => `rgb(var(--${name}) / <alpha-value>)`
+
 /** @type {import('tailwindcss').Config} */
 export default {
   darkMode: ['class', '[data-theme="dark"]'],
@@ -25,27 +28,33 @@ export default {
           400: '#8492AB',
           500: '#65728C',
         },
-        // Restrained neon accents.
+        // Restrained neon accents. The shades used for text are theme tokens (dark = the
+        // original hex, light = a darker shade of the same hue with 4.5:1 contrast).
         aqua: {
-          300: '#7DF3E1',
-          400: '#38E0C8',
+          300: token('aqua-300'),
+          400: token('aqua-400'),
           500: '#16C7AE',
           600: '#0EA393',
         },
         violet: {
-          300: '#C4B5FD',
-          400: '#A78BFA',
+          300: token('violet-300'),
+          400: token('violet-400'),
           500: '#8B5CF6',
         },
         amber: {
-          300: '#FCD34D',
-          400: '#FBBF24',
+          200: token('amber-200'),
+          300: token('amber-300'),
+          400: token('amber-400'),
           500: '#F59E0B',
         },
         rose: {
-          400: '#FB7185',
+          200: token('rose-200'),
+          400: token('rose-400'),
           500: '#F43F5E',
         },
+        // text on the accent fills (dark ink in the dark theme, white in the light one)
+        'on-accent': token('on-accent'),
+        'on-accent-2': token('on-accent-2'),
       },
       fontFamily: {
         sans: [

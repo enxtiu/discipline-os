@@ -177,8 +177,8 @@ export function MonthGrid({
                 <span
                   className={clsx(
                     'tnum flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[11px] font-semibold leading-none',
-                    isToday && 'bg-[rgb(var(--accent))] text-ink-950',
-                    !isToday && !inMonth && 'muted opacity-60',
+                    isToday && 'bg-[rgb(var(--accent))] text-on-accent',
+                    !isToday && !inMonth && 'muted',
                   )}
                 >
                   {dayNumber(day)}
@@ -209,10 +209,10 @@ export function MonthGrid({
                     key={task.id}
                     {...drag.bind({ task, from: day })}
                     className={clsx(
-                      'block cursor-grab truncate rounded-[4px] px-0.5 text-[9.5px] leading-[15px] text-[rgb(var(--text))]',
+                      'block cursor-grab truncate rounded-[4px] px-0.5 text-[9.5px] leading-[15px]',
+                      // done: struck through on the cell itself (a tinted chip under muted text drops below 4.5:1)
+                      done ? 'text-[rgb(var(--text-muted))] line-through' : ['text-[rgb(var(--text))]', PRIORITY_CHIP[task.priority]],
                       DRAG_SURFACE,
-                      PRIORITY_CHIP[task.priority],
-                      done && 'line-through opacity-50',
                       drag.dragging?.task.id === task.id && 'opacity-30',
                     )}
                     aria-hidden="true"

@@ -32,10 +32,11 @@ export interface RingProps {
   valueText?: string
 }
 
+// strokes follow the theme tokens (a light-theme ring stays visible on white)
 const TONES = {
-  accent: { stroke: '#38E0C8', glow: 'rgb(56 224 200 / .45)' },
-  violet: { stroke: '#8B5CF6', glow: 'rgb(139 92 246 / .45)' },
-  warn: { stroke: '#FBBF24', glow: 'rgb(251 191 36 / .45)' },
+  accent: { stroke: 'rgb(var(--accent))', glow: 'rgb(56 224 200 / .45)' },
+  violet: { stroke: 'rgb(var(--accent-2))', glow: 'rgb(139 92 246 / .45)' },
+  warn: { stroke: 'rgb(var(--warn))', glow: 'rgb(251 191 36 / .45)' },
   muted: { stroke: '#3B4E70', glow: 'transparent' },
 } as const
 
@@ -89,14 +90,13 @@ export function ProgressRing({
           cy={size / 2}
           r={radius}
           fill="none"
-          stroke={colors.stroke}
           strokeWidth={thickness}
           strokeLinecap="round"
           strokeDasharray={circumference}
           initial={{ strokeDashoffset: circumference }}
           animate={{ strokeDashoffset: offset }}
           transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
-          style={glow ? { filter: `drop-shadow(0 0 6px ${colors.glow})` } : undefined}
+          style={{ stroke: colors.stroke, ...(glow ? { filter: `drop-shadow(0 0 6px ${colors.glow})` } : {}) }}
         />
       </svg>
       <div
