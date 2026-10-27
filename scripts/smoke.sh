@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# End-to-end smoke test against a running API (stages 1–3).
+# End-to-end smoke test against a running API (stages 1–6).
 #
 #   API_BASE=http://127.0.0.1:8000/api scripts/smoke.sh VKT6-S6D5
 #
@@ -241,11 +241,97 @@ api DELETE "/v1/health/steps/$OLD_DAY" '' "$TOKEN" >/dev/null
 api DELETE "/v1/tokens/$SHORTCUT_ID" '' "$TOKEN" >/dev/null
 pass "ingest «8 342» / «512,5» / 6.2 km twice → one day, read access refused, food untouched (cleaned up)"
 
-step "14. device self-revoke (cleanup)"
+step "15. planner (stage 6): quick add, a recurring task's next instance, timer, journal, calendar"
+new_uuid() { python3 -c 'import uuid;print(uuid.uuid4())'; }
+shift_day() { python3 -c "import datetime,sys;print(datetime.date.fromisoformat(sys.argv[1])+datetime.timedelta(days=int(sys.argv[2])))" "$1" "$2"; }
+split "$(api GET /v1/planner/counts '' "$TOKEN")"
+[[ "$STATUS" == "200" ]] || fail "planner counts returned $STATUS: $BODY"
+P_TODAY="$(parse "$BODY" "d['date']")"   # the server's today in the user's timezone
+SMOKE_TAG="smoke$(python3 -c 'import secrets;print(secrets.token_hex(3))')"
+# quick add, replayed with the same id: one task. Dates far in the future — no real day is touched.
+QUICK_ID="$(new_uuid)"
+for RUN in 1 2; do
+  split "$(api POST /v1/planner/tasks/quick "{\"id\":\"$QUICK_ID\",\"text\":\"smoke-test 2099-05-12 18:00 #$SMOKE_TAG p2\"}" "$TOKEN")"
+  [[ "$STATUS" == "201" ]] || fail "quick add run $RUN returned $STATUS: $BODY"
+done
+[[ "$(parse "$BODY" "(d['task']['id'], d['task']['source'])")" == "('$QUICK_ID', 'quick_add')" ]] || fail "quick add: $BODY"
+P_TOKENS="$(parse "$BODY" "len(d['parsed']['tokens'])")"
+if (( P_TOKENS > 0 )); then
+  [[ "$(parse "$BODY" "(d['task']['due_date'], d['task']['due_time'], d['task']['priority'], [t['name'] for t in d['task']['tags']])")" \
+    == "('2099-05-12', '18:00', 2, ['$SMOKE_TAG'])" ]] || fail "quick add parsed wrong: $BODY"
+fi
+# a recurring task: completing it twice creates exactly one next instance
+FAR_DAY="$(shift_day "$P_TODAY" 700)"
+SERIES_ID="$(new_uuid)"
+split "$(api POST /v1/planner/tasks "{\"id\":\"$SERIES_ID\",\"title\":\"smoke-test daily\",\"due_date\":\"$FAR_DAY\",\"due_time\":\"07:00\",\"recurrence_rule\":\"daily\"}" "$TOKEN")"
+[[ "$STATUS" == "201" && "$(parse "$BODY" "d['recurrence_preset']")" == "daily" ]] || fail "recurring task: $STATUS $BODY"
+for RUN in 1 2; do
+  split "$(api POST "/v1/planner/tasks/$SERIES_ID/complete" '{}' "$TOKEN")"
+  [[ "$STATUS" == "200" ]] || fail "complete run $RUN returned $STATUS: $BODY"
+done
+NEXT_ID="$(parse "$BODY" "d['next_instance']['id']")"
+[[ "$(parse "$BODY" "(d['task']['status'], d['next_instance']['due_date'], d['next_instance']['due_time'], d['next_instance']['series_index'])")" \
+  == "('done', '$(shift_day "$FAR_DAY" 1)', '07:00', 1)" ]] || fail "next instance wrong: $BODY"
+# the timer: only when none is running (a real timer is never switched off)
+split "$(api GET /v1/planner/timer '' "$TOKEN")"
+[[ "$STATUS" == "200" ]] || fail "timer read returned $STATUS: $BODY"
+if [[ "$(parse "$BODY" "d['running'] is None")" == "True" ]]; then
+  TIMER_ID="$(new_uuid)"
+  STARTED_AT="$(python3 -c 'import datetime;print((datetime.datetime.now(datetime.timezone.utc)-datetime.timedelta(minutes=2)).isoformat())')"
+  split "$(api POST /v1/planner/timer/start "{\"id\":\"$TIMER_ID\",\"description\":\"smoke-test\",\"started_at\":\"$STARTED_AT\"}" "$TOKEN")"
+  [[ "$STATUS" == "200" && "$(parse "$BODY" "d['running']['entry']['id']")" == "$TIMER_ID" ]] || fail "timer start: $STATUS $BODY"
+  split "$(api POST /v1/planner/timer/stop "{\"entry_id\":\"$TIMER_ID\"}" "$TOKEN")"
+  [[ "$STATUS" == "200" ]] || fail "timer stop returned $STATUS: $BODY"
+  TIMER_S="$(parse "$BODY" "d['stopped']['duration_s']")"
+  (( TIMER_S >= 115 )) || fail "the timer ran ${TIMER_S}s, expected about 120"
+  split "$(api POST /v1/planner/timer/stop '{}' "$TOKEN")"
+  [[ "$STATUS" == "200" && "$(parse "$BODY" "d['stopped'] is None")" == "True" ]] || fail "a second stop is not a no-op: $BODY"
+  split "$(api DELETE "/v1/planner/time-entries/$TIMER_ID" '' "$TOKEN")"
+  [[ "$STATUS" == "204" ]] || fail "time entry delete returned $STATUS"
+  TIMER_NOTE="timer start → stop ${TIMER_S}s"
+else
+  TIMER_NOTE="a timer is running — left alone"
+fi
+# today's journal: written only when the day has no entry yet, then removed again
+split "$(api GET "/v1/planner/journal/$P_TODAY" '' "$TOKEN")"
+[[ "$STATUS" == "200" && "$(parse "$BODY" "d['day']['date']")" == "$P_TODAY" ]] || fail "journal read: $STATUS $BODY"
+if [[ "$(parse "$BODY" "d['entry'] is None")" == "True" ]]; then
+  JOURNAL_ID="$(new_uuid)"
+  split "$(api PUT "/v1/planner/journal/$P_TODAY" "{\"id\":\"$JOURNAL_ID\",\"note_md\":\"smoke-test\",\"rating\":4}" "$TOKEN")"
+  [[ "$STATUS" == "200" && "$(parse "$BODY" "d['id']")" == "$JOURNAL_ID" ]] || fail "journal write: $STATUS $BODY"
+  split "$(api PUT "/v1/planner/journal/$P_TODAY" '{"mood":3}' "$TOKEN")"
+  [[ "$(parse "$BODY" "(d['note_md'], d['rating'], d['mood'])")" == "('smoke-test', 4, 3)" ]] || fail "journal upsert lost fields: $BODY"
+  split "$(api DELETE "/v1/planner/journal/$P_TODAY" '' "$TOKEN")"
+  [[ "$STATUS" == "204" ]] || fail "journal delete returned $STATUS"
+  JOURNAL_NOTE="journal written, merged, removed"
+else
+  JOURNAL_NOTE="today already has a journal entry — read only"
+fi
+# a calendar range read, and the range limit
+split "$(api GET "/v1/planner/views/calendar?from=$P_TODAY&to=$(shift_day "$P_TODAY" 6)" '' "$TOKEN")"
+[[ "$STATUS" == "200" && "$(parse "$BODY" "len(d['days'])")" == "7" ]] || fail "calendar returned $STATUS: $BODY"
+split "$(api GET "/v1/planner/views/calendar?from=$P_TODAY&to=$(shift_day "$P_TODAY" 62)" '' "$TOKEN")"
+[[ "$STATUS" == "422" && "$(parse "$BODY" "d['error']['code']")" == "range_too_large" ]] || fail "63 days were accepted ($STATUS)"
+# clean up everything this step created
+for TASK_ID in "$QUICK_ID" "$SERIES_ID" "$NEXT_ID"; do
+  split "$(api DELETE "/v1/planner/tasks/$TASK_ID" '' "$TOKEN")"
+  [[ "$STATUS" == "204" ]] || fail "cleanup of task $TASK_ID returned $STATUS"
+done
+split "$(api GET /v1/planner/tags '' "$TOKEN")"
+SMOKE_TAG_ID="$(parse "$BODY" "next((t['id'] for t in d['items'] if t['name'] == '$SMOKE_TAG'), '')")"
+if [[ -n "$SMOKE_TAG_ID" ]]; then
+  split "$(api DELETE "/v1/planner/tags/$SMOKE_TAG_ID" '' "$TOKEN")"
+  [[ "$STATUS" == "204" ]] || fail "cleanup of tag $SMOKE_TAG returned $STATUS"
+fi
+split "$(api GET "/v1/planner/tasks/$QUICK_ID" '' "$TOKEN")"
+[[ "$STATUS" == "404" ]] || fail "the smoke task survived the cleanup ($STATUS)"
+pass "quick add (${P_TOKENS} tokens, replayed once) · next instance on $(shift_day "$FAR_DAY" 1) · ${TIMER_NOTE} · ${JOURNAL_NOTE} · calendar 7 days, 63 refused (cleaned up)"
+
+step "16. device self-revoke (cleanup)"
 split "$(api DELETE "/v1/devices/$DEVICE_ID" '' "$TOKEN")"
 [[ "$STATUS" == "200" ]] || fail "device revoke returned $STATUS: $BODY"
 split "$(api GET /v1/auth/session '' "$TOKEN")"
 [[ "$STATUS" == "401" ]] || fail "a revoked device token still works ($STATUS)"
 pass "smoke device revoked, its token is dead"
 
-printf '\n\033[32mAll smoke checks passed (stages 1–5).\033[0m\n'
+printf '\n\033[32mAll smoke checks passed (stages 1–6).\033[0m\n'

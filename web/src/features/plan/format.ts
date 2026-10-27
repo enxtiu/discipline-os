@@ -60,8 +60,13 @@ export function blockLabel(block: { start: string; end: string; ends_next_day?: 
  */
 export const PRIORITY_STYLES: Record<Priority, { text: string; ring: string; dot: string }> = {
   1: { text: 'text-rose-400', ring: 'border-rose-400', dot: 'bg-rose-400' },
-  2: { text: 'text-amber-400', ring: 'border-amber-400', dot: 'bg-amber-400' },
-  3: { text: 'text-violet-300', ring: 'border-violet-300', dot: 'bg-violet-300' },
+  // amber/violet text is unreadable on white: the light theme takes the darker tokens
+  2: { text: 'text-[rgb(var(--warn))]', ring: 'border-amber-400', dot: 'bg-amber-400' },
+  3: {
+    text: 'text-violet-300 [[data-theme=light]_&]:text-[rgb(var(--accent-2))]',
+    ring: 'border-violet-300',
+    dot: 'bg-violet-300',
+  },
   4: { text: 'text-[rgb(var(--text-muted))]', ring: 'border-[rgb(var(--border))]', dot: 'bg-[rgb(var(--border))]' },
 }
 

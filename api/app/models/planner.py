@@ -109,7 +109,11 @@ class Area(UserScopedMixin, UuidPkMixin, Base):
     is_archived: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     weekly_target_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
-    __table_args__ = (UniqueConstraint("user_id", "name", name="uq_areas_user_name"),)
+    __table_args__ = (
+        UniqueConstraint("user_id", "name", name="uq_areas_user_name"),
+        # stage 6 (migration 0002): names are unique case-insensitively
+        Index("uq_areas_user_lower_name", "user_id", sa.text("lower(name)"), unique=True),
+    )
 
 
 class Project(UserScopedMixin, UuidPkMixin, Base):
@@ -178,7 +182,11 @@ class Tag(UserScopedMixin, UuidPkMixin, Base):
     color: Mapped[str | None] = mapped_column(String(16), nullable=True)
     kind: Mapped[str] = mapped_column(String(24), nullable=False, default="tag")
 
-    __table_args__ = (UniqueConstraint("user_id", "name", name="uq_tags_user_name"),)
+    __table_args__ = (
+        UniqueConstraint("user_id", "name", name="uq_tags_user_name"),
+        # stage 6 (migration 0002): names are unique case-insensitively
+        Index("uq_tags_user_lower_name", "user_id", sa.text("lower(name)"), unique=True),
+    )
 
 
 task_tags = sa.Table(
@@ -309,6 +317,15 @@ class Task(UserScopedMixin, UuidPkMixin, Base):
             unique=True,
             postgresql_where=sa.text("external_id IS NOT NULL"),
         ),
+        # stage 6 (migration 0002): one next instance per series position; done lists
+        Index(
+            "uq_tasks_recurrence_series",
+            "recurrence_parent_id",
+            "series_index",
+            unique=True,
+            postgresql_where=sa.text("recurrence_parent_id IS NOT NULL"),
+        ),
+        Index("ix_tasks_user_completed", "user_id", "completed_at"),
     )
 
 
