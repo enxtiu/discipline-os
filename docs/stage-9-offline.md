@@ -41,7 +41,8 @@ api/tests/test_stage9_conflicts.py           ★ 24 tests
 web/src/lib/offlineQueue.ts                  statuses, Dexie v2, backoff, dependencies, coalescing, decisions
 web/src/api/client.ts                        ApiError.retryAfterMs (Retry-After), onApiSuccess
 web/src/features/sync/                       ★ SyncSheet, ConflictView, labels (kinds, reasons, values), hooks
-web/src/components/layout/SyncStatus.tsx     the pill opens the sheet, counts, attention dot, 48 px
+web/src/components/layout/SyncStatus.tsx     the pill opens the sheet (own chunk, prefetched when idle and
+                                               online), counts, attention dot, 48 px
 web/src/features/food/pendingDay.ts          ★ optimistic day (waiting meals/water)
 web/src/features/food/useNutrition.ts        writes through the queue, useDayView, useDeleteWater
 web/src/features/food/{FoodPage,LogSheet}.tsx · features/ai/AiReviewSheet.tsx · features/today/TodayPage.tsx
@@ -56,6 +57,7 @@ web/src/api/generated/schema.d.ts            regenerated
 web/src/i18n/locales/{ru,en}.json            + `sync` section (117 keys each), errors.edit_conflict
 scripts/ui-checks/stage9-offline.mjs         ★ browser checks
 scripts/ui-check.mjs                         + the module; a 5xx provoked inside allowErrors is not an app error
+scripts/ui-checks/stage6-plan.mjs            the editor's PATCH now also carries `base` (checked, not refused)
 docs/screenshots/9o-*.png                    sync sheet offline, Today offline, plan offline edit, conflicts, failed
 ```
 
