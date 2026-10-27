@@ -61,8 +61,10 @@ const chunks = []
 const assets = []
 const collector = {
   name: 'dsos-bundle-report',
-  enforce: 'post',
-  generateBundle(_options, bundle) {
+  // writeBundle, not generateBundle: Vite's own post plugins run after every user plugin
+  // and still rewrite the chunks there (the preload lists of dynamic imports) — only
+  // here is chunk.code what lands in dist/
+  writeBundle(_options, bundle) {
     for (const item of Object.values(bundle)) {
       if (item.type === 'chunk') {
         chunks.push({
