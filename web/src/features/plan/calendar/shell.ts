@@ -47,13 +47,17 @@ export function useShellInsets(): ShellInsets {
 }
 
 const AUTOSCROLL_EDGE = 44
+/** Movement (px) away from the pick-up point before the page may scroll that way. */
+const DIRECTION_SLOP = 12
 
 /**
  * While `active`, scroll the page when the pointer (`point.current`) comes
  * within 44 px of the visible area — below `top()` (the app header plus any
  * sticky calendar header) and above the tab bar — faster the further in it
- * is. `onScroll` runs after every page scroll so a drag preview can follow
- * the content that moved under a still finger.
+ * is, but only in the direction the pointer moved from where the drag began:
+ * a block picked up right under the sticky headers (or just above the tab
+ * bar) does not run away on its own. `onScroll` runs after every page scroll
+ * so a drag preview can follow the content that moved under a still finger.
  */
 export function useEdgeAutoScroll(
   active: boolean,
@@ -67,15 +71,20 @@ export function useEdgeAutoScroll(
   })
   useEffect(() => {
     if (!active) return
+    const origin = point.current?.y ?? null
     let raf = 0
     const tick = () => {
       const current = point.current
       if (current) {
         const upper = latest.current.top()
         const lower = window.innerHeight - shellInsets().bottom
+        const from = origin ?? current.y
         let delta = 0
-        if (current.y < upper + AUTOSCROLL_EDGE) delta = -(upper + AUTOSCROLL_EDGE - current.y)
-        else if (current.y > lower - AUTOSCROLL_EDGE) delta = current.y - (lower - AUTOSCROLL_EDGE)
+        if (current.y < upper + AUTOSCROLL_EDGE && current.y < from - DIRECTION_SLOP) {
+          delta = -(upper + AUTOSCROLL_EDGE - current.y)
+        } else if (current.y > lower - AUTOSCROLL_EDGE && current.y > from + DIRECTION_SLOP) {
+          delta = current.y - (lower - AUTOSCROLL_EDGE)
+        }
         const step = Math.max(-14, Math.min(14, Math.round(delta / 3)))
         if (step !== 0) window.scrollBy(0, step)
       }
