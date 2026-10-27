@@ -87,10 +87,29 @@ export default defineConfig({
     chunkSizeWarningLimit: 900,
     rollupOptions: {
       output: {
-        manualChunks: {
-          vendor: ['react', 'react-dom', 'react-router-dom'],
-          charts: ['recharts'],
-          motion: ['framer-motion'],
+        // Stage 8: a function, not the `{ charts: ['recharts'] }` list — the list also pulled
+        // the helpers Recharts shares with the app (clsx) into the charts chunk, so the main
+        // bundle imported and preloaded all of Recharts. Shared helpers now go to `vendor`
+        // (a manual chunk takes every dependency not already placed elsewhere), Recharts and
+        // what only it uses to `charts`, which loads with /stats.
+        manualChunks(id) {
+          if (!id.includes('/node_modules/')) return undefined
+          if (
+            /\/node_modules\/(react|react-dom|react-router|react-router-dom|scheduler|@remix-run\/router|clsx|prop-types|react-is|object-assign|tslib)\//.test(
+              id,
+            )
+          ) {
+            return 'vendor'
+          }
+          if (/\/node_modules\/(framer-motion|motion-dom|motion-utils)\//.test(id)) return 'motion'
+          if (
+            /\/node_modules\/(recharts|recharts-scale|react-smooth|victory-vendor|d3-[a-z-]+|internmap|decimal\.js-light|lodash|eventemitter3|tiny-invariant|fast-equals|react-transition-group|dom-helpers)\//.test(
+              id,
+            )
+          ) {
+            return 'charts'
+          }
+          return undefined
         },
       },
     },
