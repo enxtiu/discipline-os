@@ -1708,6 +1708,131 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/push/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Is web push configured? The VAPID public key */
+        get: operations["config_api_v1_push_config_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/push/subscriptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Your push subscriptions (no keys) */
+        get: operations["list_subscriptions_api_v1_push_subscriptions_get"];
+        put?: never;
+        /** Register this browser's push subscription (upsert by endpoint) */
+        post: operations["subscribe_api_v1_push_subscriptions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/push/subscriptions/{subscription_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove a push subscription (e.g. of a lost phone) */
+        delete: operations["delete_subscription_api_v1_push_subscriptions__subscription_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/push/unsubscribe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Forget the subscription this browser knows (by endpoint; unknown ones are ignored) */
+        post: operations["unsubscribe_api_v1_push_unsubscribe_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/push/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send a test notification to your devices now (ignores quiet hours and categories)
+         * @description Answers within the push sender's deadline (``SEND_DEADLINE_SECONDS``) whatever the
+         *     push services do; nothing stays locked meanwhile.
+         */
+        post: operations["test_api_v1_push_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/prefs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Categories, their times, quiet hours */
+        get: operations["get_prefs_api_v1_notifications_prefs_get"];
+        /** Update categories and times (fields not sent keep their value) */
+        put: operations["put_prefs_api_v1_notifications_prefs_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Recent notifications (sent, deferred, suppressed, failed) */
+        get: operations["list_notifications_api_v1_notifications_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -3499,6 +3624,103 @@ export interface components {
              */
             fiber_g: number;
         };
+        /** NotificationListOut */
+        NotificationListOut: {
+            /** Items */
+            items: components["schemas"]["NotificationOut"][];
+        };
+        /** NotificationOut */
+        NotificationOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Title */
+            title: string;
+            /** Body */
+            body?: string | null;
+            /** Url */
+            url?: string | null;
+            /** Status */
+            status: string;
+            /** Sent At */
+            sent_at?: string | null;
+            /** Scheduled For */
+            scheduled_for?: string | null;
+            /** Quiet Hours Suppressed */
+            quiet_hours_suppressed: boolean;
+            /** Error */
+            error?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * NotificationPrefsIn
+         * @description Every field optional: fields not sent keep their value (unknown legacy keys are kept too).
+         */
+        NotificationPrefsIn: {
+            /** Task Reminders */
+            task_reminders?: boolean | null;
+            /** Meal Logging */
+            meal_logging?: boolean | null;
+            /** Water */
+            water?: boolean | null;
+            /** Workout */
+            workout?: boolean | null;
+            /** Evening Review */
+            evening_review?: boolean | null;
+            /** Streak At Risk */
+            streak_at_risk?: boolean | null;
+            /** Meal Times */
+            meal_times?: string[] | null;
+            /** Water Times */
+            water_times?: string[] | null;
+            /** Workout Time */
+            workout_time?: string | null;
+            /** Evening Review Time */
+            evening_review_time?: string | null;
+        };
+        /** NotificationPrefsOut */
+        NotificationPrefsOut: {
+            /** Task Reminders */
+            task_reminders: boolean;
+            /** Meal Logging */
+            meal_logging: boolean;
+            /** Water */
+            water: boolean;
+            /** Workout */
+            workout: boolean;
+            /** Evening Review */
+            evening_review: boolean;
+            /** Streak At Risk */
+            streak_at_risk: boolean;
+            /** Meal Times */
+            meal_times: string[];
+            /** Water Times */
+            water_times: string[];
+            /** Workout Time */
+            workout_time: string;
+            /** Evening Review Time */
+            evening_review_time: string;
+            quiet_hours: components["schemas"]["QuietHoursOut"];
+            /** Timezone */
+            timezone: string;
+            /** Push Enabled */
+            push_enabled: boolean;
+            /** Active Subscriptions */
+            active_subscriptions: number;
+        };
         /** OccurrenceBlockOut */
         OccurrenceBlockOut: {
             /** Start */
@@ -3999,6 +4221,101 @@ export interface components {
             /** Sort Order */
             sort_order?: number | null;
         };
+        /** PushConfigOut */
+        PushConfigOut: {
+            /** Enabled */
+            enabled: boolean;
+            /** Vapid Public Key */
+            vapid_public_key?: string | null;
+        };
+        /** PushKeysIn */
+        PushKeysIn: {
+            /**
+             * P256Dh
+             * @description P-256 public key, uncompressed, base64url
+             */
+            p256dh: string;
+            /**
+             * Auth
+             * @description 16-byte auth secret, base64url
+             */
+            auth: string;
+        };
+        /** PushSubscriptionIn */
+        PushSubscriptionIn: {
+            /** Endpoint */
+            endpoint: string;
+            keys: components["schemas"]["PushKeysIn"];
+            /** Expiration Time */
+            expiration_time?: string | null;
+            /** User Agent */
+            user_agent?: string | null;
+        };
+        /** PushSubscriptionListOut */
+        PushSubscriptionListOut: {
+            /** Items */
+            items: components["schemas"]["PushSubscriptionOut"][];
+        };
+        /** PushSubscriptionOut */
+        PushSubscriptionOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Device Id */
+            device_id?: string | null;
+            /** Device Name */
+            device_name?: string | null;
+            /**
+             * Device Active
+             * @default false
+             */
+            device_active: boolean;
+            /**
+             * Is Current Device
+             * @default false
+             */
+            is_current_device: boolean;
+            /** Endpoint Host */
+            endpoint_host: string;
+            /** Is Active */
+            is_active: boolean;
+            /** Failure Count */
+            failure_count: number;
+            /** Last Success At */
+            last_success_at?: string | null;
+            /** Last Failure At */
+            last_failure_at?: string | null;
+            /** Last Error */
+            last_error?: string | null;
+            /** Expiration Time */
+            expiration_time?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** PushTestOut */
+        PushTestOut: {
+            /** Sent */
+            sent: number;
+            /** Failed */
+            failed: number;
+            /** Deactivated */
+            deactivated: number;
+        };
+        /** PushUnsubscribeIn */
+        PushUnsubscribeIn: {
+            /** Endpoint */
+            endpoint: string;
+        };
         /** QuickAddDefaultsIn */
         QuickAddDefaultsIn: {
             /** Project Id */
@@ -4030,6 +4347,15 @@ export interface components {
         QuickAddOut: {
             task: components["schemas"]["TaskDetailOut"];
             parsed: components["schemas"]["ParseOut"];
+        };
+        /** QuietHoursOut */
+        QuietHoursOut: {
+            /** Enabled */
+            enabled: boolean;
+            /** Start */
+            start: string;
+            /** End */
+            end: string;
         };
         /** RecentListOut */
         RecentListOut: {
@@ -10416,6 +10742,243 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    config_api_v1_push_config_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PushConfigOut"];
+                };
+            };
+        };
+    };
+    list_subscriptions_api_v1_push_subscriptions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PushSubscriptionListOut"];
+                };
+            };
+        };
+    };
+    subscribe_api_v1_push_subscriptions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PushSubscriptionIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PushSubscriptionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_subscription_api_v1_push_subscriptions__subscription_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                subscription_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unsubscribe_api_v1_push_unsubscribe_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PushUnsubscribeIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    test_api_v1_push_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PushTestOut"];
+                };
+            };
+        };
+    };
+    get_prefs_api_v1_notifications_prefs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationPrefsOut"];
+                };
+            };
+        };
+    };
+    put_prefs_api_v1_notifications_prefs_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotificationPrefsIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationPrefsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_notifications_api_v1_notifications_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationListOut"];
+                };
             };
             /** @description Validation Error */
             422: {
