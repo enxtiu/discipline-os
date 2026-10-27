@@ -218,7 +218,13 @@ async def _quest_row(db, uid, code: str, first: date, last: date) -> uuid.UUID:
         db.add(UserQuest(user_id=uid, quest_id=quest_id, period_start=first, period_end=last))
         await db.commit()
     db.expire_all()
-    return (await db.scalars(select(UserQuest.id).where(UserQuest.quest_id == quest_id))).one()
+    return (
+        await db.scalars(
+            select(UserQuest.id).where(
+                UserQuest.quest_id == quest_id, UserQuest.user_id == uid, UserQuest.period_start == first
+            )
+        )
+    ).one()
 
 
 async def _claim(uid, row_id) -> int | str:
@@ -281,3 +287,124 @@ async def test_stats_water_days_follow_the_same_credit(authed: httpx.AsyncClient
     body = (await authed.get("/api/v1/stats/nutrition", params={"date": week.isoformat()})).json()
     assert body["adherence"]["water_days"] == 2  # the water-only Thursday never counts
     assert [day["water_ml"] for day in body["days"][:4]] == [2600] * 4  # the series itself is unchanged
+
+
+# --------------------------------------------------------------------------- #
+# D1 (decided: keep) — meal-logging rewards are for logging, never for the amount
+# --------------------------------------------------------------------------- #
+async def second_account(db) -> uuid.UUID:
+    """Another active account with its own settings row (no device needed)."""
+    from app.db import SessionLocal
+    from app.models import User, UserStatus
+    from app.services.settings_service import get_or_create_settings
+
+    async with SessionLocal() as session:
+        user = User(display_name="Second", status=UserStatus.ACTIVE, is_owner=False)
+        session.add(user)
+        await session.flush()
+        await get_or_create_settings(session, user)
+        await session.commit()
+        return user.id
+
+
+LOGGING_BADGES = {"meals_1", "meals_50", "streak_meals_30"}
+
+
+async def test_policy_meal_logging_rewards_never_depend_on_the_amount(owner, db) -> None:
+    """Replaces the probe's expectation (review decision D1): 30 days of 3 × 200 kcal
+    (far below the 1500 floor) earn exactly the meal-logging rewards that 30 days of
+    3 × 667 kcal earn — XP per meal, the meal-logging streak, the logging badges and
+    «Запишите 3 приёма пищи» — so logging a low day is never punished (no incentive to
+    stop logging), and nothing pays more for eating less: every day and the total of the
+    low account earn less XP, and score less, than the account eating at its target."""
+    low, normal = owner.id, await second_account(db)
+    for uid in (low, normal):
+        await configure(db, uid)
+    days = [TODAY - timedelta(days=back) for back in range(30)]
+    for day in days:
+        for index in range(3):
+            await meal(db, low, day, 200, protein=10, fiber=2, hh=8 + 5 * index)
+            await meal(db, normal, day, 2000 / 3, protein=50, fiber=10, hh=8 + 5 * index)
+    await run(db, low, NOON)  # seeds the quest pool
+    for uid in (low, normal):
+        await _quest_row(db, uid, "daily_meals_3", TODAY, TODAY)
+    snapshots = {uid: await run(db, uid, NOON) for uid in (low, normal)}
+
+    def meal_xp(rows) -> int:
+        return sum(points for kind, points, _ in rows if kind == XpKind.MEAL_LOGGED)
+
+    rows = {}
+    for uid in (low, normal):
+        rows[uid] = [(row.kind, row.points, row.local_day) for row in (await xp_rows(db, uid)).values()]
+    assert meal_xp(rows[low]) == meal_xp(rows[normal]) == 30 * 3 * 5
+    logging = {uid: streak_of(snapshots[uid], StreakKind.MEAL_LOGGING) for uid in (low, normal)}
+    assert (
+        (logging[low].current, logging[low].longest) == (logging[normal].current, logging[normal].longest) == (30, 30)
+    )
+    assert await unlocked_codes(db, low) & LOGGING_BADGES == LOGGING_BADGES
+    assert await unlocked_codes(db, normal) & LOGGING_BADGES == LOGGING_BADGES
+    quest = {
+        uid: next(view for view in snapshots[uid].quests if view.quest.code == "daily_meals_3") for uid in (low, normal)
+    }
+    assert (quest[low].progress, quest[low].row.status) == (quest[normal].progress, quest[normal].row.status)
+    assert quest[low].row.status is QuestStatus.COMPLETED
+
+    # nothing pays more for eating less
+    def by_day(rows) -> dict[date, int]:
+        out: dict[date, int] = {}
+        for _, points, day in rows:
+            out[day] = out.get(day, 0) + points
+        return out
+
+    low_days, normal_days = by_day(rows[low]), by_day(rows[normal])
+    assert all(low_days.get(day, 0) <= normal_days.get(day, 0) for day in set(low_days) | set(normal_days))
+    assert sum(low_days.values()) < sum(normal_days.values())
+    for day in days[1:]:
+        assert snapshots[low].flags[day].score <= snapshots[normal].flags[day].score
+        assert snapshots[low].flags[day].credit is False and snapshots[normal].flags[day].credit is True
+    assert streak_of(snapshots[low], StreakKind.OVERALL).current == 0
+
+
+# --------------------------------------------------------------------------- #
+# D2 (decided: keep) — overall-streak credit is "a meal at or above the floor"
+# --------------------------------------------------------------------------- #
+def test_policy_overall_credit_is_a_meal_at_or_above_the_floor_and_the_kcal_part_is_zero_above_1_6_t() -> None:
+    """Review decision D2: credit has no upper bound — above 1.6·T the kcal part is
+    already 0, so a binge day with every other part perfect scores 75 and counts for
+    the overall streak (≥ 60) like any logged day at or above the floor; below the
+    floor nothing counts, whatever the score."""
+    from app.services.day_metrics import DayMetrics
+    from tests.test_stage8_score import ctx as score_ctx
+
+    context = score_ctx()  # T = 2000, F = 1500
+
+    def day_with(kcal: float, meals: int = 3):
+        return score.compute_day_score(
+            DayMetrics(
+                day=date(2026, 7, 10),
+                kcal=kcal,
+                meals=meals,
+                protein_g=150,
+                fiber_g=30,
+                water_ml=2500,
+                steps=9000,
+                sleep_minutes=450,
+                tasks_done=1,
+                journal=True,
+            ),
+            context,
+            provisional=False,
+        )
+
+    for kcal in (3200, 5000, 10000):  # 1.6·T and above
+        binge = day_with(kcal)
+        part = binge.component("kcal")
+        assert (part.value, part.detail["state"]) == (0.0, "above_zone")
+        assert (binge.value, binge.credit, binge.counts_for_overall) == (75.0, True, True)
+    assert day_with(2700).component("kcal").value == pytest.approx(0.25)  # 1.35·T
+    assert day_with(2000).value == 100.0
+    exactly = day_with(1500)
+    assert exactly.credit is True and exactly.counts_for_overall  # the floor itself counts
+    low = day_with(900)
+    assert (low.value, low.credit, low.counts_for_overall) == (75.0, False, False)
+    assert day_with(0, meals=0).credit is False  # not logging is never credit
