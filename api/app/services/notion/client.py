@@ -389,15 +389,23 @@ class NotionClient:
         return await self.request("GET", f"/pages/{norm_id(page_id)}", idempotent=True)
 
     async def create_database(
-        self, *, page_id: str, title: str, icon: str | None, properties: dict[str, Any]
+        self,
+        *,
+        page_id: str,
+        title: str,
+        icon: str | None,
+        properties: dict[str, Any],
+        description: str | None = None,
     ) -> dict[str, Any]:
         """A database under a page with its initial data source schema
-        (https://developers.notion.com/reference/database-create)."""
+        (https://developers.notion.com/reference/database-create). Not idempotent."""
         body: dict[str, Any] = {
             "parent": {"type": "page_id", "page_id": norm_id(page_id)},
             "title": [{"type": "text", "text": {"content": title}}],
             "initial_data_source": {"properties": properties},
         }
+        if description:
+            body["description"] = [{"type": "text", "text": {"content": description}}]
         if icon:
             body["icon"] = {"type": "emoji", "emoji": icon}
         return await self.request("POST", "/databases", json=body, idempotent=False)
