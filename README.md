@@ -34,6 +34,7 @@ default, one-handed, every frequent action within two taps.
 - [Deployment](#deployment)
 - [Backups and restore](#backups-and-restore)
 - [iPhone setup: install the PWA](#iphone-setup-install-the-pwa)
+- [Web push on iPhone](#web-push-on-iphone)
 - [iOS Shortcut recipe (steps and active energy)](#ios-shortcut-recipe-steps-and-active-energy)
 - [Troubleshooting](#troubleshooting)
 - [Security notes](#security-notes)
@@ -66,7 +67,8 @@ default, one-handed, every frequent action within two taps.
 | Camera barcode scanner (`@zxing/browser`, works in iOS Safari) with typed-digits fallback | ✅ stage 3 |
 | Training: exercise library (ru/en search, your own exercises), templates, weekly plan, live workout logger with rest timer (sets work offline), personal records, quick cardio, burned calories on their own card/chart — never food budget | ✅ stage 4 |
 | Health: iOS Shortcut ingest (scoped token, idempotent per day, lenient numbers, 62-day backfill), steps on Today with a manual fallback, weight (profile + targets follow) and sleep entries, a /health page with 14-day steps, 90-day weight and a sleep timeline | ✅ stage 5 |
-| Planner, push, gamification | stages 6–8 |
+| Web push: VAPID subscriptions per device, task reminders and smart daily reminders (meal logging, water, planned workout, evening review) re-checked at send time, quiet hours (task reminders wait, daily nudges are dropped), per-category times, test notification, history; iPhone «На экран Домой» guidance in onboarding and Settings | ✅ stage 7 |
+| Planner, gamification | stages 6, 8 |
 
 ---
 
@@ -218,7 +220,11 @@ All of them live in `.env` (copy from `.env.example`; never commit the real one)
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `SCHEDULER_ENABLED` | `true` | APScheduler inside the API container |
-| `HOUSEKEEPING_INTERVAL_MINUTES` | `15` | Expired pairing codes, ephemeral rows (stage 7 adds notifications) |
+| `HOUSEKEEPING_INTERVAL_MINUTES` | `15` | Expired pairing codes, ephemeral rows |
+
+Stage 7 adds two jobs (no settings): `dispatch_notifications` every minute and
+`plan_daily_reminders` every 15 minutes (see [Web push on iPhone](#web-push-on-iphone)).
+With `SCHEDULER_ENABLED=false` nothing is delivered — `POST /api/v1/push/test` still works.
 
 ### AI (stage 3) and push (stage 7)
 
@@ -233,8 +239,23 @@ deterministic, no key, for dev/CI), `AI_API_KEY`, `AI_BASE_URL`,
 `OFF_LIVE_LOOKUP`, `OFF_BASE_URL`, `OFF_TIMEOUT_SECONDS`, `OFF_USER_AGENT`,
 `OFF_LOOKUPS_PER_MINUTE`, `OFF_MISS_TTL_HOURS` (stage 2b: a barcode missing locally
 is looked up once on Open Food Facts and cached);
-`VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` (generate with
-`python -m app.cli vapid-keys`), `VAPID_SUBJECT`.
+`VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` — see the next table.
+
+### Web push (stage 7)
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `VAPID_PUBLIC_KEY` | empty | base64url P-256 public key; the browser subscribes with it (`GET /api/v1/push/config`) |
+| `VAPID_PRIVATE_KEY` | empty | The matching private key as one-line PEM (`\n` escaped) — signs every push (RFC 8292). Secret |
+| `VAPID_SUBJECT` | `mailto:admin@example.com` | Your contact for the push services: `mailto:you@domain` or `https://…` |
+
+Generate the pair once and keep it: `docker compose exec api python -m app.cli vapid-keys`
+prints both lines ready for `.env`; restart the API. Push is **on** only when both keys
+are set (`features.push_notifications` in `/api/v1/meta/app-config`); without them the
+app says so in Settings → Уведомления instead of offering a button that cannot work.
+Changing the keys later orphans every browser subscription — each device has to tap
+«Включить уведомления» again (the API logs `vapid_key_mismatch` if the two keys do not
+belong together).
 
 ### Backups
 
@@ -365,9 +386,12 @@ TEST_DATABASE_URL=postgresql+psycopg://postgres:postgres@127.0.0.1:5432/dsos_tes
 # frontend: types + production build (also verifies the PWA generation)
 cd web && npm run typecheck && npm run build
 
-# end-to-end against a running API (20 checks: pairing, scopes, targets, search
-# budget, barcode, recipes, AI parse without auto-save, 413 upload guard, a workout
-# end to end with food totals untouched, revoke)
+# end-to-end against a running API (pairing, scopes, targets, search budget,
+# barcode, recipes, AI parse without auto-save, 413 upload guard, a workout end to
+# end with food totals untouched, health ingest, web push: step 16 starts a local
+# receiver, sends POST /push/test to it and decrypts the push with http_ece from
+# api/.venv — the API needs VAPID keys and ENV=development for that step, it is
+# skipped otherwise; revoke)
 API_BASE=http://127.0.0.1:8000/api ./scripts/smoke.sh <PAIRING-CODE>
 
 # i18n gate (also runs in the CI web job): every key the UI uses exists in both
@@ -380,7 +404,10 @@ node scripts/check-i18n.mjs
 # food logging, recipes, AI text/photo review → save, offline AI message, the
 # camera barcode scanner, and training (template, plan, live sets incl. offline,
 # finish, records, cardio, burned kcal apart from food), and health (Shortcut token + ingest,
-# manual steps incl. offline, weight → profile, sleep, /health; cleans up after itself)
+# manual steps incl. offline, weight → profile, sleep, /health; cleans up after itself),
+# and notifications (iPhone install steps, prefs/quiet hours kept after reload,
+# blocked/off/on states, a test push to a local receiver decrypted in Node,
+# history, onboarding on iPhone, ?task= deep links; restores what it changed)
 # (FAKE_CAMERA plays an EAN-13 video:
 # python3 scripts/make-barcode-y4m.py 460700123456 /tmp/barcode.y4m).
 # Needs a running api (AI_PROVIDER=fake) + web and a fresh single-use code:
@@ -394,7 +421,12 @@ token revocation, scope enforcement (`ingest:health` cannot read `/v1/settings`)
 Mifflin/Katch BMR, activity factors, deficit presets, the safe floor, macro
 split, water/fiber/steps, warning codes, the manual-target override and
 recompute, Russian/English full-text search with trigram typo tolerance,
-barcode lookup, RRULE expansion across DST, and seed idempotency.
+barcode lookup, RRULE expansion across DST, and seed idempotency. Stage 7 adds
+push subscriptions (upsert, scoping, validation), every push-service answer, a real
+encryption round-trip through `pywebpush` decrypted with `http_ece`, the dispatcher
+(due/not due, category off, stale, quiet hours across midnight and DST, retries,
+410, dedupe, two overlapping runs sending once), the daily planner and every
+send-time condition.
 
 ---
 
@@ -515,11 +547,61 @@ pictures to survive a server loss (the meals themselves are in the database).
 4. Pair the device with the code from `make owner` / `make pair`.
 5. Finish the onboarding wizard (body params → goal → targets preview).
 
-Web push (stage 7) **only** works for a PWA launched from the home screen — iOS
-does not deliver notifications to a Safari tab. The app detects standalone mode
-and tells you when that is the missing piece. Voice input for meal notes uses the
-iOS keyboard microphone inside the ordinary text field; there is no in-app
-recorder.
+Web push **only** works for a PWA launched from the home screen — iOS does not
+deliver notifications to a Safari tab (see [Web push on iPhone](#web-push-on-iphone)).
+Voice input for meal notes uses the iOS keyboard microphone inside the ordinary text
+field; there is no in-app recorder.
+
+---
+
+## Web push on iPhone
+
+Reminders arrive as Web Push notifications (VAPID, `aes128gcm`), also when the app
+is closed. On iPhone that needs **iOS 16.4+ and the app on the Home Screen**.
+
+1. **Install:** Safari → Share → **На экран «Домой»** → open the app from the icon.
+   (The onboarding wizard and Settings show these steps on an iPhone Safari tab.)
+2. **Enable:** Settings → **Уведомления** → **Включить уведомления** → Allow. The
+   prompt only appears after a tap, and only once: if you chose «Не разрешать»,
+   iOS Settings → Уведомления → DisciplineOS → «Допуск уведомлений» (the app shows
+   these steps when notifications are blocked).
+3. **Check:** **Отправить тестовое** — a notification arrives within seconds; the
+   history on the same screen shows it.
+4. **Turn off on one device:** «Выключить на этом устройстве». A lost phone can be
+   removed from «Устройства с уведомлениями» on another one; revoking a device in
+   Settings → Устройства also stops its notifications at once.
+
+**What each category does** (Settings → Уведомления; times are your local time):
+
+| Category | When | Sent only if (checked at send time) | Opens |
+| --- | --- | --- | --- |
+| Напоминания о задачах | the reminders set on a task (stage 6: «за 15 мин», a date and time) | the task still exists and is not done/cancelled | the task (`/plan?task=<id>`) |
+| Записать еду | `13:00`, `19:30` (up to 6 times) | nothing was logged today (first time) / since the previous time | food search |
+| Вода | `12:00`, `16:00`, `20:00` (up to 8) | today's water is behind the pro-rata share of the target (target × elapsed part of 08:00–22:00); the text says how many ml are left | Today |
+| Тренировка по плану | `18:00` | a workout (not a rest day) is planned today and none was started | Train |
+| Вечерний обзор | `21:30` | today's journal entry is still empty | the journal |
+| Серия под угрозой | — | arrives with streaks in stage 8 | — |
+
+Meal reminders are about *logging* only: no message ever suggests eating less or
+skipping a meal (the message catalogue is checked by a test).
+
+**Quiet hours** (default 23:00–07:00, your timezone, may cross midnight): a task
+reminder that falls inside them is delivered when they end (history marks it
+«тихие часы»); a daily nudge (food, water, workout, review) is not delivered
+afterwards, and none is even planned inside them. **Late reminders** (server down
+for more than an hour) are dropped rather than sent stale.
+
+How it works: `plan_daily_reminders` (every 15 min) creates today's smart reminders
+for users with push on, DST-safe and idempotent; `dispatch_notifications` (every
+minute) claims due reminders with `FOR UPDATE SKIP LOCKED`, applies prefs, quiet
+hours and the condition, and sends to every active subscription of an active
+device. A push service answering 404/410 deactivates that subscription; 429/5xx or
+a network error are retried (3 attempts). Endpoints: `GET /api/v1/push/config`,
+`POST|GET /api/v1/push/subscriptions`, `DELETE /api/v1/push/subscriptions/{id}`,
+`POST /api/v1/push/unsubscribe`, `POST /api/v1/push/test`,
+`GET|PUT /api/v1/notifications/prefs`, `GET /api/v1/notifications` (history).
+On the lock screen a task reminder shows the task title — keep that in mind for
+sensitive tasks.
 
 ---
 
@@ -617,6 +699,25 @@ pairing screen and you can pair again with a fresh code.
 `scripts/dev-api.sh` starts uvicorn against
 `DATABASE_URL=postgresql+psycopg://…@127.0.0.1:55432/dsos` (see the Makefile for
 the migrate/test equivalents).
+
+**No notifications arrive.** Go down this list:
+1. Settings → Уведомления says «Не настроены» → the server has no VAPID keys
+   (`VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY`, see [Web push](#web-push-stage-7)).
+2. «Нужна установка» → on iPhone open the app from the Home Screen icon, not Safari.
+3. «Запрещены» → iOS Settings → Уведомления → DisciplineOS → «Допуск уведомлений»;
+   also check Focus / Do Not Disturb.
+4. «Выключены» → tap «Включить уведомления». «Включены» → «Отправить тестовое»: if
+   the test arrives but reminders do not, look at the history on the same screen —
+   each reminder says why it was not sent (тихие часы, опоздало больше чем на час,
+   нет устройств, the condition was already met: food logged, water on track…).
+5. Nothing at all in the history → is the scheduler running? `/api/v1/meta/health`
+   must list `dispatch_notifications` with a `next_run_time`; the category must be
+   on and its time in the future and outside quiet hours.
+6. The device list shows failures in a row → the push service refuses the message:
+   401/403 usually means the two VAPID keys do not belong together or were changed
+   (look for `vapid_key_mismatch` in the API log) — turn notifications off and on
+   again on the device. A subscription the push service has dropped (404/410) is
+   switched off automatically; enable it again.
 
 **Type errors after pulling a schema change.** Regenerate:
 `make gen-api` (needs the API running) and commit the updated file.
