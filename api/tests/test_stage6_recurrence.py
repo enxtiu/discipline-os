@@ -28,6 +28,7 @@ from tests.stage6_helpers import (
     patch_task,
     set_timezone,
     today,
+    uid,
 )
 
 pytestmark = pytest.mark.anyio
@@ -67,6 +68,21 @@ async def _age(task_id: str, hours: int = 1) -> None:
         await session.execute(
             update(Task)
             .where(Task.id == uuid.UUID(task_id))
+            .values(
+                created_at=Task.created_at - timedelta(hours=hours), updated_at=Task.updated_at - timedelta(hours=hours)
+            )
+        )
+        await session.commit()
+
+
+async def _age_tree(task_id: str, hours: int = 1) -> None:
+    """``_age`` for a next instance and the subtree copied with it (they keep one creation time)."""
+    root = uuid.UUID(task_id)
+    children = select(Task.id).where(Task.parent_id == root)
+    async with SessionLocal() as session:
+        await session.execute(
+            update(Task)
+            .where((Task.id == root) | Task.parent_id.in_([root]) | Task.parent_id.in_(children))
             .values(
                 created_at=Task.created_at - timedelta(hours=hours), updated_at=Task.updated_at - timedelta(hours=hours)
             )
@@ -349,6 +365,79 @@ async def test_reopen_removes_only_an_untouched_next_instance(authed: httpx.Asyn
     assert (await get_task(authed, again["id"]))["title"] == "читать (изменено)"
     redone = await complete(authed, task["id"])
     assert redone["next_instance"]["id"] == again["id"] and await _series_count(task["id"]) == 2
+
+
+async def _prepared_series(authed: httpx.AsyncClient, title: str) -> tuple[dict, dict]:
+    """A weekly series with one step, completed: (the done task, its next instance, aged as if made earlier)."""
+    task = await make_task(authed, title, due_date=today().isoformat(), recurrence_rule="weekly")
+    await make_task(authed, f"{title}: шаг", parent_id=task["id"])
+    nxt = (await complete(authed, task["id"]))["next_instance"]
+    await _age_tree(nxt["id"])
+    return task, nxt
+
+
+async def test_reopen_keeps_a_next_instance_the_user_prepared(authed: httpx.AsyncClient) -> None:
+    """A subtask, a tag, a reminder, tracked time, a removed or a moved-in step all count as touching the
+    next instance: reopening the completed one used to delete it with the user's additions."""
+
+    async def reopen_keeps(task: dict, nxt: dict) -> None:
+        reopened = await authed.post(f"{API}/tasks/{task['id']}/reopen")
+        assert reopened.status_code == 200 and reopened.json()["removed_next_instance_id"] is None
+        assert (await authed.get(f"{API}/tasks/{nxt['id']}")).status_code == 200
+
+    task, nxt = await _prepared_series(authed, "подзадача")
+    step = await make_task(authed, "подготовить слайды", parent_id=nxt["id"])
+    await reopen_keeps(task, nxt)
+    assert (await get_task(authed, step["id"]))["parent_id"] == nxt["id"]
+
+    task, nxt = await _prepared_series(authed, "тег")
+    await patch_task(authed, nxt["id"], tags=["работа"])
+    await reopen_keeps(task, nxt)
+
+    task, nxt = await _prepared_series(authed, "напоминание")
+    await patch_task(authed, nxt["id"], reminders=[{"lead_minutes": 30}])
+    await reopen_keeps(task, nxt)
+
+    task, nxt = await _prepared_series(authed, "время")
+    copied_step = (await get_task(authed, nxt["id"]))["subtasks"][0]
+    entry = {"task_id": copied_step["id"], "date": (today() - timedelta(days=1)).isoformat()}
+    logged = await authed.post(f"{API}/time-entries", json={**entry, "start": "10:00", "end": "10:30"})
+    assert logged.status_code == 201, logged.text
+    await reopen_keeps(task, nxt)
+
+    task, nxt = await _prepared_series(authed, "удалённый шаг")
+    copied_step = (await get_task(authed, nxt["id"]))["subtasks"][0]
+    assert (await authed.delete(f"{API}/tasks/{copied_step['id']}")).status_code == 204
+    await reopen_keeps(task, nxt)
+
+    task, nxt = await _prepared_series(authed, "перенесённая")
+    loose = await make_task(authed, "отдельная задача")
+    await patch_task(authed, loose["id"], parent_id=nxt["id"])
+    await reopen_keeps(task, nxt)
+
+    task, nxt = await _prepared_series(authed, "без изменений")  # the edit form saved what was there
+    await patch_task(authed, nxt["id"], tags=[], reminders=[], title=nxt["title"])
+    reopened = (await authed.post(f"{API}/tasks/{task['id']}/reopen")).json()
+    assert reopened["removed_next_instance_id"] == nxt["id"]
+
+
+async def test_reopen_racing_a_new_subtask_never_loses_it(authed: httpx.AsyncClient) -> None:
+    """A subtask added to the next instance while the completed one is reopened: kept, or refused with 404."""
+    for _ in range(8):
+        task = await make_task(authed, "серия", due_date=today().isoformat(), recurrence_rule="daily")
+        nxt = (await complete(authed, task["id"]))["next_instance"]
+        step_id = uid()
+        created, reopened = await asyncio.gather(
+            authed.post(f"{API}/tasks", json={"id": step_id, "title": "шаг", "parent_id": nxt["id"]}),
+            authed.post(f"{API}/tasks/{task['id']}/reopen"),
+        )
+        assert reopened.status_code == 200, reopened.text
+        if created.status_code == 201:
+            assert reopened.json()["removed_next_instance_id"] is None
+            assert (await authed.get(f"{API}/tasks/{step_id}")).status_code == 200
+        else:
+            assert created.status_code == 404, created.text
+            assert reopened.json()["removed_next_instance_id"] == nxt["id"]
 
 
 async def test_subtree_reminders_and_times_are_copied(authed: httpx.AsyncClient) -> None:

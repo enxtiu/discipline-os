@@ -112,7 +112,7 @@ async def _attribution(
     fill_area: bool = True,
 ) -> tuple[uuid.UUID | None, uuid.UUID | None, uuid.UUID | None]:
     """Validated (task, project, area); a missing project/area comes from the task, an area from the project."""
-    task = await get_task(db, user_id, task_id) if task_id is not None else None
+    task = await get_task(db, user_id, task_id, share=True) if task_id is not None else None
     project = await owned(db, Project, user_id, project_id, "Project") if project_id is not None else None
     if area_id is not None:
         await owned(db, Area, user_id, area_id, "Area")

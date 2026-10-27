@@ -36,6 +36,7 @@ from sqlalchemy.orm import raiseload
 from app.core.errors import NotFound, Unprocessable
 from app.core.ids import new_id
 from app.core.logging import get_logger
+from app.core.tz import utcnow
 from app.models import (
     Area,
     Project,
@@ -46,6 +47,7 @@ from app.models import (
     Tag,
     Task,
     TaskStatus,
+    TimeEntry,
     task_tags,
 )
 from app.schemas.planner import LATEST_DATE
@@ -87,10 +89,17 @@ def is_open(task: Task) -> bool:
     return task.status not in CLOSED
 
 
-async def get_task(db: AsyncSession, user_id: uuid.UUID, task_id: uuid.UUID, *, lock: bool = False) -> Task:
+async def get_task(
+    db: AsyncSession, user_id: uuid.UUID, task_id: uuid.UUID, *, lock: bool = False, share: bool = False
+) -> Task:
+    """The caller's task (404 otherwise). ``lock``: FOR UPDATE, to change it. ``share``: FOR KEY SHARE,
+    for a task something is attached to (a subtask, a time entry) — it cannot be deleted meanwhile,
+    and a reopen that would delete it as an untouched next instance waits and then sees the addition."""
     stmt = task_query().where(Task.id == task_id, Task.user_id == user_id)
     if lock:
         stmt = stmt.with_for_update().execution_options(populate_existing=True)
+    elif share:
+        stmt = stmt.with_for_update(read=True, key_share=True).execution_options(populate_existing=True)
     task = await db.scalar(stmt)
     if task is None:
         raise NotFound("Task not found", details={"id": str(task_id)})
@@ -282,17 +291,20 @@ async def tag_ids_for(db: AsyncSession, user_id: uuid.UUID, names: Sequence[str]
     return out
 
 
-async def set_task_tags(db: AsyncSession, user_id: uuid.UUID, task_id: uuid.UUID, tag_ids: Sequence[uuid.UUID]) -> None:
+async def set_task_tags(db: AsyncSession, user_id: uuid.UUID, task_id: uuid.UUID, tag_ids: Sequence[uuid.UUID]) -> bool:
+    """The task's tags become exactly ``tag_ids``; ``True`` when the set changed."""
     stmt = delete(task_tags).where(task_tags.c.task_id == task_id)
     if tag_ids:
         stmt = stmt.where(task_tags.c.tag_id.not_in(tag_ids))
-    await db.execute(stmt)
+    changed = bool((await db.execute(stmt)).rowcount)
     if tag_ids:
-        await db.execute(
+        inserted = await db.execute(
             pg_insert(task_tags)
             .values([{"task_id": task_id, "tag_id": tag_id, "user_id": user_id} for tag_id in tag_ids])
             .on_conflict_do_nothing()
         )
+        changed = changed or bool(inserted.rowcount)
+    return changed
 
 
 # --------------------------------------------------------------------------- #
@@ -365,8 +377,9 @@ def _active_status(task: Task) -> ReminderStatus:
     return ReminderStatus.PENDING if is_open(task) else ReminderStatus.CANCELLED
 
 
-async def replace_reminders(db: AsyncSession, task: Task, defs: list[dict[str, Any]], clock: Clock) -> None:
-    """The task's active reminders become exactly ``defs`` (sent ones stay as history)."""
+async def replace_reminders(db: AsyncSession, task: Task, defs: list[dict[str, Any]], clock: Clock) -> bool:
+    """The task's active reminders become exactly ``defs`` (sent ones stay as history);
+    ``True`` when anything changed."""
     anchor = reminder_anchor(task, clock)
     if anchor is None and any("lead_minutes" in item for item in defs):
         raise _no_anchor()
@@ -378,17 +391,21 @@ async def replace_reminders(db: AsyncSession, task: Task, defs: list[dict[str, A
     if stale:
         await db.execute(delete(Reminder).where(Reminder.id.in_(stale)))
     rows = []
+    changed = bool(stale)
     for key, payload in wanted.items():
         at = remind_at(task, payload, clock, anchor)
         assert at is not None  # checked above
         if key in by_key:
+            changed = changed or by_key[key].remind_at != at
             by_key[key].remind_at = at
             by_key[key].title = task.title[:200]
         else:
             rows.append(_reminder_row(task, payload, at, state))
     if rows:
+        changed = True
         await db.execute(pg_insert(Reminder).values(rows))
     await db.flush()
+    return changed
 
 
 async def recompute_reminders(db: AsyncSession, task: Task, clock: Clock, *, strict: bool = True) -> None:
@@ -463,7 +480,7 @@ async def create_task(db: AsyncSession, *, user_id: uuid.UUID, clock: Clock, pay
         await owned(db, Area, user_id, payload.area_id, "Area")
     parent: Task | None = None
     if payload.parent_id is not None:
-        parent = await get_task(db, user_id, payload.parent_id)
+        parent = await get_task(db, user_id, payload.parent_id, share=True)
         if await task_depth(db, parent) + 1 > MAX_DEPTH:
             raise _too_deep()
         await _check_children(db, parent.id)
@@ -551,13 +568,14 @@ def _series(task: Task) -> tuple[uuid.UUID, int]:
     return task.recurrence_parent_id or task.id, (task.series_index or 0) + 1
 
 
-async def existing_next_instance(db: AsyncSession, task: Task) -> Task | None:
+async def existing_next_instance(db: AsyncSession, task: Task, *, lock: bool = False) -> Task | None:
     root_id, index = _series(task)
-    return await db.scalar(
-        task_query().where(
-            Task.recurrence_parent_id == root_id, Task.series_index == index, Task.user_id == task.user_id
-        )
+    stmt = task_query().where(
+        Task.recurrence_parent_id == root_id, Task.series_index == index, Task.user_id == task.user_id
     )
+    if lock:
+        stmt = stmt.with_for_update().execution_options(populate_existing=True)
+    return await db.scalar(stmt)
 
 
 def _shifted_values(source: Task, shift: timedelta, clock: Clock) -> dict[str, Any]:
@@ -747,13 +765,22 @@ async def close_task(
 
 
 async def _untouched(db: AsyncSession, instance: Task) -> bool:
+    """Nobody worked on the next instance since the completion created it: it is open and unedited
+    (``updated_at`` within 2 s of ``created_at`` — tag, reminder and step changes bump it), every task
+    below it is a copy made with it and is open and unedited too, and no time was tracked on any of them."""
     if instance.status in CLOSED or instance.updated_at - instance.created_at > UNTOUCHED:
         return False
     ids = await descendant_ids(db, instance.user_id, [instance.id])
-    if not ids:
-        return True
-    rows = (await db.execute(select(Task.created_at, Task.updated_at, Task.status).where(Task.id.in_(ids)))).all()
-    return all(row.status not in CLOSED and row.updated_at - row.created_at <= UNTOUCHED for row in rows)
+    if ids:
+        rows = (
+            await db.execute(select(Task.created_at, Task.updated_at, Task.status, Task.source).where(Task.id.in_(ids)))
+        ).all()
+        for row in rows:
+            copied = row.source == "recurrence" and abs(row.created_at - instance.created_at) <= UNTOUCHED
+            if not copied or row.status in CLOSED or row.updated_at - row.created_at > UNTOUCHED:
+                return False
+    tracked = select(TimeEntry.id).where(TimeEntry.task_id.in_([instance.id, *ids]), TimeEntry.is_deleted.is_(False))
+    return not await db.scalar(select(tracked.exists()))
 
 
 async def reopen_task(db: AsyncSession, task: Task, explicit: TaskStatus | None, clock: Clock) -> uuid.UUID | None:
@@ -762,7 +789,8 @@ async def reopen_task(db: AsyncSession, task: Task, explicit: TaskStatus | None,
     task.status = derive_status(task, explicit, None, gave_attribute=False)
     await db.flush()
     removed: uuid.UUID | None = None
-    following = await existing_next_instance(db, task)
+    # locked: an addition in flight (a subtask, a time entry hold it FOR KEY SHARE) finishes first and is seen
+    following = await existing_next_instance(db, task, lock=True)
     if following is not None and await _untouched(db, following):
         await db.execute(
             delete(Task)
@@ -822,7 +850,7 @@ async def update_task(
         if payload.parent_id is None:
             task.parent_id = None
         else:
-            parent = await get_task(db, user_id, payload.parent_id)
+            parent = await get_task(db, user_id, payload.parent_id, share=True)
             if parent.id == task.id or parent.id in await descendant_ids(db, user_id, [task.id]):
                 raise _too_deep("A task cannot become its own subtask")
             if await task_depth(db, parent) + 1 + await _subtree_height(db, task.id) > MAX_DEPTH:
@@ -888,9 +916,10 @@ async def update_task(
             raise _never_occurs(rule)
         timing_changed = gave_attribute = True
 
+    touched = False  # a tag or reminder change is an edit of the task (see _untouched)
     if "tags" in fs:
         names = normalize_tags(payload.tags or [])
-        await set_task_tags(db, user_id, task.id, await tag_ids_for(db, user_id, names))
+        touched = await set_task_tags(db, user_id, task.id, await tag_ids_for(db, user_id, names))
 
     explicit = TaskStatus(payload.status) if "status" in fs and payload.status else None
     was_closed = task.status in CLOSED
@@ -907,9 +936,11 @@ async def update_task(
     await db.flush()
 
     if "reminders" in fs:
-        await replace_reminders(db, task, reminder_defs(payload.reminders or []), clock)
+        touched = await replace_reminders(db, task, reminder_defs(payload.reminders or []), clock) or touched
     elif timing_changed:
         await recompute_reminders(db, task, clock)
+    if touched:
+        task.updated_at = utcnow()
 
     if closing:
         assert explicit is not None
@@ -954,7 +985,16 @@ async def reopen(
 
 
 async def delete_task(db: AsyncSession, *, user_id: uuid.UUID, task_id: uuid.UUID) -> None:
-    """Subtasks, reminders and tag links go with it (FK cascade); time entries stay, task cleared."""
+    """Subtasks, reminders and tag links go with it (FK cascade); time entries stay, task cleared.
+    Removing a step is an edit of its parent (a next instance that lost one is no longer untouched)."""
+    parent_id = await db.scalar(select(Task.parent_id).where(Task.id == task_id, Task.user_id == user_id))
+    if parent_id is not None:
+        await db.execute(
+            update(Task)
+            .where(Task.id == parent_id, Task.user_id == user_id)
+            .values(updated_at=utcnow())
+            .execution_options(synchronize_session=False)
+        )
     result = await db.execute(
         delete(Task).where(Task.id == task_id, Task.user_id == user_id).execution_options(synchronize_session=False)
     )
