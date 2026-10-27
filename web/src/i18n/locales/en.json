@@ -1222,10 +1222,6 @@
     "data_share_hint": "In the iPhone app the file is saved through Share → Save to Files.",
     "data_rate_limited": "Too often — try again in a minute",
     "data_restore_title": "How to restore a backup",
-    "data_restore_step_copy": "Copy the archive to the server, into the API container:",
-    "data_restore_step_check": "See what would change (nothing is written):",
-    "data_restore_step_run": "Restore — the same command without --dry-run:",
-    "data_restore_note": "A backup restores into the same account or an empty one (--user-id <uuid>); nobody else's data is touched. Restoring twice changes nothing; an archive with wrong checksums or another schema version is refused.",
     "data_server_backups": "On top of that the server keeps an encrypted copy of the whole database every night (pg_dump + age).",
     "data_copy": "Copy the command",
     "data_shortcut": "iOS Shortcut: steps and active energy",
@@ -1234,7 +1230,9 @@
     "data_api": "Server",
     "data_ai": "AI",
     "data_ai_off": "off",
-    "data_ai_photo": "photos downscaled to {{px}} px"
+    "data_ai_photo": "photos downscaled to {{px}} px",
+    "data_restore_lead": "A backup is restored on the server with:",
+    "data_restore_readme": "How to run it in Docker, how to check an archive before anything is written and which account it can go into — see the README, section «Backups and restore»."
   },
   "common": {
     "g": "g",

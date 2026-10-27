@@ -42,9 +42,8 @@ const EXPORTS: { kind: ExportKind; path: string; fallbackName: string }[] = [
   { kind: 'backup', path: '/v1/export/backup', fallbackName: 'disciplineos-backup.zip' },
 ]
 
-const RESTORE_COPY = 'docker compose cp disciplineos-YYYY-MM-DD.zip api:/tmp/backup.zip'
-const RESTORE_DRY_RUN = 'docker compose exec api python -m app.cli restore-backup /tmp/backup.zip --dry-run'
-const RESTORE_RUN = 'docker compose exec api python -m app.cli restore-backup /tmp/backup.zip'
+/** The restore CLI (README «Backups and restore» has the steps, the checks and the options). */
+const RESTORE_COMMAND = 'python -m app.cli restore-backup <backup.zip>'
 
 export function DataSection() {
   const { t } = useTranslation()
@@ -73,12 +72,9 @@ export function DataSection() {
 
       <Card className="space-y-3" data-testid="data-restore">
         <p className="label">{t('settings.data_restore_title')}</p>
-        <ol className="space-y-3 text-sm">
-          <RestoreStep n={1} text={t('settings.data_restore_step_copy')} command={RESTORE_COPY} />
-          <RestoreStep n={2} text={t('settings.data_restore_step_check')} command={RESTORE_DRY_RUN} />
-          <RestoreStep n={3} text={t('settings.data_restore_step_run')} command={RESTORE_RUN} />
-        </ol>
-        <p className="text-xs muted">{t('settings.data_restore_note')}</p>
+        <p className="text-sm">{t('settings.data_restore_lead')}</p>
+        <CommandLine command={RESTORE_COMMAND} />
+        <p className="text-xs muted">{t('settings.data_restore_readme')}</p>
         <p className="text-xs muted">{t('settings.data_server_backups')}</p>
       </Card>
 
@@ -293,35 +289,27 @@ function ExportRow({
 // --------------------------------------------------------------------------- //
 // Restore instructions
 // --------------------------------------------------------------------------- //
-function RestoreStep({ n, text, command }: { n: number; text: string; command: string }) {
+function CommandLine({ command }: { command: string }) {
   const { t } = useTranslation()
   const toast = useToast()
   return (
-    <li className="space-y-1.5">
-      <p className="flex gap-2">
-        <span className="tnum flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[rgb(var(--border))] text-[11px] font-semibold">
-          {n}
-        </span>
-        <span>{text}</span>
-      </p>
-      <div className="surface-sunken flex items-center gap-1 rounded-xl pl-3">
-        <code className="min-w-0 flex-1 break-all py-2 font-mono text-[11.5px] leading-relaxed" data-testid="restore-command">
-          {command}
-        </code>
-        <button
-          type="button"
-          className="flex h-12 w-12 shrink-0 items-center justify-center text-[rgb(var(--accent))]"
-          aria-label={t('settings.data_copy')}
-          onClick={() => {
-            void navigator.clipboard?.writeText(command).then(
-              () => toast.success(t('app.copied')),
-              () => toast.error(t('app.error_generic')),
-            )
-          }}
-        >
-          <IconCopy size={18} />
-        </button>
-      </div>
-    </li>
+    <div className="surface-sunken flex items-center gap-1 rounded-xl pl-3">
+      <code className="min-w-0 flex-1 break-all py-2 font-mono text-[11.5px] leading-relaxed" data-testid="restore-command">
+        {command}
+      </code>
+      <button
+        type="button"
+        className="flex h-12 w-12 shrink-0 items-center justify-center text-[rgb(var(--accent))]"
+        aria-label={t('settings.data_copy')}
+        onClick={() => {
+          void navigator.clipboard?.writeText(command).then(
+            () => toast.success(t('app.copied')),
+            () => toast.error(t('app.error_generic')),
+          )
+        }}
+      >
+        <IconCopy size={18} />
+      </button>
+    </div>
   )
 }
