@@ -41,10 +41,11 @@ export function DayScoreCard() {
 
   if (!data) {
     if (query.isError) {
+      // the error box is a framed surface of its own — no card around it
       return (
-        <Card data-testid="day-score-card">
+        <div data-testid="day-score-card">
           <ErrorState message={t('game.load_error')} onRetry={() => void query.refetch()} retryLabel={t('app.retry')} />
-        </Card>
+        </div>
       )
     }
     return <ScoreCardSkeleton offline={query.fetchStatus === 'paused'} />
