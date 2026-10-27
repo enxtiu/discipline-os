@@ -38,6 +38,7 @@ default, one-handed, every frequent action within two taps.
 - [Backups and restore](#backups-and-restore)
 - [iPhone setup: install the PWA](#iphone-setup-install-the-pwa)
 - [Web push on iPhone](#web-push-on-iphone)
+- [Notion (optional)](#notion-optional)
 - [iOS Shortcut recipe (steps and active energy)](#ios-shortcut-recipe-steps-and-active-energy)
 - [Troubleshooting](#troubleshooting)
 - [Security notes](#security-notes)
@@ -72,6 +73,7 @@ default, one-handed, every frequent action within two taps.
 | Health: iOS Shortcut ingest (scoped token, idempotent per day, lenient numbers, 62-day backfill), steps on Today with a manual fallback, weight (profile + targets follow) and sleep entries, a /health page with 14-day steps, 90-day weight and a sleep timeline | ✅ stage 5 |
 | Planner: PARA (inbox, projects, areas, resources, archive), tasks P1–P4 with tags, subtasks, due dates, time blocks, estimates, RRULE repeats, reminders and Markdown notes; Today / Inbox / Upcoming / Calendar (day, week, month with drag) and project, area, tag and search pages; natural-language quick add (ru/en) with a live preview; a timer that survives reloads and device switches, a time log; a daily journal with the server's day summary — all offline-queued | ✅ stage 6 |
 | Web push: VAPID subscriptions per device, task reminders and smart daily reminders (meal logging, water, planned workout, evening review) re-checked at send time, quiet hours (task reminders wait, daily nudges are dropped), per-category times, test notification, history; iPhone «На экран Домой» guidance in onboarding and Settings | ✅ stage 7 |
+| Notion (optional, off until connected): a one-way copy of areas, projects, tasks, the journal and day summaries into databases DisciplineOS creates on a page you choose; every 10 minutes or on demand, resumable, never a duplicate | ✅ stage 9 |
 | Gamification and charts, hardening, redesign | stages 8–10 |
 
 ---
@@ -273,6 +275,17 @@ app says so in Settings → Уведомления instead of offering a button 
 Changing the keys later orphans every browser subscription — each device has to tap
 «Включить уведомления» again (the API logs `vapid_key_mismatch` if the two keys do not
 belong together).
+
+### Integrations (stage 9)
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `INTEGRATIONS_KEY` | empty | Key material for the Notion secret at rest (Fernet, key derived by HKDF-SHA256, info `dsos-integrations-v1`). Empty → derived from `SECRET_KEY`. Set it (`openssl rand -hex 32`) before you ever rotate `SECRET_KEY` |
+| `NOTION_REQUEST_BUDGET` | `450` | Requests one sync run may send per user; a bigger first sync continues on the next runs |
+| `NOTION_MAX_RPS` | `3` | Pace of the requests (Notion's average limit is 3 per second per connection; at most 3) |
+
+The Notion secret itself is not an environment variable: the owner enters it in
+**Настройки → Интеграции** (see [Notion (optional)](#notion-optional)).
 
 ### Backups
 
@@ -638,6 +651,87 @@ off as `vapid_rejected`, so Settings asks to turn notifications on again on that
 `GET|PUT /api/v1/notifications/prefs`, `GET /api/v1/notifications` (history).
 On the lock screen a task reminder shows the task title — keep that in mind for
 sensitive tasks.
+
+---
+
+## Notion (optional)
+
+DisciplineOS can keep a **one-way copy** of your planner and of your days in Notion.
+It is **off until you connect it**, and it creates its own databases on a page you
+choose — nothing has to be prepared in Notion except that page. DisciplineOS stays the
+source of truth: **edits made in Notion are overwritten** by the next sync (the
+server syncs every 10 minutes; «Синхронизировать сейчас» runs one at once).
+
+**Connect** (once; you must be an owner of the Notion workspace):
+
+1. Open the Notion **Developer portal** — <https://app.notion.com/developers/connections>
+   → **Internal connections** → **Create a new connection**, name it (e.g.
+   DisciplineOS) and pick the workspace.
+2. On its **Configuration** tab turn on **Read content**, **Update content** and
+   **Insert content**, then copy the **API token** — that is the secret (`ntn_…`).
+3. Create an empty page in Notion (e.g. «DisciplineOS»). On that page: **⋯** (top
+   right) → **Connections** → **Add connection** → your connection.
+4. Copy the page link (**⋯ → Copy link**).
+5. In the app: **Настройки → Интеграции → Notion** — paste the secret and the link →
+   **Подключить** → **Создать базы**. The first sync starts right away.
+
+The app checks both before saving anything: the secret's format and the link locally,
+then `GET /v1/users/me` (the secret) and `GET /v1/pages/{id}` (the page is shared with the
+connection). A personal access token works too, but it expires (at most a year); an
+internal connection's token does not — if you refresh it in the Developer portal, enter
+the new one under **Интеграции → «Ввести новый секрет»** (same page: the databases and
+links are kept).
+
+**What is synced** — one database per kind, property names in your language (Russian
+or English, as set when the database is created):
+
+| Database | Rows | Columns |
+| --- | --- | --- |
+| Области | areas not archived | name, description, weekly target (min) |
+| Проекты | projects not archived | name, status, area (relation), outcome, start, deadline, completed on, description |
+| Задачи | every task not archived — done and cancelled ones too, subtasks included | title, status, priority, project / area / parent task (relations — two-way, so a project lists its tasks and a task its subtasks), due (a date, or date and time in your timezone), time block, estimate, tracked minutes, tags, context, repeats, completed on, created, notes |
+| Дневник | journal entries with any content | date, day rating, mood, energy, wins, to improve, notes, tags |
+| Итоги дня | the last 365 days that have any data | eaten kcal and the day's target (and whether it was in the target zone), protein, water, steps, sleep (h), workouts, **burned kcal in workouts and Health's active energy — each in its own column, never subtracted from food**, tracked minutes, tasks done, day score |
+
+Every row also carries «ID DisciplineOS» — the key the sync finds it by; leave it alone.
+Notes (Markdown, as plain text) go into a property, split into 2 000-character pieces,
+up to about 20 000 characters. A row deleted or archived in DisciplineOS goes to the
+Notion **trash** (and comes back if you restore it). A database deleted or unshared in
+Notion is shown as missing — **«Создать заново»** makes a new one (the other kinds keep
+syncing meanwhile); a column deleted in Notion is put back with the next change. Day rows
+older than a year are left as they are.
+
+**What is not synced:** resources, time entries, meals and foods, workout sets, weights;
+anything from Notion back into DisciplineOS (one-way); page content (blocks) — notes are a
+property; future repeats of recurring tasks (they do not exist yet). The Obsidian export
+was dropped.
+
+**How it behaves:** each run hashes every row and only creates, updates or trashes what
+changed — an unchanged run sends nothing. It paces itself to ≤ 3 requests a second,
+honours Notion's `Retry-After`, retries 5xx for requests that are safe to repeat, and
+spends at most `NOTION_REQUEST_BUDGET` requests (a big first sync simply continues on
+the next runs). A page is never created twice: a create is recorded before it is sent,
+and if the answer is lost the next run looks the row up by its ID first. One run per user
+at a time (a second «Синхронизировать сейчас» says one is running).
+
+**Errors in words** (Интеграции shows them with what to do): the secret was refused
+(refreshed or revoked → enter the new one), a capability is missing (turn on Read /
+Update / Insert content), the page is not shared or is in the trash, Notion is busy or
+unreachable (the next run retries), a database is missing («Создать заново»), the stored
+secret cannot be read after a key change (enter it again).
+
+**Security:** the secret is stored encrypted (see `INTEGRATIONS_KEY` in
+[Environment variables](#integrations-stage-9)) and never leaves the server — not in an
+API response, a log line, an export or a backup. The server talks only to
+`https://api.notion.com/v1` with `Notion-Version: 2026-03-11`; a pasted link is parsed
+for the page id, never requested. The endpoints need a paired device (an API token
+gets 403): `GET /api/v1/integrations`, `GET|PATCH|DELETE /api/v1/integrations/notion`,
+`POST /api/v1/integrations/notion/connect|setup|sync`.
+
+**Disconnect:** Интеграции → **Отключить Notion** — syncing stops, the secret and the
+links are deleted on the server, and everything already in Notion stays there. The
+connection is not part of exports or backups: after a restore on another server,
+connect again.
 
 ---
 
