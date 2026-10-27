@@ -17,13 +17,16 @@ export class ApiError extends Error {
   readonly status: number
   readonly code: string
   readonly details?: Record<string, unknown> | null
+  /** From `Retry-After` (429/503): how long the server asked us to wait, in ms. */
+  readonly retryAfterMs: number | null
 
-  constructor(status: number, body: ApiErrorBody) {
+  constructor(status: number, body: ApiErrorBody, retryAfterMs: number | null = null) {
     super(body.message || body.code)
     this.name = 'ApiError'
     this.status = status
     this.code = body.code
     this.details = body.details ?? null
+    this.retryAfterMs = retryAfterMs
   }
 
   get isUnauthorized(): boolean {
@@ -41,6 +44,29 @@ export class ApiError extends Error {
 }
 
 export const UNAUTHORIZED_EVENT = 'dsos:unauthorized'
+
+/**
+ * Successful responses, for the offline queue (stage 9): any answered request
+ * proves the server is reachable again, so writes waiting for a retry go now.
+ */
+type SuccessListener = (path: string, method: string) => void
+const successListeners = new Set<SuccessListener>()
+export function onApiSuccess(listener: SuccessListener): () => void {
+  successListeners.add(listener)
+  return () => {
+    successListeners.delete(listener)
+  }
+}
+
+/** `Retry-After` as seconds or an HTTP date → ms (null when absent or unreadable). */
+function retryAfter(response: Response): number | null {
+  const value = response.headers.get('Retry-After')
+  if (!value) return null
+  const seconds = Number(value)
+  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000)
+  const at = Date.parse(value)
+  return Number.isNaN(at) ? null : Math.max(0, at - Date.now())
+}
 
 export interface RequestOptions {
   method?: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE'
@@ -98,6 +124,9 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     })
   }
 
+  if (response.ok) {
+    for (const listener of successListeners) listener(path, method)
+  }
   if (response.status === 204) return undefined as T
 
   const text = await response.text()
@@ -115,6 +144,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     const error = new ApiError(
       response.status,
       envelope ?? { code: 'internal_error', message: response.statusText || 'Request failed' },
+      retryAfter(response),
     )
     if (error.isUnauthorized && !silentAuth) {
       window.dispatchEvent(new CustomEvent(UNAUTHORIZED_EVENT, { detail: error }))
