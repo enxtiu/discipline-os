@@ -36,7 +36,7 @@ from __future__ import annotations
 import uuid
 from collections import defaultdict
 from collections.abc import Collection, Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
@@ -340,12 +340,30 @@ async def award_permanent(
 ) -> int:
     """Insert a permanent award (dated today) once; returns the points actually added
     (0 when the key was already paid, or when a multiplier of 0 makes it worthless)."""
-    assert kind in PERMANENT_KINDS
-    value = scaled(points, kind, ctx.multipliers)
-    if value <= 0:
-        return 0
-    award = Award(key, kind, value, ctx.today, reason, ref_type, ref_id, meta or {})
-    return value if await _insert(db, [_row(ctx, award, ctx.today)]) else 0
+    return await award_permanent_many(
+        db, ctx, [Award(key, kind, points, ctx.today, reason, ref_type, ref_id, meta or {})]
+    )
+
+
+async def award_permanent_many(db: AsyncSession, ctx: GameContext, awards: Iterable[Award]) -> int:
+    """Several permanent awards (dated today) in one statement, each key paid once;
+    returns the points actually added. ``Award.points`` is the unscaled value."""
+    rows = []
+    for award in awards:
+        assert award.kind in PERMANENT_KINDS
+        value = scaled(award.points, award.kind, ctx.multipliers)
+        if value > 0:
+            rows.append(_row(ctx, replace(award, points=value, day=ctx.today), ctx.today))
+    added = 0
+    for start in range(0, len(rows), CHUNK):
+        stmt = (
+            pg_insert(XpEvent)
+            .values(rows[start : start + CHUNK])
+            .on_conflict_do_nothing(index_elements=["user_id", "dedupe_key"])
+            .returning(XpEvent.points)
+        )
+        added += sum((await db.execute(stmt)).scalars().all())
+    return added
 
 
 async def total(db: AsyncSession, user_id: uuid.UUID) -> int:
