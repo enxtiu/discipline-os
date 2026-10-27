@@ -8,9 +8,13 @@ push transport (``LocalPushService``); the rest use the ``FakePushService`` doub
 
 from __future__ import annotations
 
+import json
+import shutil
+import subprocess
 import time as clock
 import uuid
-from datetime import time, timedelta
+from datetime import datetime, time, timedelta
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -468,6 +472,96 @@ def test_next_quiet_hours_start() -> None:
     assert night.next_start(utc(2026, 10, 25, 12, 0), "Europe/Berlin") == utc(2026, 10, 25, 22, 0)
     assert QuietHours(False, time(23, 0), time(7, 0)).next_start(NOON, "Asia/Bangkok") is None
     assert QuietHours(True, time(8, 0), time(8, 0)).next_start(NOON, "Asia/Bangkok") is None
+
+
+SW_PUSH = Path(__file__).resolve().parents[2] / "web" / "public" / "sw-push.js"
+SW_HARNESS = r"""
+const fs = require('node:fs')
+const vm = require('node:vm')
+const [swPath, casesJson] = process.argv.slice(1)
+const source = fs.readFileSync(swPath, 'utf8')
+
+async function run(item) {
+  const listeners = {}
+  const shown = []
+  const waits = []
+  const context = vm.createContext({
+    self: {
+      addEventListener: (type, listener) => { listeners[type] = listener },
+      registration: {
+        showNotification: (title, options) => { shown.push({ title, options }); return Promise.resolve() },
+      },
+      location: { origin: 'https://app.example' },
+      clients: { matchAll: async () => [], openWindow: async () => null },
+    },
+  })
+  vm.runInContext(`Date.now = () => ${Number(item.now)}`, context)
+  vm.runInContext(source, context, { filename: 'sw-push.js' })
+  const data =
+    item.text !== undefined
+      ? { json: () => JSON.parse(item.text), text: () => item.text }
+      : { json: () => item.payload, text: () => JSON.stringify(item.payload) }
+  listeners.push({ data, waitUntil: (promise) => waits.push(promise) })
+  await Promise.all(waits)
+  return { name: item.name, shown: shown.length, waited: waits.length, title: shown[0] ? shown[0].title : null }
+}
+
+;(async () => {
+  const results = []
+  for (const item of JSON.parse(casesJson)) results.push(await run(item))
+  process.stdout.write(JSON.stringify(results))
+})().catch((error) => {
+  console.error(error)
+  process.exit(1)
+})
+"""
+
+
+@pytest.mark.skipif(shutil.which("node") is None or not SW_PUSH.exists(), reason="needs node and web/public")
+def test_service_worker_drops_pushes_that_arrive_after_they_expired() -> None:
+    """The push service should drop an expired message itself; the service worker is the second
+    line (a late delivery, a phone that slept through it). 15 minutes of grace absorb a wrong clock."""
+    from app.services import push
+
+    sent = utc(2026, 7, 15, 15, 30)
+    reminder_payload = push.PushMessage(
+        title="Таблетки", body="Через 15 мин · 22:45", url="/plan", tag="task:1", kind="task", ttl=1800
+    ).data(now=sent)
+    test_payload = push.PushMessage(
+        title="Проверка", body="ok", url="/settings/notifications", tag="test", kind="test", ttl=60, expires=False
+    ).data(now=sent)
+
+    def ms(moment: datetime) -> int:
+        return int(moment.timestamp() * 1000)
+
+    expiry = sent + timedelta(seconds=1800)
+    cases = [
+        ("on time", reminder_payload, sent + timedelta(seconds=5), 1),
+        ("just before it expires", reminder_payload, expiry - timedelta(seconds=1), 1),
+        ("within the clock grace", reminder_payload, expiry + timedelta(minutes=10), 1),
+        ("expired", reminder_payload, expiry + timedelta(minutes=20), 0),
+        ("in the quiet hours", reminder_payload, sent + timedelta(hours=5), 0),
+        ("a test push never expires", test_payload, sent + timedelta(hours=5), 1),
+        ("an unreadable expiry is ignored", {**reminder_payload, "expires_at": "soon"}, sent + timedelta(hours=5), 1),
+    ]
+    items: list[dict[str, Any]] = [
+        {"name": name, "payload": payload, "now": ms(now), "expect": expect} for name, payload, now, expect in cases
+    ]
+    items.append({"name": "not JSON", "text": "hello", "now": ms(sent), "expect": 1})
+    done = subprocess.run(  # noqa: S603 - fixed argv, no shell
+        ["node", "-e", SW_HARNESS, str(SW_PUSH), json.dumps(items)],  # noqa: S607
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert done.returncode == 0, done.stderr
+    results = {item["name"]: item for item in json.loads(done.stdout)}
+    for item in items:
+        result = results[item["name"]]
+        assert result["shown"] == item["expect"], item["name"]
+        assert result["waited"] == 1, f"{item['name']}: event.waitUntil must always be called"
+    assert results["on time"]["title"] == "Таблетки"
 
 
 # --------------------------------------------------------------------------- #
