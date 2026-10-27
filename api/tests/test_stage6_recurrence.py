@@ -105,6 +105,27 @@ async def test_rules_presets_and_validation(authed: httpx.AsyncClient) -> None:
         assert response.status_code == 422 and code(response) == "invalid_rrule", bad
 
 
+async def test_non_ascii_digits_are_an_invalid_rule(authed: httpx.AsyncClient) -> None:
+    """Unicode digits pass ``str.isdigit`` / ``\\d`` but are not RRULE digits (² and ① even crash ``int``)."""
+    day = (today() + timedelta(days=1)).isoformat()
+    plain = await make_task(authed, "без повтора", due_date=day)
+    for bad in (
+        "FREQ=DAILY;COUNT=²",
+        "FREQ=DAILY;COUNT=①",
+        "FREQ=DAILY;COUNT=٣",
+        "FREQ=WEEKLY;INTERVAL=٢",
+        "FREQ=MONTHLY;BYMONTHDAY=١٥",
+        "FREQ=MONTHLY;BYDAY=٢MO",
+        "FREQ=YEARLY;BYMONTH=٣",
+        "FREQ=DAILY;UNTIL=٢٠٢٧١٢٣١",
+    ):
+        created = await authed.post(f"{API}/tasks", json={"title": "x", "due_date": day, "recurrence_rule": bad})
+        assert created.status_code == 422 and code(created) == "invalid_rrule", (bad, created.text)
+        patched = await authed.patch(f"{API}/tasks/{plain['id']}", json={"recurrence_rule": bad})
+        assert patched.status_code == 422 and code(patched) == "invalid_rrule", (bad, patched.text)
+    assert (await get_task(authed, plain["id"]))["is_recurring"] is False
+
+
 async def test_first_occurrence_without_a_date(authed: httpx.AsyncClient) -> None:
     now = today()
     daily = await make_task(authed, "каждый день", recurrence_rule="daily")

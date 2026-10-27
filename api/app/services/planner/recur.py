@@ -48,9 +48,11 @@ _ORDER = ("FREQ", "INTERVAL", "BYMONTH", "BYMONTHDAY", "BYDAY", "BYSETPOS", "COU
 _ALLOWED = {*_ORDER, "UNTIL"}
 _FREQS = ("DAILY", "WEEKLY", "MONTHLY", "YEARLY")
 _DAYS = ("MO", "TU", "WE", "TH", "FR", "SA", "SU")
-_BYDAY_ITEM = re.compile(r"([+-]?\d{1,2})?(MO|TU|WE|TH|FR|SA|SU)")
-_UNTIL = re.compile(r"(\d{8})(T\d{6}Z?)?")
-_INT = re.compile(r"[+-]?\d{1,4}")
+# ASCII digits only: ``\d`` and ``str.isdigit`` also accept "٣", "²" or "①" (and ``int`` chokes on the last two)
+_BYDAY_ITEM = re.compile(r"([+-]?[0-9]{1,2})?(MO|TU|WE|TH|FR|SA|SU)")
+_UNTIL = re.compile(r"([0-9]{8})(T[0-9]{6}Z?)?")
+_INT = re.compile(r"[+-]?[0-9]{1,4}")
+_COUNT = re.compile(r"[0-9]{1,4}")
 _MONTH_DAYS = (31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31)
 
 
@@ -127,7 +129,7 @@ def _canonical(raw: str) -> tuple[tuple[tuple[str, str], ...], date | None]:
         if interval < 1:
             raise _invalid("INTERVAL must be one number 1..999", raw)
     count = found.get("COUNT")
-    if count is not None and (not count.isdigit() or not 1 <= int(count) <= 1000):
+    if count is not None and (not _COUNT.fullmatch(count) or not 1 <= int(count) <= 1000):
         raise _invalid("COUNT must be 1..1000", raw)
     until: date | None = None
     if "UNTIL" in found:
@@ -224,7 +226,10 @@ def validate_rule(raw: str) -> Rule:
     """RRULE text or a preset key → :class:`Rule` (422 ``invalid_rrule`` otherwise)."""
     key = (raw or "").strip().lower()
     source = RECURRENCE_PRESETS[key] if key in CONTRACT_PRESETS else raw
-    parts, until = _canonical(source)
+    try:
+        parts, until = _canonical(source)
+    except ValueError as exc:  # a conversion the checks above missed is still a bad rule, never a 500
+        raise _invalid(f"Unparsable recurrence rule: {exc}", raw) from None
     rule = Rule(text=";".join(f"{k}={v}" for k, v in parts), parts=parts, until=until)
     try:  # final word: dateutil must accept it
         parse_rule(rule.expansion_text, datetime(2026, 1, 1))

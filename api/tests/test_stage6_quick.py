@@ -326,6 +326,18 @@ async def test_mapping_defaults_fallbacks_and_replays(authed: httpx.AsyncClient,
         assert await session.scalar(select(func.count()).select_from(Task).where(Task.id == uuid.UUID(quick_id))) == 1
 
 
+async def test_unparsable_rule_digits_never_cost_the_line(authed: httpx.AsyncClient, fake_parser) -> None:
+    """A rule with Unicode digits (``int('²')`` raises) is dropped by quick add and previewed by /parse."""
+    _, result = fake_parser
+    for rule in ("FREQ=DAILY;COUNT=²", "FREQ=DAILY;COUNT=①", "FREQ=WEEKLY;INTERVAL=٢"):
+        result["value"] = ParsedTask(title="зарядка", recurrence_rule=rule, recurrence_preset="custom")
+        body = await _quick(authed, "зарядка каждый день")
+        assert body["task"]["is_recurring"] is False and body["task"]["title"] == "зарядка", rule
+        preview = await authed.post(f"{API}/parse", json={"text": "зарядка каждый день"})
+        assert preview.status_code == 200, (rule, preview.text)
+        assert preview.json()["recurrence_preset"] == "custom"
+
+
 async def test_quick_add_validation(authed: httpx.AsyncClient) -> None:
     for body in (
         {"text": ""},
