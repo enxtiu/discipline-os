@@ -101,10 +101,21 @@ def _clean_tags(names: list[str]) -> list[str]:
     return out[:MAX_TAGS]
 
 
-def task_fields(parsed: ParsedTask, text: str, payload) -> dict:
+def _rule(parsed: ParsedTask) -> recur.Rule | None:
+    if not parsed.recurrence_rule:
+        return None
+    try:
+        return recur.validate_rule(parsed.recurrence_rule)
+    except AppError:
+        log.warning("quick_add_rule_dropped", rule=parsed.recurrence_rule[:120])
+        return None
+
+
+def task_fields(parsed: ParsedTask, text: str, payload, clock: Clock) -> dict:
     """``ParsedTask`` + the client's defaults → ``TaskIn`` fields."""
     defaults = payload.defaults
     kinds = {token.kind for token in parsed.tokens}
+    rule = _rule(parsed)
     data: dict = {"title": (parsed.title.strip() or text.strip())[:300]}
     if payload.id is not None:
         data["id"] = payload.id
@@ -120,20 +131,28 @@ def task_fields(parsed: ParsedTask, text: str, payload) -> dict:
         data["parent_id"] = defaults.parent_id
 
     due_date, due_time = parsed.due_date, parsed.due_time
+    has_block = parsed.block_start is not None and parsed.block_end is not None
     block_date = parsed.block_date or parsed.due_date
     default_day = defaults.due_date if defaults is not None else None
-    if default_day is not None and "date" not in kinds:
-        if due_date is not None or parsed.block_start is not None:
+    if rule is None and default_day is not None and "date" not in kinds:
+        if due_date is not None or has_block:
             # a time typed without a date: on the day the user is looking at
             due_date = default_day if due_date is not None else None
             block_date = default_day
-        elif not parsed.recurrence_rule:
+        else:
             due_date = default_day
+    if rule is not None and due_date is None and (due_time is not None or (has_block and block_date is None)):
+        # a recurrence never invents a date: its first occurrence on/after today carries the typed time
+        first = recur.first_on_or_after(rule, clock.today)
+        if first is not None:
+            due_date = first if due_time is not None else None
+            block_date = block_date or first
     if due_date is not None:
         data["due_date"] = due_date
         if due_time is not None:
             data["due_time"] = due_time.strftime("%H:%M")
-    if parsed.block_start is not None and parsed.block_end is not None and block_date is not None:
+    if has_block and block_date is not None:
+        assert parsed.block_start is not None and parsed.block_end is not None
         data["block"] = {
             "date": block_date,
             "start": parsed.block_start.strftime("%H:%M"),
@@ -148,11 +167,8 @@ def task_fields(parsed: ParsedTask, text: str, payload) -> dict:
         data["tags"] = tags
     if parsed.context and len(parsed.context.strip().lstrip("@")) <= 64:
         data["context"] = parsed.context
-    if parsed.recurrence_rule:
-        try:
-            data["recurrence_rule"] = recur.validate_rule(parsed.recurrence_rule).text
-        except AppError:
-            log.warning("quick_add_rule_dropped", rule=parsed.recurrence_rule[:120])
+    if rule is not None:
+        data["recurrence_rule"] = rule.text
     leads = [lead for lead in parsed.reminder_leads if 0 <= lead <= 10080]
     if leads:
         data["reminders"] = [{"lead_minutes": lead} for lead in dict.fromkeys(leads)][:5]
@@ -165,7 +181,7 @@ async def quick_add(
     parsed = await parse(
         db, user_id=user_id, clock=clock, week_start=week_start, text=payload.text, captured_at=payload.captured_at
     )
-    data = task_fields(parsed, payload.text, payload)
+    data = task_fields(parsed, payload.text, payload, clock)
     try:
         task_in = TaskIn.model_validate(data)
     except ValidationError as exc:

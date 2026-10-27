@@ -128,6 +128,39 @@ async def test_quick_add_en_line_and_title_fallback(authed: httpx.AsyncClient) -
     )
 
 
+async def test_quick_add_recurrence_keeps_the_typed_time(authed: httpx.AsyncClient) -> None:
+    now = today()
+    monday = now + timedelta(days=(0 - now.weekday()) % 7)  # first occurrence on/after today
+    gym = await _quick(authed, "каждый понедельник в 9 спортзал", captured_at=at(now, 10))
+    assert gym["parsed"]["due_date"] is None and gym["parsed"]["due_time"] == "09:00"  # the parser invents no date
+    task = gym["task"]
+    assert (task["title"], task["due_date"], task["due_time"], task["recurrence_rule"]) == (
+        "спортзал",
+        monday.isoformat(),
+        "09:00",
+        "FREQ=WEEKLY;BYDAY=MO",
+    )
+    yoga = await _quick(authed, "каждый день 07:00-07:30 йога", captured_at=at(now, 10))
+    block = yoga["task"]["block"]
+    assert (block["date"], block["start"], block["end"], yoga["task"]["due_date"]) == (
+        now.isoformat(),
+        "07:00",
+        "07:30",
+        None,
+    )
+    assert (yoga["task"]["recurrence_preset"], yoga["task"]["status"]) == ("daily", "scheduled")
+    rent = await _quick(authed, "каждое 1 число оплатить аренду", captured_at=at(now, 10))
+    first = now if now.day == 1 else (now.replace(day=1) + timedelta(days=32)).replace(day=1)
+    assert (rent["task"]["recurrence_rule"], rent["task"]["recurrence_preset"], rent["task"]["due_date"]) == (
+        "FREQ=MONTHLY;BYMONTHDAY=1",
+        "custom",
+        first.isoformat(),
+    )
+    run = await _quick(authed, "в 18 на 1.5 ч бег", captured_at=at(now, 10))
+    assert run["task"]["block"]["date"] == now.isoformat() and run["task"]["block"]["minutes"] == 90
+    assert run["task"]["estimate_minutes"] is None and run["task"]["title"] == "бег"
+
+
 async def test_parse_endpoint(authed: httpx.AsyncClient) -> None:
     now = today()
     text = "🔥 завтра зал"
@@ -245,6 +278,17 @@ async def test_mapping_defaults_fallbacks_and_replays(authed: httpx.AsyncClient,
     )
     explicit = await _quick(authed, "завтра созвон", defaults={"due_date": view_day.isoformat()})
     assert explicit["task"]["due_date"] == (now + timedelta(days=1)).isoformat()
+    # a recurrence decides its own first day, the view's default day does not
+    result["value"] = ParsedTask(
+        title="планёрка",
+        due_time=time(9, 30),
+        recurrence_rule="FREQ=WEEKLY;BYDAY=MO",
+        recurrence_preset="custom",
+        tokens=[Token(start=0, end=3, kind="recurrence", text="пн")],
+    )
+    weekly = await _quick(authed, "пн 9:30 планёрка", defaults={"due_date": view_day.isoformat()})
+    monday = now + timedelta(days=(0 - now.weekday()) % 7)
+    assert (weekly["task"]["due_date"], weekly["task"]["due_time"]) == (monday.isoformat(), "09:30")
     # empty title: the raw text; an over-long one is cut to 300; bad values are dropped
     result["value"] = ParsedTask(title="", priority=9, estimate_minutes=5000, recurrence_rule="FREQ=SECONDLY")
     fallback = await _quick(authed, "p9 " + "я" * 400)
