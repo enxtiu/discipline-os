@@ -91,10 +91,19 @@ export function useCompleteToggle(todayHint?: string, placement: PlanToastPlacem
     )
   }
 
+  // a second tap while the first is on its way would race it on the server
+  // (reopen applied before complete leaves the task done while the list shows it open)
+  const busy = complete.isPending || reopen.isPending
+
   return {
     complete: completeTask,
     reopen: reopenTask,
-    toggle: (task: TaskLike) => (isClosed(task) ? reopenTask(task) : completeTask(task)),
+    busy,
+    toggle: (task: TaskLike) => {
+      if (busy) return
+      if (isClosed(task)) reopenTask(task)
+      else completeTask(task)
+    },
   }
 }
 

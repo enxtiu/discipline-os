@@ -62,12 +62,15 @@ export function TaskCheck({
   priority,
   title,
   onToggle,
+  busy,
   testId = 'task-check',
 }: {
   done: boolean
   priority: Priority
   title: string
   onToggle: () => void
+  /** The last tap is still on its way to the server (further taps are ignored). */
+  busy?: boolean
   testId?: string
 }) {
   const { t } = useTranslation()
@@ -76,6 +79,7 @@ export function TaskCheck({
       type="button"
       role="checkbox"
       aria-checked={done}
+      aria-busy={busy || undefined}
       aria-label={done ? t('task.reopen_aria', { title }) : t('task.complete_aria', { title })}
       onClick={onToggle}
       className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl"
@@ -109,7 +113,7 @@ export interface TaskRowProps {
 
 export function TaskRow({ task, today, day, showContainer = true, children }: TaskRowProps) {
   const { t } = useTranslation()
-  const { toggle } = useCompleteToggle(today)
+  const { toggle, busy } = useCompleteToggle(today)
   const closed = isClosed(task)
   const meta: ReactNode[] = []
 
@@ -168,6 +172,7 @@ export function TaskRow({ task, today, day, showContainer = true, children }: Ta
           priority={task.priority}
           title={task.title}
           onToggle={() => toggle(task)}
+          busy={busy}
         />
         <button
           type="button"
