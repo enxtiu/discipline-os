@@ -39,7 +39,9 @@
 	}
 
 	# ---- Service worker must never be cached by the browser --------------
-	handle /sw.js {
+	# (sw-push.js too: sw.js imports it, and imported scripts go through the HTTP cache)
+	@serviceworker path /sw.js /sw-push.js
+	handle @serviceworker {
 		header Cache-Control "no-cache, no-store, must-revalidate"
 		root * /srv/www
 		file_server
