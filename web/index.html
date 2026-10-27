@@ -2,6 +2,37 @@
 <html lang="ru" data-theme="dark" class="dark">
   <head>
     <meta charset="UTF-8" />
+    <script>
+      // Stage 9 (performance): on a paired device, start the reads of the first screen
+      // while the app code is still downloading — the session (every screen) plus what
+      // Today, Food or Plan ask for when they open. src/api/client.ts hands each response
+      // to the app's first request for the same URL (unused ones are simply dropped).
+      // Keep the lists in step with the screens' queries (scripts/perf/perf-run.mjs prints them).
+      ;(function () {
+        try {
+          var token = localStorage.getItem('dsos.device_token')
+          if (!token || !window.fetch) return
+          var day = new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
+          var screens = {
+            '/today': ['/v1/nutrition/day?date=' + day, '/v1/recipes', '/v1/training/today', '/v1/health/today',
+              '/v1/planner/views/today', '/v1/planner/timer', '/v1/gamification/today'],
+            '/food': ['/v1/nutrition/day?date=' + day, '/v1/foods/recents', '/v1/foods/favorites', '/v1/recipes'],
+            '/plan': ['/v1/planner/views/today', '/v1/planner/timer', '/v1/planner/counts'],
+          }
+          var path = location.pathname.replace(/\/+$/, '') || '/today'
+          var early = {}
+          ;['/v1/auth/session', '/v1/meta/app-config'].concat(screens[path] || []).forEach(function (url) {
+            var request = fetch('/api' + url, {
+              headers: { Accept: 'application/json', Authorization: 'Bearer ' + token },
+              credentials: 'omit',
+            })
+            request.catch(function () {}) // a failure reaches the app's own request
+            early['/api' + url] = request
+          })
+          window.__dsosEarly = early
+        } catch (error) {}
+      })()
+    </script>
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover"

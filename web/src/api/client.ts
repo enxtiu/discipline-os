@@ -66,6 +66,23 @@ function buildUrl(path: string, query?: RequestOptions['query']): string {
   return qs ? `${url}?${qs}` : url
 }
 
+/**
+ * Stage 9 (performance): GETs that index.html started while the app code was still
+ * downloading (the session and the first screen's reads, `window.__dsosEarly`). The
+ * first request for the same URL takes that response instead of asking again —
+ * once, and only in the first seconds of the page.
+ */
+const EARLY_MAX_AGE_MS = 10_000
+
+function takeEarly(method: string, url: string): Promise<Response> | undefined {
+  if (method !== 'GET' || typeof window === 'undefined') return undefined
+  const early = (window as { __dsosEarly?: Record<string, Promise<Response>> }).__dsosEarly
+  const response = early?.[url]
+  if (!early || !response) return undefined
+  delete early[url]
+  return performance.now() < EARLY_MAX_AGE_MS ? response : undefined
+}
+
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { method = 'GET', body, query, signal, headers = {}, clientUuid, silentAuth } = options
 
@@ -83,13 +100,15 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
 
   let response: Response
   try {
-    response = await fetch(buildUrl(path, query), {
-      method,
-      headers: finalHeaders,
-      body: body === undefined ? undefined : isForm ? (body as FormData) : JSON.stringify(body),
-      signal,
-      credentials: 'omit', // token auth, no cookies
-    })
+    const url = buildUrl(path, query)
+    response = await (takeEarly(method, url) ??
+      fetch(url, {
+        method,
+        headers: finalHeaders,
+        body: body === undefined ? undefined : isForm ? (body as FormData) : JSON.stringify(body),
+        signal,
+        credentials: 'omit', // token auth, no cookies
+      }))
   } catch (cause) {
     if ((cause as Error)?.name === 'AbortError') throw cause
     throw new ApiError(0, {
