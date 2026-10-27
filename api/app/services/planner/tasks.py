@@ -411,10 +411,18 @@ async def _task_reminders(
 ) -> tuple[dict[ReminderKey, Reminder], dict[ReminderKey, set[datetime]]]:
     """Per reminder (definition): its live row — the armed one (pending; cancelled while the task is
     closed), else the row it last fired from — and the instants it already fired at. Rows marked
-    ``REARMED`` are history; rows the dispatcher cancelled wait for a reopen, as before."""
+    ``REARMED`` are history; rows the dispatcher cancelled wait for a reopen, as before.
+
+    The rows are locked (after the task): the stage-7 dispatcher books a delivery under the row lock
+    and marks a row sent only if its time did not move, so a row it books meanwhile is read as fired
+    here (and armed again if needed) instead of being moved after it went out — never lost."""
     state = _active_status(task)
     rows = await db.scalars(
-        select(Reminder).where(Reminder.task_id == task.id, Reminder.user_id == task.user_id).order_by(Reminder.id)
+        select(Reminder)
+        .where(Reminder.task_id == task.id, Reminder.user_id == task.user_id)
+        .order_by(Reminder.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
     )
     live: dict[ReminderKey, Reminder] = {}
     fired_at: dict[ReminderKey, set[datetime]] = {}

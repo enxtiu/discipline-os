@@ -10,7 +10,7 @@ from typing import Any
 import httpx
 import psycopg.errors
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.exc import OperationalError
 
 from app.db import SessionLocal
@@ -544,6 +544,45 @@ async def test_fired_reminders_and_the_pending_set(authed: httpx.AsyncClient) ->
     following = (await complete(authed, daily["id"]))["next_instance"]
     assert _lead_states(following) == [(15, "pending")]
     assert [row.payload for row in await _reminders(following["id"])] == [{"lead_minutes": 15}]
+
+
+async def _until_an_edit_waits_for_a_lock() -> None:
+    for _ in range(400):
+        async with SessionLocal() as session:  # a fresh transaction: pg_stat_activity is a per-transaction snapshot
+            waiting = await session.scalar(
+                text(
+                    "SELECT count(*) FROM pg_stat_activity"
+                    " WHERE datname = current_database() AND wait_event_type = 'Lock'"
+                )
+            )
+        if waiting:
+            return
+        await asyncio.sleep(0.025)
+    raise AssertionError("the edit never waited for the reminder's row lock")
+
+
+async def test_a_reminder_booked_during_an_edit_is_never_lost(authed: httpx.AsyncClient) -> None:
+    """The dispatcher books a reminder as sent (under its row lock) while a PATCH moves the due time later:
+    the edit used to move the row it had read as pending — sent, at the new time, never to go out again."""
+    soon = datetime.now(BANGKOK) + timedelta(minutes=10)  # 15 minutes before it: due now
+    task = await make_task(authed, "позвонить", **_local(soon), reminders=[{"lead_minutes": 15}])
+    [reminder] = task["reminders"]
+    async with SessionLocal() as booking:
+        row = await booking.scalar(select(Reminder).where(Reminder.id == uuid.UUID(reminder["id"])).with_for_update())
+        assert row is not None
+        edit = asyncio.create_task(authed.patch(f"{API}/tasks/{task['id']}", json=_local(soon + timedelta(hours=1))))
+        try:
+            await _until_an_edit_waits_for_a_lock()
+            row.status, row.sent_at, row.attempts = ReminderStatus.SENT, datetime.now(UTC), 1
+        finally:
+            await booking.commit()
+        response = await edit
+    assert response.status_code == 200, response.text
+    moved = response.json()["task"]
+    assert [(item["id"], item["status"]) for item in moved["reminders"][:1]] == [(reminder["id"], "sent")]
+    assert [item["status"] for item in moved["reminders"]] == ["sent", "pending"]
+    assert moved["reminders"][0]["remind_at"] == reminder["remind_at"]  # the time it went out at
+    assert datetime.fromisoformat(moved["reminders"][1]["remind_at"]) == _before_due(moved, 15)
 
 
 async def test_reminder_validation(authed: httpx.AsyncClient) -> None:
