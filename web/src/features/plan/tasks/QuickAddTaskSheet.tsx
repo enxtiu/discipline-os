@@ -201,13 +201,15 @@ export function QuickAddTaskSheet({
                 <li key={key}>
                   <button
                     type="button"
-                    className="flex min-h-tap w-full items-center rounded-xl px-3 text-left text-sm surface-sunken"
+                    className="flex min-h-tap w-full items-center rounded-xl px-3 py-2 text-left text-sm surface-sunken"
                     onClick={() => {
                       setText(t(key))
                       inputRef.current?.focus()
                     }}
+                    data-testid="quick-add-example"
                   >
-                    <span className="truncate font-mono text-[13px]">{t(key)}</span>
+                    {/* wraps instead of truncating: the whole line is the lesson */}
+                    <span className="break-words font-mono text-[13px] leading-snug">{t(key)}</span>
                   </button>
                 </li>
               ))}

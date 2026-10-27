@@ -568,6 +568,7 @@
     "reorder": "Reorder",
     "move_up": "Move up: {{name}}",
     "move_down": "Move down: {{name}}",
+    "resources_hint": "Resources — links, articles and notes you come back to.",
     "resources_empty": "No resources yet",
     "resources_empty_hint": "Keep links, articles and notes by area.",
     "resource_new": "New resource",

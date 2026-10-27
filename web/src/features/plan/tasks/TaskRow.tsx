@@ -140,6 +140,7 @@ export function TaskRow({ task, today, day, showContainer = true, children }: Ta
   if (showContainer && container) meta.push(<ContainerChip key="container" container={container} />)
   for (const tag of task.tags.slice(0, 3)) meta.push(<Meta key={`tag-${tag.id}`}>#{tag.name}</Meta>)
   if (task.tags.length > 3) meta.push(<Meta key="tags-more">{t('task.more_tags', { n: task.tags.length - 3 })}</Meta>)
+  if (task.context) meta.push(<Meta key="context">@{task.context}</Meta>)
   if (task.is_recurring) meta.push(<Meta key="repeat" icon={<IconRepeat size={12} />} srLabel={t('task.repeats')} />)
   if (task.subtask_counts.total > 0) {
     meta.push(

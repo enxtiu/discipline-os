@@ -105,15 +105,22 @@ function ProjectBody({ id }: { id: string | undefined }) {
         <ColorDot color={project.color} className="mt-2.5 h-3 w-3" />
         <div className="min-w-0 flex-1 space-y-1">
           <h2 className="h2 break-words">{project.name}</h2>
-          <div className="flex flex-wrap items-center gap-2 text-sm muted">
-            {project.area && (
-              <Link to={`/plan/areas/${project.area.id}`} className="inline-flex min-h-tap items-center gap-1.5">
-                <ColorDot color={project.area.color} />
-                {project.area.name}
-              </Link>
-            )}
-            {project.status !== 'active' && <Badge>{t(`plan.project_status.${project.status}`)}</Badge>}
-          </div>
+          {(project.area || project.status !== 'active') && (
+            <div className="flex flex-wrap items-center gap-2 text-sm muted">
+              {project.area && (
+                // a full 48 px target that does not push the layout apart
+                <Link
+                  to={`/plan/areas/${project.area.id}`}
+                  className="-my-3 inline-flex min-h-tap items-center gap-1.5"
+                  data-testid="project-area-link"
+                >
+                  <ColorDot color={project.area.color} />
+                  {project.area.name}
+                </Link>
+              )}
+              {project.status !== 'active' && <Badge>{t(`plan.project_status.${project.status}`)}</Badge>}
+            </div>
+          )}
         </div>
         <Button variant="secondary" size="sm" className="min-h-tap" onClick={() => setEditing(true)} data-testid="project-edit">
           {t('app.edit')}

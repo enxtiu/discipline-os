@@ -70,24 +70,13 @@ export function ResourcesPage() {
   const areaItems = areas.data?.items ?? []
   const items = resources.data?.items ?? []
 
+  // the area filter only matters once there is something to filter
+  const showFilter = areaItems.length > 0 && (!!areaId || items.length > 0)
+
   return (
     <div className="space-y-4" data-testid="resources-page">
-      <div className="flex items-center gap-2">
-        <div className="min-w-0 flex-1">
-          {areaItems.length > 0 && (
-            <div className="scroll-x mx-0 px-0" role="group" aria-label={t('plan.filter_by_area')}>
-              <Chip active={!areaId} onClick={() => setAreaId('')}>
-                {t('plan.filter_all')}
-              </Chip>
-              {areaItems.map((area) => (
-                <Chip key={area.id} active={areaId === area.id} onClick={() => setAreaId(area.id)}>
-                  <ColorDot color={area.color} />
-                  {area.name}
-                </Chip>
-              ))}
-            </div>
-          )}
-        </div>
+      <div className="flex items-center justify-between gap-2">
+        <p className="min-w-0 flex-1 px-1 text-sm muted">{t('plan.resources_hint')}</p>
         <IconButton
           label={t('plan.resource_new')}
           icon={<IconPlus size={22} />}
@@ -96,6 +85,19 @@ export function ResourcesPage() {
           data-testid="resource-new"
         />
       </div>
+      {showFilter && (
+        <div className="scroll-x" role="group" aria-label={t('plan.filter_by_area')} data-testid="resource-filter">
+          <Chip active={!areaId} onClick={() => setAreaId('')}>
+            {t('plan.filter_all')}
+          </Chip>
+          {areaItems.map((area) => (
+            <Chip key={area.id} active={areaId === area.id} onClick={() => setAreaId(area.id)}>
+              <ColorDot color={area.color} />
+              {area.name}
+            </Chip>
+          ))}
+        </div>
+      )}
 
       {resources.isLoading && <SkeletonCard lines={3} />}
       {resources.isError && (
