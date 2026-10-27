@@ -58,8 +58,8 @@ from app.schemas.planner import (
     UpcomingDayOut,
     UpcomingViewOut,
 )
-from app.services.planner import containers, loader, quick_add, tasks, views
-from app.services.planner.common import Clock, validation_error
+from app.services.planner import conflicts, containers, loader, quick_add, tasks, views
+from app.services.planner.common import Clock, advisory_lock, validation_error
 from app.services.planner.time_tracking import running_entry
 
 router = APIRouter(prefix="/planner", tags=["planner"], dependencies=[Depends(require_device)])
@@ -90,6 +90,13 @@ async def _planner_write(principal: CurrentPrincipal) -> AsyncIterator[None]:
 
 
 Write = [Depends(_planner_write)]
+# stage 9: the compare-and-set answer of the PATCH/PUT endpoints that accept `base`
+EDIT_CONFLICT: dict[int | str, dict] = {
+    409: {
+        "description": "`edit_conflict`: a field listed in `base` changed meanwhile — `details.fields`, "
+        "`details.current` (the row as the API shows it); nothing was written"
+    }
+}
 TaskId = Annotated[uuid.UUID, Path(alias="id", description="task id")]
 
 
@@ -124,6 +131,18 @@ async def single(db, principal: CurrentPrincipal, task, clock: Clock) -> TaskOut
     if not fresh:
         return None
     return (await task_list(db, principal, fresh, clock))[0]
+
+
+async def check_task_base(
+    db, principal: CurrentPrincipal, task_id: uuid.UUID, payload: TaskPatchIn, clock: Clock
+) -> None:
+    """Compare-and-set (stage 9): the row is locked in ``update_task``'s order (tree lock first when
+    the edit moves the task under a parent), shown as the API shows it, then compared with ``base``."""
+    if "parent_id" in payload.model_fields_set and payload.parent_id is not None:
+        await advisory_lock(db, principal.user_id, tasks.TREE_LOCK)
+    task = await tasks.get_task(db, principal.user_id, task_id, lock=True)
+    current = await detail(db, principal, task, clock)
+    conflicts.check_base("task", payload, conflicts.task_values(current), current)
 
 
 # --------------------------------------------------------------------------- #
@@ -183,11 +202,14 @@ async def get_task(task_id: TaskId, principal: CurrentPrincipal, db: DbSession) 
     response_model=TaskPatchResultOut,
     summary="Edit a task (status changes complete or reopen it)",
     dependencies=Write,
+    responses=EDIT_CONFLICT,
 )
 async def patch_task(
     task_id: TaskId, payload: TaskPatchIn, principal: CurrentPrincipal, db: DbSession
 ) -> TaskPatchResultOut:
     clock = clock_for(principal)
+    if payload.base is not None:
+        await check_task_base(db, principal, task_id, payload, clock)
     result = await tasks.update_task(db, user_id=principal.user_id, clock=clock, task_id=task_id, payload=payload)
     fresh = (await loader.reload_tasks(db, principal.user_id, [result.task.id]))[0]
     return TaskPatchResultOut(

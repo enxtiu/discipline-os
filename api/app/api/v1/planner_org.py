@@ -8,9 +8,18 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Path, Response
 
 from app.api.deps import CurrentPrincipal, DbSession, require_device
-from app.api.v1.planner import Write, area_list, clock_for, project_list, resource_list, task_list, week_start_of
+from app.api.v1.planner import (
+    EDIT_CONFLICT,
+    Write,
+    area_list,
+    clock_for,
+    project_list,
+    resource_list,
+    task_list,
+    week_start_of,
+)
 from app.api.v1.presenters import area_out, project_out, tag_out
-from app.models import Area, Project, Task
+from app.models import Area, Project, Resource, Task
 from app.schemas.common import OkOut
 from app.schemas.planner import (
     AreaDetailOut,
@@ -34,7 +43,7 @@ from app.schemas.planner import (
     TagOut,
     TagPatchIn,
 )
-from app.services.planner import containers
+from app.services.planner import conflicts, containers
 from app.services.planner.common import owned
 from app.services.planner.tasks import CLOSED, task_query
 
@@ -104,8 +113,17 @@ async def get_area(area_id: AreaId, principal: CurrentPrincipal, db: DbSession) 
     )
 
 
-@router.patch("/areas/{id}", response_model=AreaOut, summary="Edit or archive an area", dependencies=Write)
+@router.patch(
+    "/areas/{id}",
+    response_model=AreaOut,
+    summary="Edit or archive an area",
+    dependencies=Write,
+    responses=EDIT_CONFLICT,
+)
 async def patch_area(area_id: AreaId, payload: AreaPatchIn, principal: CurrentPrincipal, db: DbSession) -> AreaOut:
+    if payload.base is not None:  # compare-and-set (stage 9): locked, shown as the API shows it, compared
+        current = await _area(db, principal, await owned(db, Area, principal.user_id, area_id, "Area", lock=True))
+        conflicts.check_base("area", payload, conflicts.area_values(current), current)
     area = await containers.update_area(db, user_id=principal.user_id, area_id=area_id, payload=payload)
     return await _area(db, principal, area)
 
@@ -186,10 +204,15 @@ async def get_project(project_id: ProjectId, principal: CurrentPrincipal, db: Db
     response_model=ProjectOut,
     summary="Edit a project (completing it sets completed_at, archiving hides it)",
     dependencies=Write,
+    responses=EDIT_CONFLICT,
 )
 async def patch_project(
     project_id: ProjectId, payload: ProjectPatchIn, principal: CurrentPrincipal, db: DbSession
 ) -> ProjectOut:
+    if payload.base is not None:  # compare-and-set (stage 9)
+        locked = await owned(db, Project, principal.user_id, project_id, "Project", lock=True)
+        current = await _project(db, principal, locked)
+        conflicts.check_base("project", payload, conflicts.project_values(current), current)
     project = await containers.update_project(
         db, user_id=principal.user_id, project_id=project_id, payload=payload, clock=clock_for(principal)
     )
@@ -232,10 +255,20 @@ async def create_resource(payload: ResourceIn, principal: CurrentPrincipal, db: 
     return await _resource(db, principal, resource)
 
 
-@router.patch("/resources/{id}", response_model=ResourceOut, summary="Edit or archive a resource", dependencies=Write)
+@router.patch(
+    "/resources/{id}",
+    response_model=ResourceOut,
+    summary="Edit or archive a resource",
+    dependencies=Write,
+    responses=EDIT_CONFLICT,
+)
 async def patch_resource(
     resource_id: ResourceId, payload: ResourcePatchIn, principal: CurrentPrincipal, db: DbSession
 ) -> ResourceOut:
+    if payload.base is not None:  # compare-and-set (stage 9)
+        locked = await owned(db, Resource, principal.user_id, resource_id, "Resource", lock=True)
+        current = await _resource(db, principal, locked)
+        conflicts.check_base("resource", payload, conflicts.resource_values(current), current)
     resource = await containers.update_resource(db, user_id=principal.user_id, resource_id=resource_id, payload=payload)
     return await _resource(db, principal, resource)
 
