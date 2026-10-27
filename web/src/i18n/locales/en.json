@@ -564,15 +564,12 @@
     "export_hint": "Full export arrives in stage 8. Nightly encrypted backups are already configured on the server (age + private repo).",
     "about_version": "Version",
     "about_env": "Environment",
-    "install_app": "Install on iPhone",
     "install_steps": [
       "Open the site in Safari",
       "Tap Share at the bottom of the screen",
       "Choose “Add to Home Screen”",
       "Launch the app from the icon — then enable notifications"
     ],
-    "standalone_detected": "Running from the Home Screen — notifications are available.",
-    "standalone_required": "Push on iPhone requires adding the site to the Home Screen first.",
     "shortcut_hint": "Steps from Apple Health",
     "notify": {
       "what_title": "What to send",

@@ -166,12 +166,7 @@ export function supportsPush(): boolean {
   return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window
 }
 
-/** Push on iOS only works from an installed (standalone) PWA — iOS 16.4+. */
-export function pushAvailability(): 'ready' | 'needs_install' | 'unsupported' {
-  if (!supportsPush()) return 'unsupported'
-  if (isIos() && !isStandalone()) return 'needs_install'
-  return 'ready'
-}
+// Push availability (incl. "install to the Home Screen first" on iPhone): see `pushSupport` in ./push.ts
 
 // --------------------------------------------------------------------------- //
 // Timezone
