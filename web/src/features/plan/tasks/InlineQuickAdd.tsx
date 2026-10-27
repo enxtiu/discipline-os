@@ -13,7 +13,7 @@ import { errorMessage } from '@/lib/errors'
 import { openTask, type QuickAddRequest } from '../events'
 import { newId, useCounts, useQuickAdd } from '../queries'
 import { HighlightInput } from './HighlightInput'
-import { highlightSegments, useParsePreview } from './parse'
+import { highlightSegments, useParsePreview, withDefaults } from './parse'
 import { ParseChips, parseChips } from './ParseChips'
 import { planToast } from './toast'
 
@@ -33,7 +33,8 @@ export function InlineQuickAdd({
   const quick = useQuickAdd()
   const { preview } = useParsePreview(text, text.trim().length > 0)
   const segments = useMemo(() => highlightSegments(text, preview), [text, preview])
-  const chips = preview && text.trim() ? parseChips(preview.result, today) : []
+  const effective = preview && text.trim() ? withDefaults(preview.result, defaults) : null
+  const chips = effective ? parseChips(effective.parsed, today, { reminderDropped: effective.reminderDropped }) : []
 
   const submit = () => {
     const value = text.trim()
@@ -87,6 +88,7 @@ export function InlineQuickAdd({
         />
       </div>
       <ParseChips chips={chips} />
+      {effective?.reminderDropped && <p className="text-xs muted">{t('task.qa_reminder_needs_date')}</p>}
     </div>
   )
 }

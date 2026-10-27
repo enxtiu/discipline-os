@@ -17,7 +17,15 @@ interface ChipModel {
   className?: string
 }
 
-export function parseChips(parsed: ParseResult, today: string | undefined): ChipModel[] {
+/**
+ * `reminderDropped`: the server will not keep the reminder (no date to count
+ * from) — its chip is struck through instead of promising something.
+ */
+export function parseChips(
+  parsed: ParseResult,
+  today: string | undefined,
+  { reminderDropped = false }: { reminderDropped?: boolean } = {},
+): ChipModel[] {
   const chips: ChipModel[] = []
   if (parsed.block) {
     chips.push({
@@ -28,6 +36,9 @@ export function parseChips(parsed: ParseResult, today: string | undefined): Chip
     })
   } else if (parsed.due_date) {
     chips.push({ key: 'date', kind: 'date', label: dueLabel(parsed, today), icon: <IconCalendar size={14} /> })
+  } else if (parsed.due_time) {
+    // a repeat with a time: the server dates it on its first occurrence
+    chips.push({ key: 'time', kind: 'time', label: parsed.due_time, icon: <IconClock size={14} /> })
   }
   if (parsed.priority) {
     chips.push({
@@ -61,6 +72,7 @@ export function parseChips(parsed: ParseResult, today: string | undefined): Chip
       kind: 'reminder',
       label: leadLabel(reminder.lead_minutes),
       icon: <IconBellSmall size={14} />,
+      className: reminderDropped ? 'line-through opacity-60' : undefined,
     }),
   )
   if (parsed.estimate_minutes) {

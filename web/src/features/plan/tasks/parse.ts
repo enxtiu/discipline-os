@@ -55,6 +55,28 @@ export function useParsePreview(text: string, enabled: boolean, delayMs = 250) {
   return { preview, status }
 }
 
+/**
+ * The preview as `POST /tasks/quick` will apply it with the sheet's defaults
+ * (the server's rules, `services/planner/quick_add.task_fields`): a time or a
+ * block typed without a date lands on the default day — the day the user is
+ * looking at — and a «15 min before» reminder on a task left without any date,
+ * block or repeat is dropped. `/parse` itself knows nothing about defaults.
+ */
+export function withDefaults(
+  parsed: ParseResult,
+  defaults: { due_date?: string } | undefined,
+): { parsed: ParseResult; reminderDropped: boolean } {
+  const day = defaults?.due_date
+  const typedDate = parsed.tokens.some((token) => token.kind === 'date')
+  let out = parsed
+  if (day && !parsed.recurrence_rule && !typedDate) {
+    if (parsed.block) out = { ...parsed, due_date: parsed.due_date ? day : null, block: { ...parsed.block, date: day } }
+    else if (parsed.due_date) out = { ...parsed, due_date: day }
+  }
+  const dated = !!(out.due_date || out.block || out.recurrence_rule || day)
+  return { parsed: out, reminderDropped: out.reminders.length > 0 && !dated }
+}
+
 export interface Segment {
   text: string
   kind?: TokenKind

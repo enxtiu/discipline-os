@@ -16,7 +16,7 @@ import { relativeDay } from '../format'
 import { IconFolder, IconLayers, IconSubtasks } from '../icons'
 import { newId, useAreas, useCounts, useProjects, useQuickAdd } from '../queries'
 import { HighlightInput } from './HighlightInput'
-import { highlightSegments, useParsePreview } from './parse'
+import { highlightSegments, useParsePreview, withDefaults } from './parse'
 import { ParseChips, parseChips } from './ParseChips'
 import { planToast } from './toast'
 
@@ -60,7 +60,9 @@ export function QuickAddTaskSheet({
 
   const segments = useMemo(() => highlightSegments(text, preview), [text, preview])
   const parsed = preview?.result ?? null
-  const chips = parsed && text.trim() ? parseChips(parsed, today) : []
+  // what the server will create with this sheet's defaults (a time typed from a day's «+» lands on that day)
+  const effective = parsed && text.trim() ? withDefaults(parsed, defaults) : null
+  const chips = effective ? parseChips(effective.parsed, today, { reminderDropped: effective.reminderDropped }) : []
   const title = parsed && text.trim() ? parsed.title.trim() : ''
 
   const defaultProject = defaults?.project_id
@@ -150,6 +152,11 @@ export function QuickAddTaskSheet({
             </p>
           )}
           <ParseChips chips={chips} />
+          {effective?.reminderDropped && (
+            <p className="text-xs muted" data-testid="quick-add-reminder-dropped">
+              {t('task.qa_reminder_needs_date')}
+            </p>
+          )}
           {status === 'offline' && text.trim() && (
             <p className="flex items-center gap-1.5 text-xs muted">
               <IconWifiOff size={14} />

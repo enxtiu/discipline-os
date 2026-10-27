@@ -621,6 +621,7 @@
     "qa_example_3": "call mom in 3 days p1 @phone",
     "qa_offline": "Offline — the line is parsed when it is sent",
     "qa_preview_failed": "Preview unavailable — you can still add the task",
+    "qa_reminder_needs_date": "A “… before” reminder needs a date or a time — without one it is not kept.",
     "qa_added": "Added",
     "qa_waiting": "waiting for network",
     "added": "Added: {{title}}",
