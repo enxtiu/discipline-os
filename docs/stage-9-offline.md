@@ -192,7 +192,17 @@ cd web && API_URL=http://127.0.0.1:8106 npm run gen:api
 
 ## 7. Verification evidence (this build)
 
-_Filled in after the gate runs below._
+```
+api      1178 passed (dsos_test_s9off; 24 of them stage-9 conflict tests) · ruff check clean ·
+         ruff format clean
+web      tsc -b --noEmit clean · vite build + PWA 44 precache entries (1 697.1 KiB);
+         SyncSheet is its own 6.6 kB chunk (fetched while idle and online)
+i18n     complete & in sync (+117 `sync` keys per locale)
+browser  whole scripts/ui-check.mjs on a fresh database: 338 ok — the stage-9 offline module
+         green; three earlier-stage checks failed on a saturated machine (load ≈ 10) because
+         of fixed pauses (the wizard's save, the live workout's rows, the offline steps
+         toast) — made to wait for what they read on the integration branch and re-run there
+```
 
 ## 8. Not in this part (by design)
 
