@@ -2,9 +2,10 @@
  * Calendar view model: the server's `/views/calendar` days regrouped by the
  * task's own day key, the overlap layout of a day's blocks, colours.
  *
- * Blocks are grouped by `task.block.date` and all-day tasks by `task.due_date`
- * (not by the array they arrived in), so an optimistic move written into the
- * caches (`patchTaskInCaches`) shows up in its new column at once.
+ * Blocks are grouped by the date of the task's own block and all-day tasks by
+ * their due date (not by the array they arrived in), so an optimistic move
+ * written into the caches (`patchTaskInCaches`) shows up in its new column at
+ * once.
  */
 import type { CalendarView, Occurrence, Priority, Task } from '../types'
 import { MINUTES_PER_DAY, toMinutes } from './dates'
