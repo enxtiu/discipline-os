@@ -278,3 +278,26 @@ def test_safe_floor_defaults() -> None:
 def test_day_metrics_tracked_minutes_round_half_up() -> None:
     assert DayMetrics(day=date(2026, 1, 1), tracked_seconds=89, running_seconds=0).tracked_minutes == 1
     assert DayMetrics(day=date(2026, 1, 1), tracked_seconds=60, running_seconds=30).tracked_minutes == 2
+
+
+def test_achievement_day_counts_never_include_low_intake_or_unfinished_days() -> None:
+    from app.services.gamification.achievements import DayFlag
+    from app.services.gamification.achievements import day_metrics as achievement_days
+
+    low, ok, unlogged = date(2026, 7, 10), date(2026, 7, 11), date(2026, 7, 12)
+    history = {
+        low: DayMetrics(day=low, kcal=1400, meals=3, protein_g=200, water_ml=3000, steps=9000),
+        ok: DayMetrics(day=ok, kcal=1900, meals=3, protein_g=200),
+        unlogged: DayMetrics(day=unlogged, water_ml=3000),
+    }
+    flags = {
+        low: DayFlag(99.0, False),
+        ok: DayFlag(99.0, True),
+        unlogged: DayFlag(97.0, False),
+        TODAY: DayFlag(100.0, True),  # today is not finished
+    }
+    metrics = achievement_days(history, flags, ctx())
+    assert metrics["days_protein_target"] == 1  # the below-floor day never counts
+    assert metrics["days_water_target"] == 2 and metrics["days_steps_target"] == 1
+    assert metrics["perfect_days"] == 1
+    assert metrics["days_score_70_in_week"] == 1
