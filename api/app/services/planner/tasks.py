@@ -53,6 +53,7 @@ from app.services.planner import recur
 from app.services.planner.common import (
     FUTURE_TOLERANCE,
     Clock,
+    advisory_lock,
     id_conflict,
     normalize_tags,
     owned,
@@ -64,6 +65,10 @@ log = get_logger(__name__)
 
 MAX_DEPTH = 2
 MAX_CHILDREN = 100
+# Giving a task a parent (a move or a new subtask) takes this per-user lock before any row
+# lock: two crossing moves (A under B ‖ B under A) would otherwise both pass the cycle check
+# or deadlock on each other's rows, and depth/children checks could race a concurrent change.
+TREE_LOCK = "planner-tree"
 MAX_REMINDERS = 5
 UNTOUCHED = timedelta(seconds=2)
 DEFAULT_PRIORITY = 4
@@ -450,6 +455,8 @@ async def create_task(db: AsyncSession, *, user_id: uuid.UUID, clock: Clock, pay
         if existing is not None:
             return _replayed(existing, user_id, payload.parent_id)
     fields = payload.model_fields_set
+    if payload.parent_id is not None:
+        await advisory_lock(db, user_id, TREE_LOCK)
     if payload.project_id is not None:
         await owned(db, Project, user_id, payload.project_id, "Project")
     if payload.area_id is not None:
@@ -794,8 +801,10 @@ class PatchResult:
 async def update_task(
     db: AsyncSession, *, user_id: uuid.UUID, clock: Clock, task_id: uuid.UUID, payload
 ) -> PatchResult:
-    task = await get_task(db, user_id, task_id, lock=True)
     fs = payload.model_fields_set
+    if "parent_id" in fs and payload.parent_id is not None:
+        await advisory_lock(db, user_id, TREE_LOCK)  # before the row lock, see TREE_LOCK
+    task = await get_task(db, user_id, task_id, lock=True)
     gave_attribute = False
     timing_changed = "title" in fs
 

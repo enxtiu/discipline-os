@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import UTC, datetime, timedelta
 
 import httpx
+import psycopg.errors
 import pytest
 from sqlalchemy import func, select
+from sqlalchemy.exc import OperationalError
 
 from app.db import SessionLocal
 from app.models import Reminder, Task, TimeEntry
@@ -258,6 +261,55 @@ async def test_subtasks_depth_inheritance_cascade(authed: httpx.AsyncClient) -> 
     async with SessionLocal() as session:
         kept = await session.get(TimeEntry, uuid.UUID(entry.json()["id"]))
         assert kept is not None and kept.task_id is None and kept.is_deleted is False
+
+
+async def test_crossing_moves_neither_deadlock_nor_form_a_cycle(authed: httpx.AsyncClient) -> None:
+    """PATCH A {parent_id: B} ‖ PATCH B {parent_id: A}: used to deadlock on each other's rows (500)."""
+    day = today().isoformat()
+    for _ in range(10):
+        a = await make_task(authed, "A", due_date=day)
+        b = await make_task(authed, "B", due_date=day)
+        first, second = await asyncio.gather(
+            authed.patch(f"{API}/tasks/{a['id']}", json={"parent_id": b["id"]}),
+            authed.patch(f"{API}/tasks/{b['id']}", json={"parent_id": a["id"]}),
+        )
+        assert sorted([first.status_code, second.status_code]) == [200, 422], (first.text, second.text)
+        refused = first if first.status_code == 422 else second
+        assert code(refused) == "task_too_deep"
+        parents = {(await get_task(authed, a["id"]))["parent_id"], (await get_task(authed, b["id"]))["parent_id"]}
+        assert None in parents  # one of them stays a root: no cycle
+
+
+@pytest.fixture
+async def lenient(device_token: str):
+    """A client that returns 500 responses instead of raising the app's exception."""
+    from app.main import app
+
+    transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as http:
+        http.headers["Authorization"] = f"Bearer {device_token}"
+        yield http
+
+
+async def test_deadlocks_answer_a_retryable_conflict(lenient: httpx.AsyncClient, monkeypatch) -> None:
+    """A transaction PostgreSQL aborts to break a deadlock (or a serialization failure) is worth a retry."""
+    from app.services.planner import tasks
+
+    task = await make_task(lenient, "x")
+    failure: dict[str, Exception] = {}
+
+    async def broken(*_args, **_kwargs):
+        raise failure["exc"]
+
+    monkeypatch.setattr(tasks, "update_task", broken)
+    for orig in (psycopg.errors.DeadlockDetected("deadlock detected"), psycopg.errors.SerializationFailure("x")):
+        failure["exc"] = OperationalError("UPDATE tasks", {}, orig)
+        response = await lenient.patch(f"{API}/tasks/{task['id']}", json={"parent_id": uid()})
+        assert response.status_code == 409 and code(response) == "conflict", response.text
+        assert response.json()["error"]["details"] == {"retryable": True}
+    failure["exc"] = OperationalError("UPDATE tasks", {}, psycopg.errors.DiskFull("no space"))
+    other = await lenient.patch(f"{API}/tasks/{task['id']}", json={"title": "y"})
+    assert other.status_code == 500  # anything else is still a server error
 
 
 async def test_too_many_subtasks(authed: httpx.AsyncClient, owner) -> None:
