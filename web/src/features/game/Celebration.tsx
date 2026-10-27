@@ -32,6 +32,8 @@ export function useCelebration(items: Achievement[] | undefined, auto: boolean) 
   useEffect(() => {
     if (!auto || showing || !items?.length) return
     if (items.every((item) => offered.has(item.id))) return
+    // never on top of another sheet (a log sheet, the quick add …): the pill still offers it
+    if (document.querySelector('[role="dialog"]')) return
     items.forEach((item) => offered.add(item.id))
     setShowing(items)
   }, [auto, items, showing])

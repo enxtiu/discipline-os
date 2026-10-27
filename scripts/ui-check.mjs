@@ -868,7 +868,7 @@ try {
   // 8. Reload keeps the session (token persisted).
   // Stage 6+: feature checks live in scripts/ui-checks/<module>.mjs, one module
   // per workstream, each exporting `run(ctx)` with the helpers below.
-  for (const module of ['stage6-plan', 'stage6-calendar', 'stage7-notify']) {
+  for (const module of ['stage6-plan', 'stage6-calendar', 'stage7-notify', 'stage8-game']) {
     const { run } = await import(`./ui-checks/${module}.mjs`)
     await run({
       page,

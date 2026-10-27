@@ -36,7 +36,7 @@ export function DayScoreCard() {
   // never over the meals and quick actions at the top of Today (the pill opens them any time)
   const scoreRow = useRef<HTMLDivElement>(null)
   const atScore = useDwellInView(scoreRow, !!data)
-  const celebration = useCelebration(data?.celebrate, atScore)
+  const celebration = useCelebration(data?.celebrate, atScore && !sheetOpen)
 
   if (!data) {
     if (query.isError) {
