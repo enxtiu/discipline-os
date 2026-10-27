@@ -1,8 +1,8 @@
 """Stage 7: web push (VAPID), subscriptions, preferences, the dispatcher and the daily planner.
 
-No network: the push service is a ``requests.Session`` double (``FakePushService``);
-the encryption round-trip runs the real ``pywebpush`` code path and decrypts the
-captured body with ``http_ece``.
+No network: the push service is an ``httpx`` transport double (``FakePushService``,
+see ``tests/stage7_helpers.py``); the encryption round-trip runs the real
+``pywebpush`` encryption and decrypts the captured body with ``http_ece``.
 """
 
 from __future__ import annotations
@@ -12,19 +12,14 @@ import base64
 import json
 import os
 import re
-import threading
 import time as clock
 import uuid
-from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
-from typing import Any
 
-import http_ece
 import httpx
 import pytest
 import requests
 from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import ec
 from py_vapid import Vapid02
 from sqlalchemy import select
 
@@ -32,230 +27,41 @@ from app.models import (
     Device,
     JournalEntry,
     MealLog,
-    NotificationLog,
     PushSubscription,
     Reminder,
     ReminderKind,
     ReminderStatus,
     Task,
     TaskStatus,
-    UserSettings,
     WaterLog,
     WeeklyPlan,
     WorkoutLog,
     WorkoutStatus,
 )
+from tests.stage7_helpers import (  # noqa: F401  (fixtures: vapid, push_service, ready)
+    NOON,
+    BrowserKeys,
+    FakePushService,
+    N,
+    P,
+    add_reminder,
+    add_task,
+    b64u,
+    dispatch,
+    endpoint,
+    log_rows,
+    owner_id,
+    push_service_fixture,
+    ready_fixture,
+    reminder,
+    second_user,
+    set_settings,
+    subscribe,
+    utc,
+    vapid_fixture,
+)
 
 pytestmark = pytest.mark.anyio
-
-P = "/api/v1/push"
-N = "/api/v1/notifications"
-
-
-# --------------------------------------------------------------------------- #
-# Test doubles & helpers
-# --------------------------------------------------------------------------- #
-def b64u(raw: bytes) -> str:
-    return base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
-
-
-@dataclass
-class BrowserKeys:
-    """What a browser holds for one subscription: an ECDH key pair and the auth secret."""
-
-    private_key: ec.EllipticCurvePrivateKey
-    auth: bytes
-
-    @classmethod
-    def new(cls) -> BrowserKeys:
-        return cls(ec.generate_private_key(ec.SECP256R1()), os.urandom(16))
-
-    @property
-    def p256dh(self) -> str:
-        return b64u(
-            self.private_key.public_key().public_bytes(
-                serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint
-            )
-        )
-
-    def json(self) -> dict[str, str]:
-        return {"p256dh": self.p256dh, "auth": b64u(self.auth)}
-
-    def decrypt(self, body: bytes) -> dict[str, Any]:
-        return json.loads(
-            http_ece.decrypt(body, private_key=self.private_key, auth_secret=self.auth, version="aes128gcm")
-        )
-
-
-class FakeResponse:
-    def __init__(self, status: int) -> None:
-        self.status_code = status
-        self.reason = "fake"
-        self.text = ""
-        self.headers: dict[str, str] = {}
-
-
-@dataclass
-class Captured:
-    url: str
-    data: bytes
-    headers: dict[str, str]
-    timeout: Any
-
-
-class FakePushService:
-    """A ``requests.Session`` double: records every POST, answers 201 unless told otherwise."""
-
-    def __init__(self) -> None:
-        self.requests: list[Captured] = []
-        self.statuses: dict[str, list[int]] = {}
-        self.default_status = 201
-        self.errors: dict[str, Exception] = {}
-        self.delay = 0.0
-        self._lock = threading.Lock()
-
-    def post(self, url: str, data: bytes | None = None, headers: dict | None = None, timeout: Any = None):
-        if self.delay:
-            clock.sleep(self.delay)
-        with self._lock:
-            self.requests.append(
-                Captured(url, data or b"", {k.lower(): str(v) for k, v in (headers or {}).items()}, timeout)
-            )
-            queue = self.statuses.get(url)
-            status = queue.pop(0) if queue else self.default_status
-        if url in self.errors:
-            raise self.errors[url]
-        return FakeResponse(status)
-
-    def to(self, endpoint: str) -> list[Captured]:
-        return [req for req in self.requests if req.url == endpoint]
-
-
-@pytest.fixture
-def vapid(monkeypatch) -> Vapid02:
-    """Real VAPID keys in the settings, exactly as `python -m app.cli vapid-keys` prints them."""
-    from app.core.config import get_settings
-
-    key = Vapid02()
-    key.generate_keys()
-    public = b64u(
-        key.public_key.public_bytes(serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint)
-    )
-    settings = get_settings()
-    monkeypatch.setattr(settings, "vapid_public_key", public)
-    monkeypatch.setattr(settings, "vapid_private_key", key.private_pem().decode().replace("\n", "\\n"))
-    monkeypatch.setattr(settings, "vapid_subject", "mailto:owner@example.com")
-    return key
-
-
-@pytest.fixture
-def push_service(monkeypatch) -> FakePushService:
-    from app.services import push
-
-    fake = FakePushService()
-    monkeypatch.setattr(push, "_transport_override", fake)
-    return fake
-
-
-def endpoint(n: int | str = 1) -> str:
-    return f"https://push.example.test/send/{n}-{uuid.uuid4().hex[:8]}"
-
-
-async def subscribe(client: httpx.AsyncClient, url: str, keys: BrowserKeys | None = None, **extra) -> httpx.Response:
-    keys = keys or BrowserKeys.new()
-    return await client.post(f"{P}/subscriptions", json={"endpoint": url, "keys": keys.json(), **extra})
-
-
-async def owner_id(db) -> uuid.UUID:
-    from app.models import User
-
-    return (await db.execute(select(User.id).where(User.is_owner.is_(True)))).scalar_one()
-
-
-async def set_settings(db, user_id: uuid.UUID, **values) -> None:
-    row = (await db.execute(select(UserSettings).where(UserSettings.user_id == user_id))).scalar_one()
-    for key, value in values.items():
-        setattr(row, key, value)
-    await db.commit()
-
-
-async def add_task(db, user_id: uuid.UUID, **values) -> uuid.UUID:
-    task = Task(user_id=user_id, title=values.pop("title", "Зал"), **values)
-    db.add(task)
-    await db.commit()
-    return task.id
-
-
-async def add_reminder(
-    db,
-    user_id: uuid.UUID,
-    *,
-    remind_at: datetime,
-    kind: ReminderKind = ReminderKind.TASK,
-    task_id: uuid.UUID | None = None,
-    payload: dict | None = None,
-    title: str = "Зал",
-    dedupe: str | None = None,
-) -> uuid.UUID:
-    row = Reminder(
-        user_id=user_id,
-        kind=kind,
-        task_id=task_id,
-        title=title,
-        payload=payload or {},
-        remind_at=remind_at,
-        lead_minutes=(payload or {}).get("lead_minutes", 0),
-        status=ReminderStatus.PENDING,
-        dedupe_key=dedupe or f"test:{uuid.uuid4()}",
-    )
-    db.add(row)
-    await db.commit()
-    return row.id
-
-
-async def reminder(db, reminder_id: uuid.UUID) -> Reminder:
-    db.expire_all()
-    return (await db.execute(select(Reminder).where(Reminder.id == reminder_id))).scalar_one()
-
-
-async def log_rows(db, user_id: uuid.UUID | None = None) -> list[NotificationLog]:
-    db.expire_all()
-    query = select(NotificationLog).order_by(NotificationLog.created_at)
-    if user_id is not None:
-        query = query.where(NotificationLog.user_id == user_id)
-    return list((await db.execute(query)).scalars().all())
-
-
-async def dispatch(now: datetime):
-    from app.services.notifications import dispatch_due
-
-    return await dispatch_due(now)
-
-
-def utc(*args: int) -> datetime:
-    return datetime(*args, tzinfo=UTC)
-
-
-async def second_user(client: httpx.AsyncClient) -> str:
-    """Another account with its own paired device; returns its device token."""
-    from app.db import SessionLocal
-    from app.models import User
-    from app.services.pairing import create_pairing_code
-    from app.services.settings_service import get_or_create_settings
-
-    async with SessionLocal() as session:
-        user = User(display_name="Second", is_owner=False)
-        session.add(user)
-        await session.flush()
-        await get_or_create_settings(session, user)
-        issued = await create_pairing_code(session, user, created_by="test")
-        await session.commit()
-    response = await client.post(
-        "/api/v1/auth/pair",
-        json={"code": issued.code, "device": {"name": "Second phone", "platform": "ios", "fingerprint": "fp-second"}},
-    )
-    assert response.status_code == 200, response.text
-    return response.json()["token"]
 
 
 # --------------------------------------------------------------------------- #
@@ -598,32 +404,6 @@ async def test_test_endpoint_without_subscriptions_and_in_english(
 # --------------------------------------------------------------------------- #
 # Dispatcher
 # --------------------------------------------------------------------------- #
-NOON = utc(2026, 7, 15, 5, 0)  # 12:00 in Asia/Bangkok (UTC+7, no DST)
-
-
-@pytest.fixture
-async def ready(authed: httpx.AsyncClient, vapid, push_service: FakePushService, db) -> dict[str, Any]:
-    """Owner in Asia/Bangkok with one browser subscribed; quiet hours 23:00–07:00."""
-    user_id = await owner_id(db)
-    await set_settings(
-        db,
-        user_id,
-        timezone="Asia/Bangkok",
-        language="ru",
-        quiet_hours_enabled=True,
-        quiet_hours_start=time(23, 0),
-        quiet_hours_end=time(7, 0),
-    )
-    keys = BrowserKeys.new()
-    url = endpoint("phone")
-    assert (await subscribe(authed, url, keys)).status_code == 201
-    await db.execute(
-        Reminder.__table__.delete()
-    )  # smart rows planned on subscribe (real clock) are not under test here
-    await db.commit()
-    return {"user_id": user_id, "keys": keys, "endpoint": url, "push": push_service, "client": authed}
-
-
 async def test_dispatch_due_and_not_due(ready, db) -> None:
     user_id, fake = ready["user_id"], ready["push"]
     task_id = await add_task(db, user_id, title="Позвонить маме", due_at=NOON + timedelta(minutes=15))
