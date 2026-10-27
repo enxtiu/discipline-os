@@ -443,8 +443,16 @@ split "$(api GET '/v1/stats/nutrition?period=week' '' "$TOKEN")"
   || fail "burned calories appear in the nutrition stats"
 EXPORT_DIR="$(mktemp -d)"
 download() {  # download <path> <file>: saves the body, prints its Content-Disposition header
-  curl -sS -D "$EXPORT_DIR/$2.headers" -o "$EXPORT_DIR/$2" -H "Authorization: Bearer $TOKEN" "$API_BASE$1"
-  grep -i '^content-disposition:' "$EXPORT_DIR/$2.headers" | tr -d '\r'
+  local attempt status wait
+  for attempt in 1 2; do
+    status="$(curl -sS -D "$EXPORT_DIR/$2.headers" -o "$EXPORT_DIR/$2" -w '%{http_code}' \
+      -H "Authorization: Bearer $TOKEN" "$API_BASE$1")"
+    [[ "$status" == "429" ]] || break
+    # exports are limited to 6 a minute per user (the browser checks may have spent them): wait once
+    wait="$(grep -i '^retry-after:' "$EXPORT_DIR/$2.headers" | tr -dc '0-9')"
+    sleep "$(( ${wait:-60} > 65 ? 65 : ${wait:-60} ))"
+  done
+  grep -i '^content-disposition:' "$EXPORT_DIR/$2.headers" | tr -d '\r' || true
 }
 JSON_NAME="$(download /v1/export/json export.json)"
 grep -q 'filename="disciplineos-[0-9-]*\.json"' <<<"$JSON_NAME" || fail "JSON export has no dated attachment name: $JSON_NAME"
