@@ -12,7 +12,9 @@
         try {
           var token = localStorage.getItem('dsos.device_token')
           if (!token || !window.fetch) return
-          var day = new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
+          // the device's local day, as lib/format today() (Intl would cost more here than the reads)
+          var now = new Date()
+          var day = now.getFullYear() + '-' + ('0' + (now.getMonth() + 1)).slice(-2) + '-' + ('0' + now.getDate()).slice(-2)
           var screens = {
             '/today': ['/v1/nutrition/day?date=' + day, '/v1/recipes', '/v1/training/today', '/v1/health/today',
               '/v1/planner/views/today', '/v1/planner/timer', '/v1/gamification/today'],

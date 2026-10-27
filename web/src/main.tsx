@@ -3,8 +3,10 @@
  * toast provider, service-worker registration and the offline sync loop.
  *
  * Stage 9: the first render waits for the active language (one locale chunk,
- * preloaded by index.html) so no key ever flashes; the animation features of
- * framer-motion load alongside (`MotionProvider`).
+ * preloaded by index.html) so no key ever flashes, and — on a paired device — for
+ * the session that index.html already requested, so the first render is the app
+ * shell, not a spinner swapped for it a moment later (index.html shows the same
+ * spinner meanwhile). The animation features of framer-motion load alongside.
  */
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -13,9 +15,10 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import { registerSW } from 'virtual:pwa-register'
 
 import App from './App'
-import { queryClient } from '@/lib/queryClient'
+import { queryClient, queryKeys } from '@/lib/queryClient'
+import { endpoints } from '@/api/client'
 import { ToastProvider } from '@/components/ui/Toast'
-import { applyTheme, storedTheme } from '@/lib/device'
+import { applyTheme, hasToken, storedTheme } from '@/lib/device'
 import { installOfflineSync } from '@/lib/offlineQueue'
 import { installQueueRefresh } from '@/lib/queueRefresh'
 import { MotionProvider } from '@/lib/motion'
@@ -42,7 +45,16 @@ if (import.meta.env.PROD) {
 const container = document.getElementById('root')
 if (!container) throw new Error('#root is missing from index.html')
 
-void i18nReady.then(() =>
+/** The session in the cache before the first render (never waits longer than 3 s, never offline). */
+function sessionReady(): Promise<unknown> {
+  if (!hasToken() || !navigator.onLine) return Promise.resolve()
+  const loaded = queryClient
+    .prefetchQuery({ queryKey: queryKeys.session, queryFn: () => endpoints.session(), retry: false, staleTime: 60_000 })
+    .catch(() => undefined)
+  return Promise.race([loaded, new Promise((resolve) => setTimeout(resolve, 3000))])
+}
+
+void Promise.all([i18nReady, sessionReady()]).then(() =>
   createRoot(container).render(
     <StrictMode>
       <QueryClientProvider client={queryClient}>
