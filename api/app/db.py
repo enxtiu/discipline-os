@@ -22,6 +22,9 @@ engine = create_async_engine(
     max_overflow=_settings.db_max_overflow,
     pool_pre_ping=True,
     pool_recycle=1800,
+    # statement parameters (push endpoints and keys, token hashes, notes…) never end up in
+    # an exception message or the log — also not with DB_ECHO=true
+    hide_parameters=True,
     future=True,
 )
 

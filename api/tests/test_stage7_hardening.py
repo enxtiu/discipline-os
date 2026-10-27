@@ -14,6 +14,7 @@ from typing import Any
 import httpx
 import psycopg
 import pytest
+import sqlalchemy as sa
 from sqlalchemy import select
 
 from app.models import PushSubscription
@@ -192,6 +193,27 @@ async def test_endpoint_length_is_counted_in_bytes(authed: httpx.AsyncClient, va
     fits = base + "a" * (MAX_ENDPOINT_BYTES - len(base))
     assert (await subscribe(authed, fits)).status_code == 201
     assert (await subscribe(authed, fits + "a")).status_code == 422
+
+
+async def test_database_errors_do_not_carry_statement_parameters(db) -> None:
+    from app.db import engine
+
+    assert engine.sync_engine.hide_parameters is True
+    secret = f"https://push.example.test/secret-{uuid.uuid4().hex}"
+    p256dh = b64u(b"\x04" + bytes(range(64)))
+    with pytest.raises(sa.exc.IntegrityError) as caught:
+        await db.execute(
+            sa.insert(PushSubscription).values(
+                user_id=uuid.uuid4(),  # no such user: a foreign-key violation
+                endpoint=secret,
+                p256dh=p256dh,
+                auth="c2VjcmV0LWF1dGgtMTIzNA",
+            )
+        )
+    await db.rollback()
+    text = str(caught.value)
+    assert secret not in text and p256dh not in text and "c2VjcmV0LWF1dGgtMTIzNA" not in text
+    assert "push_subscriptions" in text  # still says what failed
 
 
 # --------------------------------------------------------------------------- #
