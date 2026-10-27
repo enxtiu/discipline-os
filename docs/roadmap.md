@@ -1,6 +1,6 @@
 # Roadmap
 
-Nine stages, built in order. Each one is complete and runnable on its own — no
+Ten stages, built in order. Each one is complete and runnable on its own — no
 placeholders that pretend to work, no half-finished feature behind a flag.
 
 | # | Stage | What it adds | Status |
@@ -15,6 +15,7 @@ placeholders that pretend to work, no half-finished feature behind a flag.
 | 7 | **Notifications** | Web push (VAPID, `pywebpush`), the in-process notification scheduler, quiet hours, per-category prefs, the iOS "add to home screen first" explanation in onboarding | planned |
 | 8 | **Gamification & insight** | XP rules (never for intake below the safe floor), streaks, rings, calorie score peaking **in** the target zone, levels, badges, charts and dashboards (Recharts), data export, backup download | planned |
 | 9 | **Hardening** | Offline sync polish on top of the stage-1 queue, conflict surfacing, Obsidian markdown export, Notion sync hooks, performance pass, accessibility pass | planned |
+| 10 | **Redesign** | A new visual identity chosen together with the owner: brand book, colour palette, typography, iconography, layout and navigation reworked for comfort. Every screen of stages 1–9 is built on the CSS-variable tokens and the shared `components/ui` kit, so the redesign re-skins them in one place instead of rewriting them | planned |
 
 ## Architectural rules that hold across all stages
 
