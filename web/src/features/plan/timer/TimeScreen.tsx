@@ -4,8 +4,9 @@
  * The server decides the period (`week` follows `settings.week_start`) and
  * every total; prev/next step one day past the period it returned, so the
  * client never computes a week. Summary: total, by day, by area against the
- * area's target, by project. Below: the running entry pinned, then the
- * entries of the period grouped by their local day, tap to edit; «Добавить
+ * area's target, by project. Below: the running entry pinned (in the period
+ * it started in), then the entries of the period grouped by their local day,
+ * tap to edit; «Добавить
  * вручную» opens the manual entry sheet.
  */
 import { useMemo, useState } from 'react'
@@ -73,6 +74,9 @@ export default function TimeScreen() {
 
   const isCurrent = !!today && !!summary.data && summary.data.from <= today && today <= summary.data.to
   const title = summary.data ? (period === 'month' ? monthTitle(summary.data.from) : rangeTitle(summary.data.from, summary.data.to)) : ''
+  // pinned only in the period it belongs to (its start day; a start still queued offline has none yet: today)
+  const runningDay = running ? running.entry.date || today : undefined
+  const pinned = running && !!runningDay && !!summary.data && summary.data.from <= runningDay && runningDay <= summary.data.to ? running : null
 
   return (
     <div className="space-y-4" data-testid="time-page">
@@ -131,7 +135,7 @@ export default function TimeScreen() {
           </Button>
         </header>
 
-        {running && <RunningEntry running={running} receivedAt={timer.dataUpdatedAt} />}
+        {pinned && <RunningEntry running={pinned} receivedAt={timer.dataUpdatedAt} />}
 
         {entries.isError && !entries.data ? (
           <ErrorState message={errorMessage(entries.error)} onRetry={() => void entries.refetch()} retryLabel={t('app.retry')} />
