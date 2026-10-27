@@ -282,6 +282,8 @@ belong together).
 | `BACKUP_LOCAL_DIR` | Local directory, default `/var/backups/dsos` |
 | `BACKUP_RETENTION_DAYS` | Local retention, default `14` |
 | `AGE_RECIPIENT` | `age` public key; the matching private key never leaves the VPS |
+| `BACKUP_SIGNING_KEY` | Signs the manifest of the in-app backup (`GET /api/v1/export/backup`, HMAC-SHA256, key derived with HKDF); empty = derived from `SECRET_KEY`. Set it to keep backups restorable across a `SECRET_KEY` rotation, and give a new server the same value to move there with the whole history — see [Your data: export and restore-backup](#your-data-export-and-restore-backup) |
+| `BACKUP_MAX_DATA_BYTES` | Largest `data.json` that `restore-backup` unpacks, default `536870912` (512 MiB) |
 
 ---
 
@@ -558,6 +560,50 @@ matters; `caddy_data` only holds certificates, which Caddy re-issues
 automatically. `api_media` holds the optional 400 px meal thumbnails (stage 3);
 it is **not** in the `pg_dump` backup — copy the volume too if you want the
 pictures to survive a server loss (the meals themselves are in the database).
+
+### Your data: export and restore-backup
+
+Three downloads (`GET /api/v1/export/json`, `/csv`, `/backup` — a paired device only, 6
+a minute): everything as one JSON document (`disciplineos-YYYY-MM-DD.json`), one CSV per
+table in a zip (`disciplineos-YYYY-MM-DD-csv.zip`) and a restorable backup
+(`disciplineos-YYYY-MM-DD-backup.zip`: `data.json` + a signed `manifest.json`). No
+secret is ever exported (token hashes, pairing codes, push keys, raw AI payloads; an AI
+provider's error keeps only its status and error code).
+
+**CSV and a Russian-locale spreadsheet.** The CSV files are UTF-8 with a BOM, comma
+separated, with a **dot** as the decimal separator. Excel, Google Sheets or LibreOffice
+set to Russian read `12.5` as a date (12 May) and `80.4` as text — set the import locale
+(Excel: Data → From Text/CSV → File Origin/Locale; LibreOffice: the Language field of the
+import dialog) or the spreadsheet's locale (Google Sheets: File → Settings → Locale) to
+English (United States) before importing.
+
+**Restore** a backup on the server (`--dry-run` reports and writes nothing; running it
+twice changes nothing):
+
+```bash
+docker compose exec api python -m app.cli restore-backup /path/disciplineos-2026-10-01-backup.zip [--user-id <uuid>] [--dry-run]
+```
+
+- **Signed by this server → as it is.** The manifest carries an HMAC-SHA256 over all of
+  it — the data checksum, the account, the schema version, the creation time — with a
+  key derived from `BACKUP_SIGNING_KEY` (or `SECRET_KEY`). Such a backup goes back to its
+  own account, or with `--user-id` into an empty one.
+- **Not signed here** (edited, made by another server, or before the key changed) →
+  only into an **empty** account named with `--user-id` (the account inside the file
+  never chooses one). Its XP, daily scores, streaks, achievements and quests are not
+  taken: the engine rebuilds them from the restored records on its next run (claimed
+  quest XP and unlock dates are not carried over, and finished days are scored again
+  with the current targets). To move to a new server with the whole history, give it
+  the same `BACKUP_SIGNING_KEY`.
+- **Values are checked, never trusted.** Types, the shape of every JSON column, the
+  settings API's bounds; a safe floor below the default, or a calorie target below the
+  floor, that was never confirmed is put back to the floor (the CLI says so); XP, scores
+  and streaks of a signed backup must be within what the engine awards. A row may only
+  point at rows of the same account or at library rows. A meal photo is kept only when
+  it is restored on the same server into the same account and its file is still in
+  `api_media`. Any refusal writes nothing.
+- **Bounded.** `manifest.json` ≤ 1 MiB, `data.json` ≤ `BACKUP_MAX_DATA_BYTES`, and above
+  16 MiB at most 200× its compressed size — checked before anything is unpacked.
 
 ---
 
