@@ -231,7 +231,7 @@ export function ProfileSection() {
           </Field>
         )}
         <div className="grid grid-cols-3 gap-3">
-          <Field label="Б г/кг">
+          <Field label={`${t('today.protein')}, ${t('common.g')}/${t('common.kg')}`}>
             <Input
               type="number"
               step="0.1"
@@ -239,7 +239,7 @@ export function ProfileSection() {
               onChange={(event) => setDraft({ ...draft, goal_protein_g_per_kg: Number(event.target.value) })}
             />
           </Field>
-          <Field label="Ж г/кг">
+          <Field label={`${t('today.fat')}, ${t('common.g')}/${t('common.kg')}`}>
             <Input
               type="number"
               step="0.1"
@@ -247,7 +247,7 @@ export function ProfileSection() {
               onChange={(event) => setDraft({ ...draft, goal_fat_min_g_per_kg: Number(event.target.value) })}
             />
           </Field>
-          <Field label="Вода мл/кг">
+          <Field label={`${t('today.water')}, ${t('common.ml')}/${t('common.kg')}`}>
             <Input
               type="number"
               value={draft.goal_water_ml_per_kg ?? 33}
@@ -393,7 +393,7 @@ function TargetsCard({
       </Field>
       {currentFloor < targets.safe_floor_kcal && (
         <Callout tone="danger" title={t('settings.safe_floor_warning')}>
-          <label className="flex items-center gap-3 text-sm">
+          <label className="flex min-h-tap items-center gap-3 text-sm">
             <input
               type="checkbox"
               checked={confirm}
@@ -453,7 +453,7 @@ function TargetsCard({
           </div>
           {belowFloor && (
             <Callout tone="danger" title={t('settings.safe_floor_warning')}>
-              <label className="flex items-center gap-3 text-sm">
+              <label className="flex min-h-tap items-center gap-3 text-sm">
                 <input
                   type="checkbox"
                   checked={confirm}

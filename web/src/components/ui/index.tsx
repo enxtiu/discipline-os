@@ -4,7 +4,9 @@
  * add behaviour (accessibility, keyboard, motion) and structure.
  */
 import {
+  createContext,
   forwardRef,
+  useContext,
   useEffect,
   useId,
   useRef,
@@ -291,6 +293,25 @@ export function StageBadge({ stage }: { stage: number }) {
 // --------------------------------------------------------------------------- //
 // Forms
 // --------------------------------------------------------------------------- //
+/**
+ * What a `Field` tells the control inside it: the id its <label> points at, the
+ * label's own id (for widgets such as a segmented control) and the hint/error.
+ */
+const FieldContext = createContext<{ controlId: string; labelId?: string; describedBy?: string } | null>(null)
+
+/** Props an `Input` / `Select` inside a `Field` needs to be labelled and described by it. */
+function useFieldControl(props: { id?: string; 'aria-label'?: string; 'aria-labelledby'?: string; 'aria-describedby'?: string }) {
+  const field = useContext(FieldContext)
+  if (!field) return {}
+  const named = props['aria-label'] || props['aria-labelledby']
+  return {
+    id: props.id ?? field.controlId,
+    // an explicit id that is not the label's target: name it through the label's id
+    'aria-labelledby': !named && props.id && props.id !== field.controlId ? field.labelId : props['aria-labelledby'],
+    'aria-describedby': props['aria-describedby'] ?? field.describedBy,
+  }
+}
+
 export function Field({
   label,
   hint,
@@ -304,20 +325,34 @@ export function Field({
   children: ReactNode
   htmlFor?: string
 }) {
+  // The label is tied to the Input/Select inside even without `htmlFor`, and a
+  // segmented control takes it as its name; the hint or error describes the field.
+  const autoId = useId()
+  const controlId = htmlFor ?? `${autoId}control`
+  const labelId = label ? `${autoId}label` : undefined
+  const noteId = error || hint ? `${autoId}note` : undefined
   return (
-    <div className="field">
-      {label && (
-        <label htmlFor={htmlFor} className="label">
-          {label}
-        </label>
-      )}
-      {children}
-      {error ? (
-        <p className="text-xs text-rose-400">{error}</p>
-      ) : (
-        hint && <p className="text-xs text-[rgb(var(--text-muted))]">{hint}</p>
-      )}
-    </div>
+    <FieldContext.Provider value={{ controlId, labelId, describedBy: noteId }}>
+      <div className="field">
+        {label && (
+          <label id={labelId} htmlFor={controlId} className="label">
+            {label}
+          </label>
+        )}
+        {children}
+        {error ? (
+          <p id={noteId} className="text-xs text-rose-400">
+            {error}
+          </p>
+        ) : (
+          hint && (
+            <p id={noteId} className="text-xs text-[rgb(var(--text-muted))]">
+              {hint}
+            </p>
+          )
+        )}
+      </div>
+    </FieldContext.Provider>
   )
 }
 
@@ -325,15 +360,17 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
   { className, ...rest },
   ref,
 ) {
-  return <input ref={ref} className={clsx('input', className)} {...rest} />
+  const field = useFieldControl(rest)
+  return <input ref={ref} className={clsx('input', className)} {...rest} {...field} />
 })
 
 export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSelectElement>>(function Select(
   { className, children, ...rest },
   ref,
 ) {
+  const field = useFieldControl(rest)
   return (
-    <select ref={ref} className={clsx('input appearance-none pr-10', className)} {...rest}>
+    <select ref={ref} className={clsx('input appearance-none pr-10', className)} {...rest} {...field}>
       {children}
     </select>
   )
@@ -383,14 +420,23 @@ export function SegmentedControl<T extends string>({
   options,
   onChange,
   className,
+  label,
 }: {
   value: T
   options: { value: T; label: ReactNode }[]
   onChange: (next: T) => void
   className?: string
+  /** Accessible name; inside a `Field` the field's label is used. */
+  label?: string
 }) {
+  const field = useContext(FieldContext)
   return (
-    <div className={clsx('segmented', className)} role="tablist">
+    <div
+      className={clsx('segmented', className)}
+      role="tablist"
+      aria-label={label}
+      aria-labelledby={!label ? field?.labelId : undefined}
+    >
       {options.map((option) => (
         <button
           key={option.value}

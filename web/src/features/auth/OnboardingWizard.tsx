@@ -298,6 +298,7 @@ export function OnboardingWizard({ onDone }: { onDone: () => void }) {
                   <Field label="—" htmlFor="quiet-to">
                     <Input
                       id="quiet-to"
+                      aria-label={t('a11y.quiet_hours_to')}
                       type="time"
                       value={(draft.quiet_hours_end ?? '07:00').slice(0, 5)}
                       onChange={(event) => update('quiet_hours_end', toApiTime(event.target.value))}
@@ -312,7 +313,7 @@ export function OnboardingWizard({ onDone }: { onDone: () => void }) {
                       <div key={key} className="flex items-center justify-between gap-3 px-4 py-3">
                         <span className="text-sm">{t(`settings.notify_types.${key}`)}</span>
                         <Toggle
-                          label={key}
+                          label={t(`settings.notify_types.${key}`)}
                           checked={draft.notifications?.[key] ?? true}
                           onChange={(value) =>
                             update('notifications', { ...(draft.notifications ?? {}), [key]: value })

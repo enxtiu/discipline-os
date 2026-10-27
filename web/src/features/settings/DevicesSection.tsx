@@ -151,7 +151,9 @@ export function DevicesSection() {
                   <Button
                     size="sm"
                     variant="ghost"
-                    className="text-rose-400"
+                    className="w-tap px-0 text-rose-400"
+                    aria-label={t('a11y.device_revoke', { name: device.name })}
+                    title={t('settings.device_revoke')}
                     onClick={() => revokeMutation.mutate(device.id)}
                     loading={revokeMutation.isPending && revokeMutation.variables === device.id}
                   >

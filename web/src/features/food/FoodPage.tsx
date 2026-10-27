@@ -135,6 +135,7 @@ export function FoodPage() {
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           placeholder={t('food.search_placeholder')}
+          aria-label={t('food.search')}
           className="pl-10"
           autoComplete="off"
         />

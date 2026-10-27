@@ -1,7 +1,10 @@
 {
   "a11y": {
     "value_of": "{{value}} of {{target}} {{unit}}",
-    "value_unit": "{{value}} {{unit}}"
+    "value_unit": "{{value}} {{unit}}",
+    "quiet_hours_to": "Quiet hours until",
+    "device_revoke": "Disconnect the device {{name}}",
+    "token_revoke": "Revoke the token {{name}}"
   },
   "app": {
     "name": "DisciplineOS",

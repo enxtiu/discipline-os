@@ -107,7 +107,9 @@ export function TokensSection() {
                   <Button
                     size="sm"
                     variant="ghost"
-                    className="text-rose-400"
+                    className="w-tap px-0 text-rose-400"
+                    aria-label={t('a11y.token_revoke', { name: token.name })}
+                    title={t('settings.token_revoke')}
                     onClick={() => revokeMutation.mutate(token.id)}
                   >
                     <IconTrash size={16} />

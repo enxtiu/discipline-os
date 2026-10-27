@@ -476,6 +476,7 @@ function FoodPicker({
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder={initialQuery || t('food.search_placeholder')}
+            aria-label={title}
             className="pl-9"
             autoFocus
           />
