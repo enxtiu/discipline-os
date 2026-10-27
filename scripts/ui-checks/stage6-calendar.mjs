@@ -302,7 +302,15 @@ export async function run(ctx) {
     check(slotSheet, 'the task editor sheet opens for the slot')
     await closeSheet()
 
-    // tap a block → its editor
+    // tap a block → its editor (from a fresh page: whatever the editor does on close)
+    await page.goto(`${WEB_URL}/plan/calendar?view=week`, { waitUntil: 'networkidle' })
+    await page.locator('[data-testid="cal-grid"][data-view="week"]').waitFor({ timeout: 15000 })
+    await page.evaluate(() => {
+      window.__openTask = undefined
+      window.addEventListener('dsos:plan:open-task', (event) => {
+        window.__openTask = event.detail
+      })
+    })
     await scrollToHour(6)
     await page.locator(`[data-testid="cal-block"][data-task-id="${repeatId}"]`).click()
     const blockSheet = await visible(sheet, 5000)
