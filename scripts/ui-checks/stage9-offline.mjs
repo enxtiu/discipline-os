@@ -155,6 +155,7 @@ export async function run(ctx) {
   const today = (await api(`${P}/counts`)).body?.date
   const journalBefore = today ? (await api(`${P}/journal/${today}`)).body?.entry ?? null : null
   let second = null
+  let legacy = null
 
   try {
     // ---- 0. the pill and the sheet, everything sent --------------------------------
@@ -653,12 +654,60 @@ export async function run(ctx) {
     await closeDialog()
     await page.emulateMedia({ reducedMotion: 'no-preference' })
     check(otherErrors.length === 0, 'second browser: no console errors', otherErrors.slice(0, 2).join(' | '))
+
+    // ---- 7. a write queued by a stage-1 build (Dexie v1, no status) is migrated and sent ---
+    legacy = await context.browser().newContext({ viewport: { width: 390, height: 844 }, locale: 'ru-RU', timezoneId: 'Europe/Moscow' })
+    await legacy.addInitScript((value) => {
+      if (!window.localStorage.getItem('dsos.device_token')) window.localStorage.setItem('dsos.device_token', value)
+    }, token)
+    const old = await legacy.newPage()
+    await old.goto(`${WEB_URL}/icons/favicon.svg`) // the origin, without the app: the stage-1 database is laid down first
+    const legacyId = crypto.randomUUID()
+    made.tasks.add(legacyId)
+    const seeded = await old.evaluate(
+      ({ id, title }) =>
+        new Promise((resolve) => {
+          const open = indexedDB.open('dsos', 10) // Dexie version 1 = IndexedDB version 10
+          open.onupgradeneeded = () => {
+            const store = open.result.createObjectStore('queue', { keyPath: 'id', autoIncrement: true })
+            for (const index of ['clientUuid', 'createdAt', 'kind']) store.createIndex(index, index)
+          }
+          open.onerror = () => resolve(false)
+          open.onsuccess = () => {
+            const db = open.result
+            const tx = db.transaction('queue', 'readwrite')
+            tx.objectStore('queue').add({
+              clientUuid: id,
+              method: 'POST',
+              path: '/v1/planner/tasks',
+              body: { id, title },
+              createdAt: Date.now() - 60_000,
+              attempts: 0,
+              kind: 'planner',
+            })
+            tx.oncomplete = () => {
+              db.close()
+              resolve(true)
+            }
+            tx.onerror = () => resolve(false)
+          }
+        }),
+      { id: legacyId, title: `UI старая очередь ${stamp}` },
+    )
+    await old.goto(`${WEB_URL}/today`, { waitUntil: 'networkidle' })
+    const migrated = await until(() => getTask(legacyId), (task) => !!task?.id, 15_000)
+    const leftOld = await until(queueOn(old), (entries) => entries.length === 0)
+    check(
+      seeded && migrated?.title === `UI старая очередь ${stamp}` && leftOld.length === 0,
+      'a write queued by the stage-1 build (Dexie v1) is migrated to v2 and replayed once',
+    )
   } finally {
     // ---- cleanup -----------------------------------------------------------------------
     await setOffline(false)
     await page.unrouteAll({ behavior: 'ignoreErrors' }).catch(() => {})
     await page.emulateMedia({ reducedMotion: 'no-preference' }).catch(() => {})
     if (second) await second.close().catch(() => {})
+    if (legacy) await legacy.close().catch(() => {})
     // whatever is still queued on this phone (a failed step) is dropped, so later runs start clean
     await page
       .evaluate(

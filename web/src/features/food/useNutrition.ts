@@ -37,7 +37,14 @@ export function useDayView(date?: string) {
   const day = date ?? today()
   const query = useDay(day)
   const view = usePendingDay(query.data, query.dataUpdatedAt, day)
-  return { ...query, data: view.data, pendingIds: view.pendingIds }
+  return {
+    data: view.data,
+    pendingIds: view.pendingIds,
+    isLoading: query.isLoading,
+    isError: query.isError,
+    error: query.error,
+    refetch: query.refetch,
+  }
 }
 
 export type Saved<T> = { queued: true; clientUuid: string } | { queued: false; data: T }

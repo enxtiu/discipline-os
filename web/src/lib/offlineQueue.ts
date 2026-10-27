@@ -633,9 +633,21 @@ export async function mutate<T>(
     return { queued: true, clientUuid }
   }
   if (await mustWait(input)) {
-    await enqueue(input)
-    if (!authBlocked()) void flushQueue()
-    return { queued: true, clientUuid }
+    // online, but an earlier write of the same thing waits: queue behind it (the order is kept)
+    // and replay now — when it goes through, the caller gets the server's answer as usual
+    const stored = await enqueue(input)
+    if (authBlocked()) return { queued: true, clientUuid }
+    let answer: { data: unknown } | null = null
+    const stop = onQueueSent((entry, data) => {
+      if (entry.id === stored.id) answer = { data }
+    })
+    try {
+      await flushQueue()
+    } finally {
+      stop()
+    }
+    const sent = answer as { data: unknown } | null
+    return sent ? { queued: false, data: sent.data as T } : { queued: true, clientUuid }
   }
 
   try {

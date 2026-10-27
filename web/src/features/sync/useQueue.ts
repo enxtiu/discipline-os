@@ -48,13 +48,13 @@ export function usePrefersReducedMotion(): boolean {
   return reduced
 }
 
-/** Re-render every `ms` while `active` (relative times, a retry countdown). */
+/** The time now, re-rendering every `ms` while `active` (relative times, a retry countdown). */
 export function useTicker(active: boolean, ms = 1000): number {
-  const [now, setNow] = useState(() => Date.now())
+  const [, setTick] = useState(0)
   useEffect(() => {
     if (!active) return
-    const timer = window.setInterval(() => setNow(Date.now()), ms)
+    const timer = window.setInterval(() => setTick((value) => value + 1), ms)
     return () => window.clearInterval(timer)
   }, [active, ms])
-  return now
+  return Date.now()
 }
