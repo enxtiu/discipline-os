@@ -26,6 +26,7 @@ from app.api.v1 import (
     tokens,
     training,
 )
+from app.api.v1 import gamification as gamification_api
 from app.api.v1 import notifications as notifications_api
 from app.api.v1 import push as push_api
 
@@ -60,5 +61,8 @@ api_router.include_router(planner_time.router)
 # --- stage 7: notifications ------------------------------------------------------
 api_router.include_router(push_api.router)
 api_router.include_router(notifications_api.router)
+
+# --- stage 8: gamification -------------------------------------------------------
+api_router.include_router(gamification_api.router)
 
 __all__ = ["api_router"]

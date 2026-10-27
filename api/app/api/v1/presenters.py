@@ -38,6 +38,19 @@ from app.schemas.food import (
     RecipeOut,
     WaterLogOut,
 )
+from app.schemas.gamification import (
+    AchievementOut,
+    AchievementProgressOut,
+    DayScoreOut,
+    LevelOut,
+    LevelProgressOut,
+    RingOut,
+    ScoreComponentOut,
+    ScoreDetailOut,
+    StreakOut,
+    StreakPeriodOut,
+    UserQuestOut,
+)
 from app.schemas.health import (
     HealthDayOut,
     HealthTodayOut,
@@ -106,6 +119,11 @@ from app.services import health as health_service
 from app.services import training as training_service
 from app.services.ai_meal import AiBudget, MealAnalysis, ResolvedItem, confidence_level
 from app.services.food_search import FoodHit
+from app.services.gamification.achievements import AchievementView
+from app.services.gamification.levels import LevelDef, LevelProgress
+from app.services.gamification.quests import QuestView
+from app.services.gamification.score import Component, DayScore
+from app.services.gamification.streaks import StreakState
 from app.services.notifications import Prefs
 from app.services.planner import recur as planner_recur
 from app.services.planner.common import Clock as PlannerClock
@@ -1004,4 +1022,168 @@ def notification_out(row: NotificationLog) -> NotificationOut:
         error=row.error,
         created_at=row.created_at,
         updated_at=row.updated_at,
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Gamification (stage 8)
+# --------------------------------------------------------------------------- #
+_SCORE_STATES = frozenset(
+    {
+        "no_target",
+        "no_meals",
+        "below_floor",
+        "below_zone",
+        "progress",
+        "in_zone",
+        "above_zone",
+        "no_data",
+        "no_tasks",
+        "workout",
+        "ok",
+    }
+)
+_DETAIL_UNITS = frozenset({"kcal", "g", "ml", "steps", "min"})
+_MASK_NAME = ("Секретное достижение", "Secret achievement")
+_MASK_DESCRIPTION = ("Откроется, когда вы его заработаете", "Unlocks when you earn it")
+
+
+def _opt_float(value: Any) -> float | None:
+    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+
+def _opt_int(value: Any) -> int | None:
+    return int(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+
+def score_detail_out(detail: dict[str, Any]) -> ScoreDetailOut:
+    """Stored details are JSON (frozen days): unknown values degrade, never a 500."""
+    state = detail.get("state")
+    unit = detail.get("unit")
+    has_entry = detail.get("has_entry")
+    return ScoreDetailOut(
+        state=state if state in _SCORE_STATES else "ok",
+        amount=_opt_float(detail.get("amount")),
+        target=_opt_float(detail.get("target")),
+        unit=unit if unit in _DETAIL_UNITS else None,
+        zone_low=_opt_int(detail.get("zone_low")),
+        zone_high=_opt_int(detail.get("zone_high")),
+        floor=_opt_int(detail.get("floor")),
+        meals=_opt_int(detail.get("meals")),
+        workouts=_opt_int(detail.get("workouts")),
+        done=_opt_int(detail.get("done")),
+        open_due=_opt_int(detail.get("open_due")),
+        has_entry=has_entry if isinstance(has_entry, bool) else None,
+    )
+
+
+def score_component_out(item: Component) -> ScoreComponentOut:
+    return ScoreComponentOut(
+        key=item.key,  # type: ignore[arg-type]
+        value=round(item.value, 4),
+        weight=round(item.weight, 1),
+        excluded=item.excluded,
+        detail=score_detail_out(item.detail),
+    )
+
+
+def day_score_out(score: DayScore) -> DayScoreOut:
+    return DayScoreOut(
+        value=score.value,
+        provisional=score.provisional,
+        components=[score_component_out(item) for item in score.components],
+    )
+
+
+def rings_out(values: dict[str, float]) -> list[RingOut]:
+    return [RingOut(key=key, value=value) for key, value in values.items()]  # type: ignore[arg-type]
+
+
+def level_out(row: LevelDef) -> LevelOut:
+    return LevelOut(level=row.level, title_ru=row.title_ru, title_en=row.title_en, min_xp=row.min_xp)
+
+
+def level_progress_out(progress: LevelProgress) -> LevelProgressOut:
+    current = progress.current
+    return LevelProgressOut(
+        level=current.level,
+        title_ru=current.title_ru,
+        title_en=current.title_en,
+        min_xp=current.min_xp,
+        next_min_xp=progress.next.min_xp if progress.next is not None else None,
+        progress=progress.progress,
+    )
+
+
+def streak_out(state: StreakState) -> StreakOut:
+    period = None
+    if state.period_required is not None:
+        period = StreakPeriodOut(done=state.period_done or 0, required=state.period_required)
+    return StreakOut(
+        kind=state.kind.value,  # type: ignore[arg-type]
+        unit=state.unit,  # type: ignore[arg-type]
+        current=state.current,
+        longest=state.longest,
+        today_met=state.today_met,
+        at_risk=state.at_risk,
+        freeze_tokens=state.freeze_tokens,
+        freeze_used_dates=state.freeze_used[-10:],
+        last_met_date=state.last_met,
+        broken_on=state.broken_on,
+        period=period,
+        next_milestone=state.next_milestone,
+    )
+
+
+def user_quest_out(view: QuestView) -> UserQuestOut:
+    row, quest = view.row, view.quest
+    return UserQuestOut(
+        id=row.id,
+        quest_id=quest.id,
+        code=quest.code,
+        kind=quest.kind.value,  # type: ignore[arg-type]
+        title_ru=quest.title_ru,
+        title_en=quest.title_en,
+        description_ru=quest.description_ru,
+        description_en=quest.description_en,
+        icon=quest.icon,
+        period_start=row.period_start,
+        period_end=row.period_end,
+        progress=round(view.progress, 2),
+        target=round(view.target, 2),
+        unit=view.unit,  # type: ignore[arg-type]
+        status=row.status.value,  # type: ignore[arg-type]
+        claimable=view.claimable,
+        xp_reward=int(quest.xp_reward or 0),
+        completed_at=_utc(row.completed_at),
+        claimed_at=_utc(row.claimed_at),
+    )
+
+
+def achievement_out(view: AchievementView) -> AchievementOut:
+    """Locked secret achievements are masked: no name, description, icon or progress."""
+    row, unlocked = view.row, view.unlocked
+    rarity = getattr(row.rarity, "value", row.rarity)
+    progress = None
+    if not view.masked:
+        target = view.target
+        value = target if unlocked is not None else min(view.value or 0.0, target)
+        progress = AchievementProgressOut(value=round(value, 2), target=round(target, 2))
+    return AchievementOut(
+        id=row.id,
+        code="secret" if view.masked else row.code,
+        name_ru=_MASK_NAME[0] if view.masked else row.name_ru,
+        name_en=_MASK_NAME[1] if view.masked else row.name_en,
+        description_ru=_MASK_DESCRIPTION[0] if view.masked else row.description_ru,
+        description_en=_MASK_DESCRIPTION[1] if view.masked else row.description_en,
+        icon="lock" if view.masked else row.icon,
+        category=row.category,  # type: ignore[arg-type]
+        rarity=rarity,
+        xp_reward=int(row.xp_reward or 0),
+        is_secret=bool(row.is_secret),
+        masked=view.masked,
+        unlocked=unlocked is not None,
+        unlocked_at=_utc(unlocked.unlocked_at) if unlocked is not None else None,
+        seen=bool(unlocked.seen) if unlocked is not None else False,
+        progress=progress,
     )
