@@ -1,15 +1,25 @@
 /**
- * Nutrition queries & mutations (stage 2).
+ * Nutrition queries & mutations (stage 2; offline since stage 9).
  *
  * Every write invalidates the day dashboard, recents and favorites — the three
  * views that move when something is logged — so the UI never shows stale math.
+ *
+ * Logging and deleting meals and water go through the offline queue (`mutate`)
+ * with the client ids the API keys them by and the tap instant as `logged_at`,
+ * so a meal eaten at 23:50 in the metro lands on the right day when it is sent
+ * after midnight. Until then `useDayView` shows it (see `pendingDay.ts`).
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
+import i18n from '@/i18n'
 import { endpoints } from '@/api/client'
-import type { FoodIn, MealLogIn, MealType, Recipe, RecipeIn, RecipePatch } from '@/api/types'
+import type { FoodIn, MealLog, MealLogIn, MealType, Recipe, RecipeIn, RecipePatch, WaterLog } from '@/api/types'
 import { queryKeys } from '@/lib/queryClient'
-import { today } from '@/lib/format'
+import { number, today } from '@/lib/format'
+import { createdIdOf, mutate, withdraw, type QueuedRequest } from '@/lib/offlineQueue'
+import { MEALS_PATH, WATER_PATH, usePendingDay, type MealPreview } from './pendingDay'
+
+export type { MealPreview } from './pendingDay'
 
 export function useDay(date?: string) {
   const day = date ?? today()
@@ -18,6 +28,19 @@ export function useDay(date?: string) {
     queryFn: () => endpoints.day(day),
   })
 }
+
+/**
+ * The day as Today and Food show it: the server's day plus meals and water still
+ * waiting in the offline queue (`pendingIds` marks those rows «ждёт отправки»).
+ */
+export function useDayView(date?: string) {
+  const day = date ?? today()
+  const query = useDay(day)
+  const view = usePendingDay(query.data, query.dataUpdatedAt, day)
+  return { ...query, data: view.data, pendingIds: view.pendingIds }
+}
+
+export type Saved<T> = { queued: true; clientUuid: string } | { queued: false; data: T }
 
 export function useFoodSearch(query: string, enabled = true) {
   return useQuery({
@@ -50,19 +73,56 @@ function useInvalidateNutrition() {
   }
 }
 
+/** A create still in the queue (not on its way): the one with this client id. */
+function queuedCreate(path: string, id: string) {
+  return (entry: QueuedRequest) => entry.method === 'POST' && entry.path === path && createdIdOf(entry) === id.toLowerCase()
+}
+
+/**
+ * Log a meal: sent now, or queued with what the log sheet showed (`preview`) so the
+ * day shows it at once. `logged_at` is the tap instant (the server derives the day).
+ */
 export function useLogMeal() {
   const invalidate = useInvalidateNutrition()
   return useMutation({
-    mutationFn: (payload: MealLogIn & { id: string }) => endpoints.logMeal(payload),
-    onSuccess: invalidate,
+    networkMode: 'always', // offline writes go to the queue instead of pausing
+    mutationFn: async ({ preview, ...payload }: MealLogIn & { id: string; preview?: MealPreview }): Promise<Saved<MealLog>> => {
+      const body: MealLogIn = { ...payload, logged_at: payload.logged_at ?? new Date().toISOString() }
+      return mutate<MealLog>(MEALS_PATH, {
+        method: 'POST',
+        body,
+        clientUuid: payload.id,
+        kind: 'meal',
+        meta: {
+          day: today(),
+          meal: preview,
+          title: preview
+            ? i18n.t('sync.meal_title', { name: preview.name, kcal: number(preview.kcal) })
+            : undefined,
+        },
+      })
+    },
+    onSuccess: (result) => {
+      if (!result.queued) invalidate()
+    },
   })
 }
 
+/**
+ * Delete a meal by its id — or, for a meal still waiting to be sent, by its client
+ * id: the queued log is withdrawn and nothing reaches the server (`withdrawn`).
+ */
 export function useDeleteMeal() {
   const invalidate = useInvalidateNutrition()
   return useMutation({
-    mutationFn: (id: string) => endpoints.deleteMeal(id),
-    onSuccess: invalidate,
+    networkMode: 'always',
+    mutationFn: async (id: string): Promise<Saved<unknown> & { withdrawn?: boolean }> => {
+      if (await withdraw(queuedCreate(MEALS_PATH, id))) return { queued: false, data: null, withdrawn: true }
+      return mutate(`${MEALS_PATH}/${id}`, { method: 'DELETE', kind: 'meal', clientUuid: crypto.randomUUID() })
+    },
+    onSuccess: (result) => {
+      if (!result.queued) invalidate()
+    },
   })
 }
 
@@ -75,11 +135,37 @@ export function useCopyMeals() {
   })
 }
 
+/** Add water (queued offline; the client id makes a replay a no-op). */
 export function useAddWater() {
   const invalidate = useInvalidateNutrition()
   return useMutation({
-    mutationFn: ({ amountMl, id }: { amountMl: number; id?: string }) => endpoints.addWater(amountMl, id),
-    onSuccess: invalidate,
+    networkMode: 'always',
+    mutationFn: async ({ amountMl, id }: { amountMl: number; id: string }): Promise<Saved<WaterLog>> =>
+      mutate<WaterLog>(WATER_PATH, {
+        method: 'POST',
+        body: { amount_ml: amountMl, id, logged_at: new Date().toISOString() },
+        clientUuid: id,
+        kind: 'water',
+        meta: { day: today(), title: i18n.t('sync.water_title', { ml: number(amountMl) }) },
+      }),
+    onSuccess: (result) => {
+      if (!result.queued) invalidate()
+    },
+  })
+}
+
+/** Remove a water log (by id or client id); one still waiting is withdrawn. */
+export function useDeleteWater() {
+  const invalidate = useInvalidateNutrition()
+  return useMutation({
+    networkMode: 'always',
+    mutationFn: async (id: string): Promise<Saved<unknown> & { withdrawn?: boolean }> => {
+      if (await withdraw(queuedCreate(WATER_PATH, id))) return { queued: false, data: null, withdrawn: true }
+      return mutate(`${WATER_PATH}/${id}`, { method: 'DELETE', kind: 'water', clientUuid: crypto.randomUUID() })
+    },
+    onSuccess: (result) => {
+      if (!result.queued) invalidate()
+    },
   })
 }
 

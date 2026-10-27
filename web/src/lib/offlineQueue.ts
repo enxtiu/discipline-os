@@ -644,6 +644,28 @@ export async function discardEntry(id: number): Promise<void> {
   await refresh()
 }
 
+/**
+ * Take back a write that has not reached the server (waiting or refused, not on its
+ * way right now) — e.g. a meal logged offline and deleted before it was sent.
+ * Returns the withdrawn entry, or null when there was none (or it is being sent).
+ */
+export async function withdraw(match: (entry: QueuedRequest) => boolean): Promise<QueuedRequest | null> {
+  const taken = await offlineDb.transaction('rw', offlineDb.queue, async () => {
+    const entries = await offlineDb.queue.toArray()
+    const entry = entries.find((item) => !item.sending && match(item))
+    if (!entry || entry.id === undefined) return null
+    await offlineDb.queue.delete(entry.id)
+    return entry
+  })
+  if (taken) await refresh()
+  return taken
+}
+
+/** The id a queued create names (`body.id`), if any. */
+export function createdIdOf(entry: Pick<QueuedRequest, 'method' | 'path' | 'body'>): string | null {
+  return createdId(entry)
+}
+
 /** Send a failed (or conflicting) write again as it is. */
 export async function retryEntry(id: number): Promise<void> {
   await offlineDb.queue.update(id, { status: 'pending', error: null, conflict: null, sending: null, updatedAt: Date.now() })

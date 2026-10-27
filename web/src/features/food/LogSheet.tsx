@@ -73,16 +73,29 @@ export function LogSheet({
       target.kind === 'food'
         ? { food_id: target.food.id, grams, match_method: source === 'barcode' ? ('barcode' as const) : ('manual' as const) }
         : { recipe_id: target.recipe.id, grams, match_method: 'manual' as const }
+    // what this sheet shows is what the day shows while the write waits offline
+    const shown = macros ?? { kcal: 0, protein: 0, fat: 0, carbs: 0, fiber: 0 }
+    const preview = {
+      name,
+      kcal: shown.kcal,
+      protein_g: shown.protein,
+      fat_g: shown.fat,
+      carbs_g: shown.carbs,
+      fiber_g: shown.fiber,
+      items: [{ name, grams, kcal: shown.kcal, protein_g: shown.protein, fat_g: shown.fat, carbs_g: shown.carbs, fiber_g: shown.fiber }],
+    }
     logMeal.mutate(
       {
         id: crypto.randomUUID(),
         meal_type: mealType,
         source: target.kind === 'food' ? (source ?? 'search') : 'recipe',
         items: [item],
+        preview,
       },
       {
-        onSuccess: () => {
-          toast.success(t('food.logged_toast', { name, kcal: number(macros?.kcal ?? 0) }))
+        onSuccess: (result) => {
+          if (result.queued) toast.info(t('sync.meal_queued', { name, kcal: number(shown.kcal) }))
+          else toast.success(t('food.logged_toast', { name, kcal: number(shown.kcal) }))
           onClose()
         },
         onError: (error) => toast.error(errorMessage(error)),

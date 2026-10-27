@@ -30,7 +30,8 @@ import type { MealLog, MealType, Recipe } from '@/api/types'
 import { useAuth } from '@/features/auth/AuthProvider'
 import { number, time, today } from '@/lib/format'
 import { errorMessage } from '@/lib/errors'
-import { useAddWater, useDay, useDeleteMeal, useRecipes } from '@/features/food/useNutrition'
+import { useAddWater, useDayView, useDeleteMeal, useDeleteWater, useRecipes } from '@/features/food/useNutrition'
+import { planToast } from '@/features/plan/tasks/toast'
 import { LogSheet } from '@/features/food/LogSheet'
 import { PhotoTrigger, useAiCapture } from '@/features/ai/AiCapture'
 import { MealPhoto } from '@/features/ai/MealPhoto'
@@ -51,8 +52,11 @@ export function TodayPage() {
   const navigate = useNavigate()
   const toast = useToast()
 
-  const dayQuery = useDay()
+  // stage 9: the server's day plus meals and water still waiting in the offline queue
+  const dayQuery = useDayView()
+  const pendingIds = dayQuery.pendingIds
   const addWater = useAddWater()
+  const deleteWater = useDeleteWater()
   const deleteMeal = useDeleteMeal()
   const capture = useAiCapture()
   const recipes = useRecipes()
@@ -80,6 +84,7 @@ export function TodayPage() {
   const day = dayQuery.data
   const eaten = day?.totals ?? { kcal: 0, protein_g: 0, fat_g: 0, carbs_g: 0, fiber_g: 0 }
   const waterMl = day?.water_ml ?? 0
+  const waterPending = (day?.water_logs ?? []).some((row) => pendingIds.has(row.id))
 
   const targets = session?.targets as Record<string, number | null> | undefined
   const targetKcal = targets?.target_kcal ?? null
@@ -96,14 +101,36 @@ export function TodayPage() {
     return grouped
   }, [day])
 
-  const quickWater = () =>
+  const quickWater = () => {
+    const id = crypto.randomUUID()
     addWater.mutate(
-      { amountMl: 250, id: crypto.randomUUID() },
+      { amountMl: 250, id },
       {
-        onSuccess: () => toast.success(t('today.water_added', { ml: 250 })),
+        onSuccess: (result) => {
+          const undo = {
+            label: t('task.undo'),
+            onClick: () =>
+              deleteWater.mutate(id, {
+                onSuccess: () => toast.info(t('sync.water_removed')),
+                onError: (error) => toast.error(errorMessage(error)),
+              }),
+          }
+          if (result.queued) planToast.info(t('sync.water_queued', { ml: 250 }), undo)
+          else planToast.success(t('today.water_added', { ml: 250 }), undo)
+        },
         onError: (error) => toast.error(errorMessage(error)),
       },
     )
+  }
+
+  const removeMeal = (id: string) =>
+    deleteMeal.mutate(id, {
+      onSuccess: (result) => {
+        if (result.withdrawn) toast.info(t('sync.meal_discarded'))
+        else if (result.queued) toast.info(t('sync.queued'))
+      },
+      onError: (error) => toast.error(errorMessage(error)),
+    })
 
   return (
     <div className="space-y-5">
@@ -176,6 +203,11 @@ export function TodayPage() {
                 </span>
               </div>
               <ProgressBar value={waterMl} max={targets?.target_water_ml ?? 1} />
+              {waterPending && (
+                <p className="text-[11px] text-violet-300" data-testid="water-pending">
+                  {t('sync.pending_mark')}
+                </p>
+              )}
               <Button size="sm" variant="secondary" loading={addWater.isPending} onClick={quickWater}>
                 {t('today.quick_water', { ml: 250 })}
               </Button>
@@ -291,16 +323,30 @@ export function TodayPage() {
                 </span>
               </div>
               {(mealsByType.get(type) ?? []).map((meal) => (
-                <div key={meal.id} className="flex items-center gap-3">
+                <div
+                  key={meal.id}
+                  className="flex items-center gap-3"
+                  data-testid="meal-row"
+                  data-meal-id={meal.client_uuid}
+                  data-pending={pendingIds.has(meal.id) ? 'true' : 'false'}
+                >
                   <span className="tnum w-11 shrink-0 text-xs muted">{time(meal.logged_at, session?.settings.timezone)}</span>
                   {meal.has_photo && <MealPhoto mealId={meal.id} />}
-                  <span className="min-w-0 flex-1 truncate text-sm">{(meal.items ?? []).map((item) => item.name).join(', ')}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm">{(meal.items ?? []).map((item) => item.name).join(', ')}</span>
+                    {pendingIds.has(meal.id) && (
+                      <span className="block text-[11px] text-violet-300" data-testid="meal-pending">
+                        {t('sync.pending_mark')}
+                      </span>
+                    )}
+                  </span>
                   <span className="tnum shrink-0 text-sm">{number(meal.kcal)}</span>
                   <button
                     type="button"
-                    className="muted"
+                    className="-my-2 -mr-3 flex h-tap w-tap shrink-0 items-center justify-center muted"
                     aria-label={t('app.delete')}
-                    onClick={() => deleteMeal.mutate(meal.id, { onError: (error) => toast.error(errorMessage(error)) })}
+                    onClick={() => removeMeal(meal.id)}
+                    data-testid="meal-delete"
                   >
                     <IconTrash size={16} />
                   </button>
