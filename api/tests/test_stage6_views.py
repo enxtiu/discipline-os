@@ -52,8 +52,8 @@ async def test_today_buckets_follow_the_local_day(authed: httpx.AsyncClient) -> 
     late_yesterday = await make_task(
         authed, "вчера поздно", block={"date": yesterday.isoformat(), "start": "23:45", "end": "00:15"}
     )
-    done_early = await make_task(authed, "сделано в 00:10")
-    await complete(authed, done_early["id"], completed_at=local(now, 0, 10))
+    done_early = await make_task(authed, "сделано в 00:01")  # just after midnight, never ahead of the clock
+    await complete(authed, done_early["id"], completed_at=local(now, 0, 1))
     done_yesterday = await make_task(authed, "сделано вчера 23:50")
     await complete(authed, done_yesterday["id"], completed_at=local(yesterday, 23, 50))
     parent = await make_task(authed, "проект дома", due_date=tomorrow.isoformat())

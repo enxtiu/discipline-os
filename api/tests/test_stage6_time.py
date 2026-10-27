@@ -135,10 +135,11 @@ async def test_start_bounds_and_long_timers(authed: httpx.AsyncClient, owner) ->
 
 async def test_manual_entries_patch_delete_and_actual_minutes(authed: httpx.AsyncClient) -> None:
     yesterday = today() - timedelta(days=1)
+    night = yesterday - timedelta(days=1)  # across a midnight that is over even at 00:01 today
     task = await make_task(authed, "чтение")
     other = await make_task(authed, "письмо")
     entry_id = uid()
-    body = {"id": entry_id, "task_id": task["id"], "date": yesterday.isoformat(), "start": "23:30", "end": "00:30"}
+    body = {"id": entry_id, "task_id": task["id"], "date": night.isoformat(), "start": "23:30", "end": "00:30"}
     created = await authed.post(f"{API}/time-entries", json=body)
     assert created.status_code == 201, created.text
     entry = created.json()
@@ -153,7 +154,7 @@ async def test_manual_entries_patch_delete_and_actual_minutes(authed: httpx.Asyn
         "manual",
         3600,
         True,
-        yesterday.isoformat(),
+        night.isoformat(),
         "23:30",
         "00:30",
     )
