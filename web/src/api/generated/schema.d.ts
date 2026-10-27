@@ -1148,6 +1148,566 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/planner/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create a task (idempotent by client id) */
+        post: operations["create_task_api_v1_planner_tasks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/planner/tasks/quick": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Quick add: parse a typed line (ru/en) and create the task */
+        post: operations["quick_api_v1_planner_tasks_quick_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/planner/parse": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Parse a quick-add line without saving anything */
+        post: operations["parse_api_v1_planner_parse_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/planner/tasks/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A task with its subtasks and time */
+        get: operations["get_task_api_v1_planner_tasks__id__get"];
+        put?: never;
+        post?: never;
+        /** Delete a task and its subtasks (time entries stay) */
+        delete: operations["delete_task_api_v1_planner_tasks__id__delete"];
+        options?: never;
+        head?: never;
+        /** Edit a task (status changes complete or reopen it) */
+        patch: operations["patch_task_api_v1_planner_tasks__id__patch"];
+        trace?: never;
+    };
+    "/api/v1/planner/tasks/{id}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Complete a task (a recurring one gets its next instance, once) */
+        post: operations["complete_task_api_v1_planner_tasks__id__complete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/planner/tasks/{id}/reopen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reopen a completed task (an untouched next instance is removed) */
+        post: operations["reopen_task_api_v1_planner_tasks__id__reopen_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/planner/counts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Badges: inbox, today, overdue, timer */
+        get: operations["get_counts_api_v1_planner_counts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/planner/views/today": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Overdue, due today, scheduled blocks, done */
+        get: operations["today_view_api_v1_planner_views_today_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/planner/views/inbox": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Captured, not yet clarified (newest first) */
+        get: operations["inbox_view_api_v1_planner_views_inbox_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/planner/views/upcoming": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Day by day: tasks and recurring occurrences */
+        get: operations["upcoming_view_api_v1_planner_views_upcoming_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/planner/views/calendar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Blocks and all-day tasks per day (≤ 62 days) */
+        get: operations["calendar_view_api_v1_planner_views_calendar_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/planner/views/tag/{tag_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Tasks with one tag */
+        get: operations["tag_view_api_v1_planner_views_tag__tag_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/planner/views/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Archived containers, latest done/cancelled tasks */
+        get: operations["archive_view_api_v1_planner_views_archive_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/planner/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search tasks (ru/en), projects, areas, resources, journal */
+        get: operations["search_api_v1_planner_search_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/planner/areas": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Your areas (sort order, name) */
+        get: operations["list_areas_api_v1_planner_areas_get"];
+        put?: never;
+        /** Create an area */
+        post: operations["create_area_api_v1_planner_areas_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/planner/areas/reorder": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Set the order of your areas */
+        post: operations["reorder_areas_api_v1_planner_areas_reorder_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/planner/areas/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** An area with its projects, tasks, resources */
+        get: operations["get_area_api_v1_planner_areas__id__get"];
+        put?: never;
+        post?: never;
+        /** Delete an area (its projects, tasks and resources stay) */
+        delete: operations["delete_area_api_v1_planner_areas__id__delete"];
+        options?: never;
+        head?: never;
+        /** Edit or archive an area */
+        patch: operations["patch_area_api_v1_planner_areas__id__patch"];
+        trace?: never;
+    };
+    "/api/v1/planner/projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Your projects (default: active and on hold) */
+        get: operations["list_projects_api_v1_planner_projects_get"];
+        put?: never;
+        /** Create a project */
+        post: operations["create_project_api_v1_planner_projects_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/planner/projects/reorder": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Set the order of your projects */
+        post: operations["reorder_projects_api_v1_planner_projects_reorder_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/planner/projects/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A project with its tasks */
+        get: operations["get_project_api_v1_planner_projects__id__get"];
+        put?: never;
+        post?: never;
+        /** Delete a project (its tasks stay; root tasks left without a home go back to the inbox) */
+        delete: operations["delete_project_api_v1_planner_projects__id__delete"];
+        options?: never;
+        head?: never;
+        /** Edit a project (completing it sets completed_at, archiving hides it) */
+        patch: operations["patch_project_api_v1_planner_projects__id__patch"];
+        trace?: never;
+    };
+    "/api/v1/planner/resources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Your resources (newest first) */
+        get: operations["list_resources_api_v1_planner_resources_get"];
+        put?: never;
+        /** Create a resource */
+        post: operations["create_resource_api_v1_planner_resources_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/planner/resources/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete a resource */
+        delete: operations["delete_resource_api_v1_planner_resources__id__delete"];
+        options?: never;
+        head?: never;
+        /** Edit or archive a resource */
+        patch: operations["patch_resource_api_v1_planner_resources__id__patch"];
+        trace?: never;
+    };
+    "/api/v1/planner/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Your tags with their open task counts */
+        get: operations["list_tags_api_v1_planner_tags_get"];
+        put?: never;
+        /** Create a tag */
+        post: operations["create_tag_api_v1_planner_tags_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/planner/tags/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete a tag (tasks keep, the tag is removed from them) */
+        delete: operations["delete_tag_api_v1_planner_tags__id__delete"];
+        options?: never;
+        head?: never;
+        /** Rename or recolour a tag */
+        patch: operations["patch_tag_api_v1_planner_tags__id__patch"];
+        trace?: never;
+    };
+    "/api/v1/planner/timer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The running timer (survives reloads and devices) */
+        get: operations["get_timer_api_v1_planner_timer_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/planner/timer/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start a timer (a running one is stopped at the new start: switch) */
+        post: operations["start_timer_api_v1_planner_timer_start_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/planner/timer/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stop the running timer (idempotent) */
+        post: operations["stop_timer_api_v1_planner_timer_stop_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/planner/time-entries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Time entries by their start day (≤ 62 days) */
+        get: operations["list_entries_api_v1_planner_time_entries_get"];
+        put?: never;
+        /** Log time by hand (local date, start and end) */
+        post: operations["create_entry_api_v1_planner_time_entries_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/planner/time-entries/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete a time entry */
+        delete: operations["delete_entry_api_v1_planner_time_entries__id__delete"];
+        options?: never;
+        head?: never;
+        /** Correct a time entry */
+        patch: operations["patch_entry_api_v1_planner_time_entries__id__patch"];
+        trace?: never;
+    };
+    "/api/v1/planner/time/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Tracked time by area, project and day */
+        get: operations["summary_api_v1_planner_time_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/planner/journal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Journal days in a range (≤ 366 days) */
+        get: operations["list_journal_api_v1_planner_journal_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/planner/journal/{date}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A day's journal entry and its summary */
+        get: operations["get_journal_api_v1_planner_journal__date__get"];
+        /** Write the day's journal (fields not sent keep their value) */
+        put: operations["put_journal_api_v1_planner_journal__date__put"];
+        post?: never;
+        /** Delete the day's journal entry */
+        delete: operations["delete_journal_api_v1_planner_journal__date__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1399,6 +1959,140 @@ export interface components {
              */
             units: "metric";
         };
+        /** ArchiveViewOut */
+        ArchiveViewOut: {
+            /** Projects */
+            projects: components["schemas"]["ProjectOut"][];
+            /** Areas */
+            areas: components["schemas"]["AreaOut"][];
+            /** Resources */
+            resources: components["schemas"]["ResourceOut"][];
+            /**
+             * Tasks
+             * @description done and cancelled, latest 100
+             */
+            tasks: components["schemas"]["TaskOut"][];
+        };
+        /** AreaCountsOut */
+        AreaCountsOut: {
+            /**
+             * Open Tasks
+             * @description open root tasks directly in the area
+             * @default 0
+             */
+            open_tasks: number;
+            /**
+             * Active Projects
+             * @default 0
+             */
+            active_projects: number;
+        };
+        /** AreaDetailOut */
+        AreaDetailOut: {
+            area: components["schemas"]["AreaOut"];
+            /** Projects */
+            projects: components["schemas"]["ProjectOut"][];
+            /**
+             * Tasks
+             * @description open root tasks directly in the area
+             */
+            tasks: components["schemas"]["TaskOut"][];
+            /** Resources */
+            resources: components["schemas"]["ResourceOut"][];
+        };
+        /** AreaIn */
+        AreaIn: {
+            /** Id */
+            id?: string | null;
+            /** Name */
+            name: string;
+            /** Description */
+            description?: string | null;
+            /** Color */
+            color?: string | null;
+            /** Icon */
+            icon?: string | null;
+            /** Weekly Target Minutes */
+            weekly_target_minutes?: number | null;
+        };
+        /** AreaListOut */
+        AreaListOut: {
+            /** Items */
+            items: components["schemas"]["AreaOut"][];
+        };
+        /** AreaMinutesOut */
+        AreaMinutesOut: {
+            area?: components["schemas"]["RefOut"] | null;
+            /**
+             * Minutes
+             * @default 0
+             */
+            minutes: number;
+            /** Target Minutes */
+            target_minutes?: number | null;
+        };
+        /** AreaOut */
+        AreaOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description?: string | null;
+            /** Color */
+            color?: string | null;
+            /** Icon */
+            icon?: string | null;
+            /**
+             * Sort Order
+             * @default 0
+             */
+            sort_order: number;
+            /**
+             * Is Archived
+             * @default false
+             */
+            is_archived: boolean;
+            /** Weekly Target Minutes */
+            weekly_target_minutes?: number | null;
+            counts?: components["schemas"]["AreaCountsOut"];
+            /**
+             * Week Minutes
+             * @description tracked this week (your week start)
+             * @default 0
+             */
+            week_minutes: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** AreaPatchIn */
+        AreaPatchIn: {
+            /** Name */
+            name?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Color */
+            color?: string | null;
+            /** Icon */
+            icon?: string | null;
+            /** Weekly Target Minutes */
+            weekly_target_minutes?: number | null;
+            /** Is Archived */
+            is_archived?: boolean | null;
+            /** Sort Order */
+            sort_order?: number | null;
+        };
         /** BatchResultOut */
         BatchResultOut: {
             /** Days */
@@ -1428,6 +2122,61 @@ export interface components {
             duration_s?: number | null;
             /** Distance M */
             distance_m?: number | null;
+        };
+        /** BlockIn */
+        BlockIn: {
+            /**
+             * Date
+             * Format: date
+             * @description Local calendar day, YYYY-MM-DD
+             */
+            date: string;
+            /**
+             * Start
+             * @description Local wall clock, HH:MM (24 h)
+             */
+            start: string;
+            /**
+             * End
+             * @description end ≤ start means the block ends the next day (≤ 24 h)
+             */
+            end: string;
+        };
+        /** BlockOut */
+        BlockOut: {
+            /**
+             * Date
+             * Format: date
+             * @description local day the block starts on
+             */
+            date: string;
+            /**
+             * Start
+             * @description HH:MM local
+             */
+            start: string;
+            /**
+             * End
+             * @description HH:MM local (may be on the next day)
+             */
+            end: string;
+            /** Minutes */
+            minutes: number;
+            /**
+             * Start At
+             * Format: date-time
+             */
+            start_at: string;
+            /**
+             * End At
+             * Format: date-time
+             */
+            end_at: string;
+            /**
+             * Ends Next Day
+             * @default false
+             */
+            ends_next_day: boolean;
         };
         /** BodyParamsOut */
         BodyParamsOut: {
@@ -1491,6 +2240,40 @@ export interface components {
             /** Average Kcal */
             average_kcal: number;
         };
+        /** CalendarDayOut */
+        CalendarDayOut: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** All Day */
+            all_day: components["schemas"]["TaskOut"][];
+            /** Blocks */
+            blocks: components["schemas"]["TaskOut"][];
+            /** Occurrences */
+            occurrences: components["schemas"]["OccurrenceOut"][];
+            /**
+             * Done Count
+             * @default 0
+             */
+            done_count: number;
+        };
+        /** CalendarViewOut */
+        CalendarViewOut: {
+            /**
+             * From
+             * Format: date
+             */
+            from: string;
+            /**
+             * To
+             * Format: date
+             */
+            to: string;
+            /** Days */
+            days: components["schemas"]["CalendarDayOut"][];
+        };
         /** CopiedMealOut */
         CopiedMealOut: {
             /** Copied */
@@ -1511,6 +2294,48 @@ export interface components {
             to_meal_type?: ("breakfast" | "lunch" | "dinner" | "snack" | "other") | null;
             /** Logged At */
             logged_at?: string | null;
+        };
+        /** CountsOut */
+        CountsOut: {
+            /**
+             * Date
+             * Format: date
+             * @description your today
+             */
+            date: string;
+            /**
+             * Inbox
+             * @default 0
+             */
+            inbox: number;
+            /**
+             * Today
+             * @default 0
+             */
+            today: number;
+            /**
+             * Overdue
+             * @default 0
+             */
+            overdue: number;
+            /**
+             * Timer Running
+             * @default false
+             */
+            timer_running: boolean;
+        };
+        /** DayMinutesOut */
+        DayMinutesOut: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /**
+             * Minutes
+             * @default 0
+             */
+            minutes: number;
         };
         /** DaySummaryOut */
         DaySummaryOut: {
@@ -2207,11 +3032,182 @@ export interface components {
             /** En */
             en: string;
         };
+        /** InboxViewOut */
+        InboxViewOut: {
+            /** Items */
+            items: components["schemas"]["TaskOut"][];
+        };
         /** IngestResultOut */
         IngestResultOut: {
             day: components["schemas"]["HealthDayOut"];
             /** Created */
             created: boolean;
+        };
+        /** JournalAreaMinutesOut */
+        JournalAreaMinutesOut: {
+            area?: components["schemas"]["RefOut"] | null;
+            /**
+             * Minutes
+             * @default 0
+             */
+            minutes: number;
+        };
+        /** JournalDayOut */
+        JournalDayOut: {
+            entry?: components["schemas"]["JournalOut"] | null;
+            day: components["schemas"]["JournalDaySummaryOut"];
+        };
+        /**
+         * JournalDaySummaryOut
+         * @description Read-only cross-domain digest for the evening review (burned kcal never count as budget).
+         */
+        JournalDaySummaryOut: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /**
+             * Tasks Done
+             * @default 0
+             */
+            tasks_done: number;
+            /**
+             * Tasks Done Titles
+             * @description ≤ 5
+             */
+            tasks_done_titles?: string[];
+            /**
+             * Tasks Open Due
+             * @description still open, due that day
+             * @default 0
+             */
+            tasks_open_due: number;
+            /**
+             * Time Minutes
+             * @default 0
+             */
+            time_minutes: number;
+            /** Time By Area */
+            time_by_area?: components["schemas"]["JournalAreaMinutesOut"][];
+            /**
+             * Kcal
+             * @description food logged that day
+             * @default 0
+             */
+            kcal: number;
+            /** Target Kcal */
+            target_kcal?: number | null;
+            /**
+             * Workouts
+             * @default 0
+             */
+            workouts: number;
+            /**
+             * Workout Kcal
+             * @description burned in workouts — shown separately, never budget
+             */
+            workout_kcal?: number | null;
+            /** Steps */
+            steps?: number | null;
+            /** Sleep Minutes */
+            sleep_minutes?: number | null;
+        };
+        /**
+         * JournalIn
+         * @description Upsert by (you, date): fields not sent keep their value; ``null`` clears one.
+         */
+        JournalIn: {
+            /**
+             * Id
+             * @description used when the entry is first created
+             */
+            id?: string | null;
+            /** Note Md */
+            note_md?: string | null;
+            /** Rating */
+            rating?: number | null;
+            /** Mood */
+            mood?: number | null;
+            /** Energy */
+            energy?: number | null;
+            /** Wins Md */
+            wins_md?: string | null;
+            /** Improvements Md */
+            improvements_md?: string | null;
+            /** Tags */
+            tags?: string[] | null;
+        };
+        /** JournalListItemOut */
+        JournalListItemOut: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Rating */
+            rating?: number | null;
+            /** Mood */
+            mood?: number | null;
+            /** Energy */
+            energy?: number | null;
+            /**
+             * Has Note
+             * @default false
+             */
+            has_note: boolean;
+        };
+        /** JournalListOut */
+        JournalListOut: {
+            /** Items */
+            items: components["schemas"]["JournalListItemOut"][];
+        };
+        /** JournalOut */
+        JournalOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Note Md */
+            note_md?: string | null;
+            /** Rating */
+            rating?: number | null;
+            /** Mood */
+            mood?: number | null;
+            /** Energy */
+            energy?: number | null;
+            /** Wins Md */
+            wins_md?: string | null;
+            /** Improvements Md */
+            improvements_md?: string | null;
+            /** Tags */
+            tags?: string[];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** JournalSearchHitOut */
+        JournalSearchHitOut: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Snippet */
+            snippet: string;
         };
         /** MacrosOut */
         MacrosOut: {
@@ -2503,6 +3499,48 @@ export interface components {
              */
             fiber_g: number;
         };
+        /** OccurrenceBlockOut */
+        OccurrenceBlockOut: {
+            /** Start */
+            start: string;
+            /** End */
+            end: string;
+            /** Minutes */
+            minutes: number;
+        };
+        /**
+         * OccurrenceOut
+         * @description A virtual future occurrence of a recurring task — read-only, not a row.
+         */
+        OccurrenceOut: {
+            /**
+             * Task Id
+             * Format: uuid
+             */
+            task_id: string;
+            /** Title */
+            title: string;
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Due Time */
+            due_time?: string | null;
+            block?: components["schemas"]["OccurrenceBlockOut"] | null;
+            /**
+             * Priority
+             * @default 4
+             */
+            priority: number;
+            project?: components["schemas"]["RefOut"] | null;
+            area?: components["schemas"]["RefOut"] | null;
+            /**
+             * Virtual
+             * @default true
+             */
+            virtual: boolean;
+        };
         /** OkOut */
         OkOut: {
             /**
@@ -2644,6 +3682,95 @@ export interface components {
              */
             reused_device: boolean;
         };
+        /** ParseBlockOut */
+        ParseBlockOut: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Start */
+            start: string;
+            /** End */
+            end: string;
+        };
+        /** ParseIn */
+        ParseIn: {
+            /**
+             * Text
+             * @default
+             */
+            text: string;
+            /** Captured At */
+            captured_at?: string | null;
+        };
+        /** ParseOut */
+        ParseOut: {
+            /** Title */
+            title: string;
+            /** Due Date */
+            due_date?: string | null;
+            /** Due Time */
+            due_time?: string | null;
+            block?: components["schemas"]["ParseBlockOut"] | null;
+            /** Estimate Minutes */
+            estimate_minutes?: number | null;
+            /** Priority */
+            priority?: number | null;
+            /** Tags */
+            tags?: string[];
+            project?: components["schemas"]["ParseProjectOut"] | null;
+            /** Context */
+            context?: string | null;
+            /** Recurrence Rule */
+            recurrence_rule?: string | null;
+            /** Recurrence Preset */
+            recurrence_preset?: ("daily" | "weekdays" | "weekly" | "biweekly" | "monthly" | "yearly" | "custom") | null;
+            /** Reminders */
+            reminders?: components["schemas"]["ParseReminderOut"][];
+            /** Tokens */
+            tokens?: components["schemas"]["ParseTokenOut"][];
+        };
+        /** ParseProjectOut */
+        ParseProjectOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "project" | "area";
+        };
+        /** ParseReminderOut */
+        ParseReminderOut: {
+            /** Lead Minutes */
+            lead_minutes: number;
+        };
+        /** ParseTokenOut */
+        ParseTokenOut: {
+            /**
+             * Start
+             * @description UTF-16 code-unit offset into the original text
+             */
+            start: number;
+            /**
+             * End
+             * @description exclusive
+             */
+            end: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "date" | "time" | "block" | "duration" | "priority" | "tag" | "project" | "context" | "recurrence" | "reminder";
+            /** Text */
+            text: string;
+        };
         /** PlanDayIn */
         PlanDayIn: {
             /** Template Id */
@@ -2708,6 +3835,201 @@ export interface components {
              * @default false
              */
             is_warmup: boolean;
+        };
+        /** ProjectCountsOut */
+        ProjectCountsOut: {
+            /**
+             * Open
+             * @default 0
+             */
+            open: number;
+            /**
+             * Done
+             * @default 0
+             */
+            done: number;
+            /**
+             * Total
+             * @description open + done root tasks (cancelled ones not counted)
+             * @default 0
+             */
+            total: number;
+        };
+        /** ProjectDetailOut */
+        ProjectDetailOut: {
+            project: components["schemas"]["ProjectOut"];
+            /**
+             * Tasks
+             * @description open root tasks
+             */
+            tasks: components["schemas"]["TaskOut"][];
+            /**
+             * Done
+             * @description latest 50 done root tasks
+             */
+            done: components["schemas"]["TaskOut"][];
+        };
+        /** ProjectIn */
+        ProjectIn: {
+            /** Id */
+            id?: string | null;
+            /** Name */
+            name: string;
+            /** Outcome */
+            outcome?: string | null;
+            /** Description Md */
+            description_md?: string | null;
+            /** Area Id */
+            area_id?: string | null;
+            /** Status */
+            status?: ("active" | "on_hold" | "completed" | "cancelled" | "archived") | null;
+            /** Deadline */
+            deadline?: string | null;
+            /** Start Date */
+            start_date?: string | null;
+            /** Color */
+            color?: string | null;
+            /** Icon */
+            icon?: string | null;
+        };
+        /** ProjectListOut */
+        ProjectListOut: {
+            /** Items */
+            items: components["schemas"]["ProjectOut"][];
+        };
+        /** ProjectMinutesOut */
+        ProjectMinutesOut: {
+            project?: components["schemas"]["RefOut"] | null;
+            /**
+             * Minutes
+             * @default 0
+             */
+            minutes: number;
+        };
+        /** ProjectOut */
+        ProjectOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Outcome */
+            outcome?: string | null;
+            /** Description Md */
+            description_md?: string | null;
+            area?: components["schemas"]["RefOut"] | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "on_hold" | "completed" | "cancelled" | "archived";
+            /** Deadline */
+            deadline?: string | null;
+            /** Start Date */
+            start_date?: string | null;
+            /** Completed At */
+            completed_at?: string | null;
+            /** Color */
+            color?: string | null;
+            /** Icon */
+            icon?: string | null;
+            /**
+             * Is Archived
+             * @default false
+             */
+            is_archived: boolean;
+            /**
+             * Sort Order
+             * @default 0
+             */
+            sort_order: number;
+            counts?: components["schemas"]["ProjectCountsOut"];
+            /**
+             * Progress
+             * @description done / total of root tasks, 0 when empty
+             * @default 0
+             */
+            progress: number;
+            /**
+             * Tracked Minutes
+             * @default 0
+             */
+            tracked_minutes: number;
+            /**
+             * Overdue
+             * @description deadline before today while active or on hold
+             * @default false
+             */
+            overdue: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** ProjectPatchIn */
+        ProjectPatchIn: {
+            /** Name */
+            name?: string | null;
+            /** Outcome */
+            outcome?: string | null;
+            /** Description Md */
+            description_md?: string | null;
+            /** Area Id */
+            area_id?: string | null;
+            /** Status */
+            status?: ("active" | "on_hold" | "completed" | "cancelled" | "archived") | null;
+            /** Deadline */
+            deadline?: string | null;
+            /** Start Date */
+            start_date?: string | null;
+            /** Color */
+            color?: string | null;
+            /** Icon */
+            icon?: string | null;
+            /** Is Archived */
+            is_archived?: boolean | null;
+            /** Sort Order */
+            sort_order?: number | null;
+        };
+        /** QuickAddDefaultsIn */
+        QuickAddDefaultsIn: {
+            /** Project Id */
+            project_id?: string | null;
+            /** Area Id */
+            area_id?: string | null;
+            /** Due Date */
+            due_date?: string | null;
+            /** Parent Id */
+            parent_id?: string | null;
+        };
+        /** QuickAddIn */
+        QuickAddIn: {
+            /** Id */
+            id?: string | null;
+            /**
+             * Text
+             * @description the line as typed (offsets in `parsed.tokens` refer to it)
+             */
+            text: string;
+            /**
+             * Captured At
+             * @description when it was typed; default now
+             */
+            captured_at?: string | null;
+            defaults?: components["schemas"]["QuickAddDefaultsIn"] | null;
+        };
+        /** QuickAddOut */
+        QuickAddOut: {
+            task: components["schemas"]["TaskDetailOut"];
+            parsed: components["schemas"]["ParseOut"];
         };
         /** RecentListOut */
         RecentListOut: {
@@ -2979,6 +4301,169 @@ export interface components {
             /** Planned Time */
             planned_time?: string | null;
         };
+        /**
+         * RefOut
+         * @description A project or area as embedded in other rows.
+         */
+        RefOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Color */
+            color?: string | null;
+        };
+        /**
+         * ReminderAtIn
+         * @description Absolute reminder at a local date and time.
+         */
+        ReminderAtIn: {
+            /**
+             * Date
+             * Format: date
+             * @description Local calendar day, YYYY-MM-DD
+             */
+            date: string;
+            /**
+             * Time
+             * @description Local wall clock, HH:MM (24 h)
+             */
+            time: string;
+        };
+        /**
+         * ReminderIn
+         * @description ``{"lead_minutes": n}`` or ``{"date": "YYYY-MM-DD", "time": "HH:MM"}``.
+         */
+        ReminderIn: components["schemas"]["ReminderLeadIn"] | components["schemas"]["ReminderAtIn"];
+        /**
+         * ReminderLeadIn
+         * @description Relative reminder: ``lead_minutes`` before the task's due time / block start / due day 09:00.
+         */
+        ReminderLeadIn: {
+            /** Lead Minutes */
+            lead_minutes: number;
+        };
+        /** ReminderOut */
+        ReminderOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Lead Minutes */
+            lead_minutes?: number | null;
+            /** Date */
+            date?: string | null;
+            /**
+             * Time
+             * @description HH:MM local
+             */
+            time?: string | null;
+            /**
+             * Remind At
+             * Format: date-time
+             */
+            remind_at: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "sent" | "failed" | "cancelled" | "suppressed";
+            /** Sent At */
+            sent_at?: string | null;
+        };
+        /** ReorderIn */
+        ReorderIn: {
+            /**
+             * Ids
+             * @description your ids in the wanted order
+             */
+            ids: string[];
+        };
+        /** ResourceIn */
+        ResourceIn: {
+            /** Id */
+            id?: string | null;
+            /** Name */
+            name: string;
+            /** Notes Md */
+            notes_md?: string | null;
+            /** Url */
+            url?: string | null;
+            /** Area Id */
+            area_id?: string | null;
+            /**
+             * Tags
+             * @description ≤ 10
+             */
+            tags?: string[];
+        };
+        /** ResourceListOut */
+        ResourceListOut: {
+            /** Items */
+            items: components["schemas"]["ResourceOut"][];
+        };
+        /** ResourceOut */
+        ResourceOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Notes Md */
+            notes_md?: string | null;
+            /** Url */
+            url?: string | null;
+            area?: components["schemas"]["RefOut"] | null;
+            /** Tags */
+            tags?: string[];
+            /**
+             * Is Archived
+             * @default false
+             */
+            is_archived: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** ResourcePatchIn */
+        ResourcePatchIn: {
+            /** Name */
+            name?: string | null;
+            /** Notes Md */
+            notes_md?: string | null;
+            /** Url */
+            url?: string | null;
+            /** Area Id */
+            area_id?: string | null;
+            /** Tags */
+            tags?: string[] | null;
+            /** Is Archived */
+            is_archived?: boolean | null;
+        };
+        /** RunningTimerOut */
+        RunningTimerOut: {
+            entry: components["schemas"]["TimeEntryOut"];
+            /** Elapsed S */
+            elapsed_s: number;
+            /**
+             * Server Now
+             * Format: date-time
+             */
+            server_now: string;
+        };
         /** ScopeOut */
         ScopeOut: {
             /** Scope */
@@ -2989,6 +4474,21 @@ export interface components {
             description_ru: string;
             /** Group */
             group: string;
+        };
+        /** SearchOut */
+        SearchOut: {
+            /** Query */
+            query: string;
+            /** Tasks */
+            tasks: components["schemas"]["TaskOut"][];
+            /** Projects */
+            projects: components["schemas"]["ProjectOut"][];
+            /** Areas */
+            areas: components["schemas"]["AreaOut"][];
+            /** Resources */
+            resources: components["schemas"]["ResourceOut"][];
+            /** Journal */
+            journal: components["schemas"]["JournalSearchHitOut"][];
         };
         /** SessionOut */
         SessionOut: {
@@ -3183,6 +4683,79 @@ export interface components {
             /** Days On Target */
             days_on_target: number;
         };
+        /** SubtaskCountsOut */
+        SubtaskCountsOut: {
+            /**
+             * Done
+             * @default 0
+             */
+            done: number;
+            /**
+             * Total
+             * @description direct subtasks, cancelled ones not counted
+             * @default 0
+             */
+            total: number;
+        };
+        /** TagIn */
+        TagIn: {
+            /** Id */
+            id?: string | null;
+            /**
+             * Name
+             * @description tag name; a leading # is removed
+             */
+            name: string;
+            /** Color */
+            color?: string | null;
+        };
+        /** TagListOut */
+        TagListOut: {
+            /** Items */
+            items: components["schemas"]["TagOut"][];
+        };
+        /** TagOut */
+        TagOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Color */
+            color?: string | null;
+            /**
+             * Open Tasks
+             * @default 0
+             */
+            open_tasks: number;
+        };
+        /** TagPatchIn */
+        TagPatchIn: {
+            /** Name */
+            name?: string | null;
+            /** Color */
+            color?: string | null;
+        };
+        /** TagRefOut */
+        TagRefOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Color */
+            color?: string | null;
+        };
+        /** TagViewOut */
+        TagViewOut: {
+            tag: components["schemas"]["TagOut"];
+            /** Items */
+            items: components["schemas"]["TaskOut"][];
+        };
         /**
          * TargetPreviewIn
          * @description Stateless computation used by the onboarding wizard.
@@ -3308,6 +4881,387 @@ export interface components {
              * @default false
              */
             is_manual: boolean;
+        };
+        /** TaskCompleteIn */
+        TaskCompleteIn: {
+            /** Completed At */
+            completed_at?: string | null;
+        };
+        /** TaskCompleteOut */
+        TaskCompleteOut: {
+            task: components["schemas"]["TaskOut"];
+            next_instance?: components["schemas"]["TaskOut"] | null;
+        };
+        /** TaskDetailOut */
+        TaskDetailOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Title */
+            title: string;
+            /** Notes Md */
+            notes_md?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "inbox" | "open" | "scheduled" | "in_progress" | "waiting" | "blocked" | "done" | "cancelled";
+            /**
+             * Priority
+             * @description 1 = P1 highest … 4 = P4 (no priority)
+             */
+            priority: number;
+            project?: components["schemas"]["RefOut"] | null;
+            area?: components["schemas"]["RefOut"] | null;
+            /** Parent Id */
+            parent_id?: string | null;
+            /** Parent Title */
+            parent_title?: string | null;
+            /**
+             * Depth
+             * @description 0 root, 1 subtask, 2 sub-subtask
+             * @default 0
+             */
+            depth: number;
+            /** Due Date */
+            due_date?: string | null;
+            /**
+             * Due Time
+             * @description HH:MM local; null = all-day
+             */
+            due_time?: string | null;
+            /** Due At */
+            due_at?: string | null;
+            block?: components["schemas"]["BlockOut"] | null;
+            /** Estimate Minutes */
+            estimate_minutes?: number | null;
+            /**
+             * Actual Minutes
+             * @default 0
+             */
+            actual_minutes: number;
+            /** Completed At */
+            completed_at?: string | null;
+            /** Completed Day */
+            completed_day?: string | null;
+            /** Recurrence Rule */
+            recurrence_rule?: string | null;
+            /** Recurrence Until */
+            recurrence_until?: string | null;
+            /** Recurrence Preset */
+            recurrence_preset?: ("daily" | "weekdays" | "weekly" | "biweekly" | "monthly" | "yearly" | "custom") | null;
+            /**
+             * Is Recurring
+             * @default false
+             */
+            is_recurring: boolean;
+            /** Series Id */
+            series_id?: string | null;
+            /**
+             * Series Index
+             * @default 0
+             */
+            series_index: number;
+            /** Tags */
+            tags?: components["schemas"]["TagRefOut"][];
+            /** Context */
+            context?: string | null;
+            /** Energy */
+            energy?: number | null;
+            /**
+             * Is Pinned
+             * @default false
+             */
+            is_pinned: boolean;
+            /**
+             * Sort Order
+             * @default 0
+             */
+            sort_order: number;
+            /**
+             * Overdue
+             * @default false
+             */
+            overdue: boolean;
+            subtask_counts?: components["schemas"]["SubtaskCountsOut"];
+            /** Reminders */
+            reminders?: components["schemas"]["ReminderOut"][];
+            /**
+             * Source
+             * @default manual
+             * @enum {string}
+             */
+            source: "manual" | "quick_add" | "recurrence" | "import";
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Subtasks */
+            subtasks?: components["schemas"]["TaskDetailOut"][];
+            time?: components["schemas"]["TaskTimeOut"];
+        };
+        /** TaskIn */
+        TaskIn: {
+            /**
+             * Id
+             * @description client UUID; a replay returns the same task
+             */
+            id?: string | null;
+            /** Title */
+            title: string;
+            /** Notes Md */
+            notes_md?: string | null;
+            /** Status */
+            status?: ("inbox" | "open" | "in_progress" | "waiting" | "blocked" | "done" | "cancelled") | null;
+            /** Priority */
+            priority?: number | null;
+            /** Project Id */
+            project_id?: string | null;
+            /** Area Id */
+            area_id?: string | null;
+            /** Parent Id */
+            parent_id?: string | null;
+            /** Due Date */
+            due_date?: string | null;
+            /** Due Time */
+            due_time?: string | null;
+            block?: components["schemas"]["BlockIn"] | null;
+            /** Estimate Minutes */
+            estimate_minutes?: number | null;
+            /**
+             * Recurrence Rule
+             * @description RRULE text or a preset key
+             */
+            recurrence_rule?: string | null;
+            /** Recurrence Until */
+            recurrence_until?: string | null;
+            /**
+             * Tags
+             * @description ≤ 10, replaces the set
+             */
+            tags?: string[];
+            /**
+             * Context
+             * @description a leading @ is removed
+             */
+            context?: string | null;
+            /** Energy */
+            energy?: number | null;
+            /**
+             * Is Pinned
+             * @default false
+             */
+            is_pinned: boolean;
+            /**
+             * Sort Order
+             * @default 0
+             */
+            sort_order: number;
+            /**
+             * Reminders
+             * @description ≤ 5
+             */
+            reminders?: components["schemas"]["ReminderIn"][];
+        };
+        /** TaskOut */
+        TaskOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Title */
+            title: string;
+            /** Notes Md */
+            notes_md?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "inbox" | "open" | "scheduled" | "in_progress" | "waiting" | "blocked" | "done" | "cancelled";
+            /**
+             * Priority
+             * @description 1 = P1 highest … 4 = P4 (no priority)
+             */
+            priority: number;
+            project?: components["schemas"]["RefOut"] | null;
+            area?: components["schemas"]["RefOut"] | null;
+            /** Parent Id */
+            parent_id?: string | null;
+            /** Parent Title */
+            parent_title?: string | null;
+            /**
+             * Depth
+             * @description 0 root, 1 subtask, 2 sub-subtask
+             * @default 0
+             */
+            depth: number;
+            /** Due Date */
+            due_date?: string | null;
+            /**
+             * Due Time
+             * @description HH:MM local; null = all-day
+             */
+            due_time?: string | null;
+            /** Due At */
+            due_at?: string | null;
+            block?: components["schemas"]["BlockOut"] | null;
+            /** Estimate Minutes */
+            estimate_minutes?: number | null;
+            /**
+             * Actual Minutes
+             * @default 0
+             */
+            actual_minutes: number;
+            /** Completed At */
+            completed_at?: string | null;
+            /** Completed Day */
+            completed_day?: string | null;
+            /** Recurrence Rule */
+            recurrence_rule?: string | null;
+            /** Recurrence Until */
+            recurrence_until?: string | null;
+            /** Recurrence Preset */
+            recurrence_preset?: ("daily" | "weekdays" | "weekly" | "biweekly" | "monthly" | "yearly" | "custom") | null;
+            /**
+             * Is Recurring
+             * @default false
+             */
+            is_recurring: boolean;
+            /** Series Id */
+            series_id?: string | null;
+            /**
+             * Series Index
+             * @default 0
+             */
+            series_index: number;
+            /** Tags */
+            tags?: components["schemas"]["TagRefOut"][];
+            /** Context */
+            context?: string | null;
+            /** Energy */
+            energy?: number | null;
+            /**
+             * Is Pinned
+             * @default false
+             */
+            is_pinned: boolean;
+            /**
+             * Sort Order
+             * @default 0
+             */
+            sort_order: number;
+            /**
+             * Overdue
+             * @default false
+             */
+            overdue: boolean;
+            subtask_counts?: components["schemas"]["SubtaskCountsOut"];
+            /** Reminders */
+            reminders?: components["schemas"]["ReminderOut"][];
+            /**
+             * Source
+             * @default manual
+             * @enum {string}
+             */
+            source: "manual" | "quick_add" | "recurrence" | "import";
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * TaskPatchIn
+         * @description Every field optional; ``null`` clears a nullable field.
+         */
+        TaskPatchIn: {
+            /** Title */
+            title?: string | null;
+            /** Notes Md */
+            notes_md?: string | null;
+            /** Status */
+            status?: ("inbox" | "open" | "in_progress" | "waiting" | "blocked" | "done" | "cancelled") | null;
+            /** Priority */
+            priority?: number | null;
+            /** Project Id */
+            project_id?: string | null;
+            /** Area Id */
+            area_id?: string | null;
+            /** Parent Id */
+            parent_id?: string | null;
+            /** Due Date */
+            due_date?: string | null;
+            /** Due Time */
+            due_time?: string | null;
+            block?: components["schemas"]["BlockIn"] | null;
+            /** Estimate Minutes */
+            estimate_minutes?: number | null;
+            /** Recurrence Rule */
+            recurrence_rule?: string | null;
+            /** Recurrence Until */
+            recurrence_until?: string | null;
+            /** Tags */
+            tags?: string[] | null;
+            /** Context */
+            context?: string | null;
+            /** Energy */
+            energy?: number | null;
+            /** Is Pinned */
+            is_pinned?: boolean | null;
+            /** Sort Order */
+            sort_order?: number | null;
+            /** Reminders */
+            reminders?: components["schemas"]["ReminderIn"][] | null;
+        };
+        /** TaskPatchResultOut */
+        TaskPatchResultOut: {
+            task: components["schemas"]["TaskDetailOut"];
+            next_instance?: components["schemas"]["TaskOut"] | null;
+            /** Removed Next Instance Id */
+            removed_next_instance_id?: string | null;
+        };
+        /** TaskRefOut */
+        TaskRefOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Title */
+            title: string;
+        };
+        /** TaskReopenOut */
+        TaskReopenOut: {
+            task: components["schemas"]["TaskOut"];
+            /** Removed Next Instance Id */
+            removed_next_instance_id?: string | null;
+        };
+        /** TaskTimeOut */
+        TaskTimeOut: {
+            /**
+             * Total Minutes
+             * @default 0
+             */
+            total_minutes: number;
+            /**
+             * Entries
+             * @description latest 10
+             */
+            entries?: components["schemas"]["TimeEntryOut"][];
         };
         /** TemplateBriefOut */
         TemplateBriefOut: {
@@ -3449,6 +5403,238 @@ export interface components {
              */
             updated_at: string;
         };
+        /** TimeEntryIn */
+        TimeEntryIn: {
+            /** Id */
+            id?: string | null;
+            /** Task Id */
+            task_id?: string | null;
+            /** Project Id */
+            project_id?: string | null;
+            /** Area Id */
+            area_id?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Note */
+            note?: string | null;
+            /**
+             * Date
+             * Format: date
+             * @description Local calendar day, YYYY-MM-DD
+             */
+            date: string;
+            /**
+             * Start
+             * @description Local wall clock, HH:MM (24 h)
+             */
+            start: string;
+            /**
+             * End
+             * @description end ≤ start means the next day
+             */
+            end: string;
+        };
+        /** TimeEntryListOut */
+        TimeEntryListOut: {
+            /**
+             * From
+             * Format: date
+             */
+            from: string;
+            /**
+             * To
+             * Format: date
+             */
+            to: string;
+            /** Items */
+            items: components["schemas"]["TimeEntryOut"][];
+            /**
+             * Total Minutes
+             * @default 0
+             */
+            total_minutes: number;
+            /** By Day */
+            by_day: components["schemas"]["DayMinutesOut"][];
+        };
+        /** TimeEntryOut */
+        TimeEntryOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            task?: components["schemas"]["TaskRefOut"] | null;
+            project?: components["schemas"]["RefOut"] | null;
+            area?: components["schemas"]["RefOut"] | null;
+            /** Description */
+            description?: string | null;
+            /** Note */
+            note?: string | null;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /** Ended At */
+            ended_at?: string | null;
+            /**
+             * Duration S
+             * @description null while running
+             */
+            duration_s?: number | null;
+            /**
+             * Date
+             * Format: date
+             * @description local day of started_at (entries belong to their start day)
+             */
+            date: string;
+            /**
+             * Start
+             * @description HH:MM local
+             */
+            start: string;
+            /**
+             * End
+             * @description HH:MM local, null while running
+             */
+            end?: string | null;
+            /**
+             * Ends Next Day
+             * @default false
+             */
+            ends_next_day: boolean;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "timer" | "manual" | "shortcut" | "import";
+            /**
+             * Running
+             * @default false
+             */
+            running: boolean;
+        };
+        /** TimeEntryPatchIn */
+        TimeEntryPatchIn: {
+            /** Task Id */
+            task_id?: string | null;
+            /** Project Id */
+            project_id?: string | null;
+            /** Area Id */
+            area_id?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Note */
+            note?: string | null;
+            /** Date */
+            date?: string | null;
+            /** Start */
+            start?: string | null;
+            /** End */
+            end?: string | null;
+        };
+        /** TimeSummaryOut */
+        TimeSummaryOut: {
+            /**
+             * Period
+             * @enum {string}
+             */
+            period: "week" | "month";
+            /**
+             * From
+             * Format: date
+             */
+            from: string;
+            /**
+             * To
+             * Format: date
+             */
+            to: string;
+            /**
+             * Total Minutes
+             * @default 0
+             */
+            total_minutes: number;
+            /** By Area */
+            by_area: components["schemas"]["AreaMinutesOut"][];
+            /** By Project */
+            by_project: components["schemas"]["ProjectMinutesOut"][];
+            /** By Day */
+            by_day: components["schemas"]["DayMinutesOut"][];
+        };
+        /** TimerStartIn */
+        TimerStartIn: {
+            /**
+             * Id
+             * Format: uuid
+             * @description client UUID of the new entry; a replay returns the current state
+             */
+            id: string;
+            /** Task Id */
+            task_id?: string | null;
+            /** Project Id */
+            project_id?: string | null;
+            /** Area Id */
+            area_id?: string | null;
+            /** Description */
+            description?: string | null;
+            /**
+             * Started At
+             * @description ≤ 24 h back, ≤ 5 min ahead; default now
+             */
+            started_at?: string | null;
+        };
+        /** TimerStartOut */
+        TimerStartOut: {
+            /** @description the row with the requested id */
+            entry: components["schemas"]["TimeEntryOut"];
+            running?: components["schemas"]["RunningTimerOut"] | null;
+            /** @description the timer this start switched off */
+            stopped?: components["schemas"]["TimeEntryOut"] | null;
+        };
+        /** TimerStateOut */
+        TimerStateOut: {
+            running?: components["schemas"]["RunningTimerOut"] | null;
+            /**
+             * Server Now
+             * Format: date-time
+             */
+            server_now: string;
+        };
+        /** TimerStopIn */
+        TimerStopIn: {
+            /** Entry Id */
+            entry_id?: string | null;
+            /** Ended At */
+            ended_at?: string | null;
+        };
+        /** TimerStopOut */
+        TimerStopOut: {
+            stopped?: components["schemas"]["TimeEntryOut"] | null;
+            /**
+             * Server Now
+             * Format: date-time
+             */
+            server_now: string;
+        };
+        /** TodayViewOut */
+        TodayViewOut: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Overdue */
+            overdue: components["schemas"]["TaskOut"][];
+            /** Today */
+            today: components["schemas"]["TaskOut"][];
+            /** Scheduled */
+            scheduled: components["schemas"]["TaskOut"][];
+            /** Done */
+            done: components["schemas"]["TaskOut"][];
+            timer?: components["schemas"]["RunningTimerOut"] | null;
+            counts: components["schemas"]["CountsOut"];
+        };
         /** TrainingTodayOut */
         TrainingTodayOut: {
             /**
@@ -3465,6 +5651,33 @@ export interface components {
              * @default 0
              */
             burned_kcal: number;
+        };
+        /** UpcomingDayOut */
+        UpcomingDayOut: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Tasks */
+            tasks: components["schemas"]["TaskOut"][];
+            /** Occurrences */
+            occurrences: components["schemas"]["OccurrenceOut"][];
+        };
+        /** UpcomingViewOut */
+        UpcomingViewOut: {
+            /**
+             * From
+             * Format: date
+             */
+            from: string;
+            /**
+             * To
+             * Format: date
+             */
+            to: string;
+            /** Days */
+            days: components["schemas"]["UpcomingDayOut"][];
         };
         /** UserSettingsOut */
         UserSettingsOut: {
@@ -6286,6 +8499,8 @@ export interface operations {
         parameters: {
             query?: {
                 days?: number;
+                /** @description last day of the window (default: today) */
+                end?: string | null;
             };
             header?: never;
             path?: never;
@@ -6693,6 +8908,1514 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["SleepOut"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_task_api_v1_planner_tasks_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    quick_api_v1_planner_tasks_quick_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QuickAddIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuickAddOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    parse_api_v1_planner_parse_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ParseIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ParseOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_task_api_v1_planner_tasks__id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description task id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_task_api_v1_planner_tasks__id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description task id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_task_api_v1_planner_tasks__id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description task id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskPatchIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskPatchResultOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    complete_task_api_v1_planner_tasks__id__complete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description task id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["TaskCompleteIn"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskCompleteOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reopen_task_api_v1_planner_tasks__id__reopen_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description task id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskReopenOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_counts_api_v1_planner_counts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CountsOut"];
+                };
+            };
+        };
+    };
+    today_view_api_v1_planner_views_today_get: {
+        parameters: {
+            query?: {
+                /** @description local day; default: your today */
+                date?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TodayViewOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    inbox_view_api_v1_planner_views_inbox_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InboxViewOut"];
+                };
+            };
+        };
+    };
+    upcoming_view_api_v1_planner_views_upcoming_get: {
+        parameters: {
+            query?: {
+                /** @description default: your today */
+                from?: string | null;
+                days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpcomingViewOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    calendar_view_api_v1_planner_views_calendar_get: {
+        parameters: {
+            query: {
+                from: string;
+                to: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarViewOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    tag_view_api_v1_planner_views_tag__tag_id__get: {
+        parameters: {
+            query?: {
+                include_done?: boolean;
+            };
+            header?: never;
+            path: {
+                tag_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagViewOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    archive_view_api_v1_planner_views_archive_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveViewOut"];
+                };
+            };
+        };
+    };
+    search_api_v1_planner_search_get: {
+        parameters: {
+            query: {
+                q: string;
+                include_done?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_areas_api_v1_planner_areas_get: {
+        parameters: {
+            query?: {
+                include_archived?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AreaListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_area_api_v1_planner_areas_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AreaIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AreaOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reorder_areas_api_v1_planner_areas_reorder_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReorderIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_area_api_v1_planner_areas__id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description area id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AreaDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_area_api_v1_planner_areas__id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description area id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_area_api_v1_planner_areas__id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description area id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AreaPatchIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AreaOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_projects_api_v1_planner_projects_get: {
+        parameters: {
+            query?: {
+                status?: "active" | "on_hold" | "completed" | "cancelled" | "archived" | "open" | "all";
+                area_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_project_api_v1_planner_projects_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reorder_projects_api_v1_planner_projects_reorder_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReorderIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_project_api_v1_planner_projects__id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description project id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_project_api_v1_planner_projects__id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description project id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_project_api_v1_planner_projects__id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description project id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectPatchIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_resources_api_v1_planner_resources_get: {
+        parameters: {
+            query?: {
+                area_id?: string | null;
+                include_archived?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResourceListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_resource_api_v1_planner_resources_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResourceIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResourceOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_resource_api_v1_planner_resources__id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description resource id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_resource_api_v1_planner_resources__id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description resource id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResourcePatchIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResourceOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_tags_api_v1_planner_tags_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagListOut"];
+                };
+            };
+        };
+    };
+    create_tag_api_v1_planner_tags_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TagIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_tag_api_v1_planner_tags__id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description tag id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_tag_api_v1_planner_tags__id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description tag id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TagPatchIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_timer_api_v1_planner_timer_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimerStateOut"];
+                };
+            };
+        };
+    };
+    start_timer_api_v1_planner_timer_start_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TimerStartIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimerStartOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stop_timer_api_v1_planner_timer_stop_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["TimerStopIn"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimerStopOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_entries_api_v1_planner_time_entries_get: {
+        parameters: {
+            query: {
+                from: string;
+                to: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimeEntryListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_entry_api_v1_planner_time_entries_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TimeEntryIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimeEntryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_entry_api_v1_planner_time_entries__id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description time entry id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_entry_api_v1_planner_time_entries__id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description time entry id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TimeEntryPatchIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimeEntryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    summary_api_v1_planner_time_summary_get: {
+        parameters: {
+            query?: {
+                period?: "week" | "month";
+                /** @description any day of the period; default: today */
+                date?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimeSummaryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_journal_api_v1_planner_journal_get: {
+        parameters: {
+            query: {
+                from: string;
+                to: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JournalListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_journal_api_v1_planner_journal__date__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description local day, YYYY-MM-DD */
+                date: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JournalDayOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_journal_api_v1_planner_journal__date__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description local day, YYYY-MM-DD */
+                date: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JournalIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JournalOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_journal_api_v1_planner_journal__date__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description local day, YYYY-MM-DD */
+                date: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
