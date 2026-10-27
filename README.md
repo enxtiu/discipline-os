@@ -5,13 +5,15 @@ training, steps, PARA tasks and planner, time tracking, gamification. Built as a
 mobile-first PWA for iPhone (iOS 17+, Safari → Add to Home Screen), dark by
 default, one-handed, every frequent action within two taps.
 
-> **Status: stages 1–7 of 10 are complete** — foundation, nutrition core,
+> **Status: stages 1–8 of 10 are complete** — foundation, nutrition core,
 > nutrition backfill, AI logging (photo/text → review → save, camera barcode
 > scanner), training (templates, weekly plan, live logger, records, burned
 > calories kept out of the food budget), health ingest (iOS Shortcut, steps,
 > weight, sleep), the planner (PARA, tasks with repeats and reminders,
-> calendar with drag, natural-language quick add, timer, journal) and web push
-> notifications (reminders, daily nudges, quiet hours). The foundation is live: repository,
+> calendar with drag, natural-language quick add, timer, journal), web push
+> notifications (reminders, daily nudges, quiet hours) and gamification & insight
+> (day score, XP, streaks, achievements, quests, dashboards, data export and a signed
+> backup). The foundation is live: repository,
 > infrastructure, the full database schema for every entity of the whole
 > product, device-token auth with pairing, settings with target calculation, the
 > design system and app shell with bottom navigation, i18n (ru/en), PWA basics
@@ -72,7 +74,8 @@ default, one-handed, every frequent action within two taps.
 | Health: iOS Shortcut ingest (scoped token, idempotent per day, lenient numbers, 62-day backfill), steps on Today with a manual fallback, weight (profile + targets follow) and sleep entries, a /health page with 14-day steps, 90-day weight and a sleep timeline | ✅ stage 5 |
 | Planner: PARA (inbox, projects, areas, resources, archive), tasks P1–P4 with tags, subtasks, due dates, time blocks, estimates, RRULE repeats, reminders and Markdown notes; Today / Inbox / Upcoming / Calendar (day, week, month with drag) and project, area, tag and search pages; natural-language quick add (ru/en) with a live preview; a timer that survives reloads and device switches, a time log; a daily journal with the server's day summary — all offline-queued | ✅ stage 6 |
 | Web push: VAPID subscriptions per device, task reminders and smart daily reminders (meal logging, water, planned workout, evening review) re-checked at send time, quiet hours (task reminders wait, daily nudges are dropped), per-category times, test notification, history; iPhone «На экран Домой» guidance in onboarding and Settings | ✅ stage 7 |
-| Gamification and charts, hardening, redesign | stages 8–10 |
+| Gamification & insight: a daily score whose calorie part peaks inside the target zone (0 below the safe floor), three rings, XP and 30 levels, streaks with freeze tokens (the workout streak is weekly and follows the plan), 46 achievements, daily/weekly quests with a claim; /stats dashboards (nutrition, activity, body, planner, progress; week to year); JSON, CSV and a signed backup download, restored by `python -m app.cli restore-backup` | ✅ stage 8 |
+| Hardening (offline sync and conflicts, optional Notion sync, performance, accessibility), redesign | stages 9–10 |
 
 ---
 
@@ -110,20 +113,20 @@ discipline-os/
 ├── api/                     FastAPI service
 │   ├── app/
 │   │   ├── ai/              provider adapters, strict schema, runner, prompts/*.vN.md (stage 3)
-│   │   ├── api/             routers (v1: auth, devices, tokens, settings, meta, foods, nutrition, ai, training, health, planner, push, notifications)
+│   │   ├── api/             routers (v1: auth, devices, tokens, settings, meta, foods, nutrition, ai, training, health, planner, push, notifications, gamification, stats, export)
 │   │   ├── core/            config, logging, errors, security, rate limit, tz, ids
 │   │   ├── models/          SQLAlchemy 2 models — every entity, every stage
 │   │   ├── schemas/         pydantic v2 request/response models
-│   │   ├── services/        pairing, tokens, targets, settings, scheduler, recurrence, planner/, task_parser, push, notifications
+│   │   ├── services/        pairing, tokens, targets, settings, scheduler, recurrence, planner/, task_parser, push, notifications, gamification/, day_metrics, stats, export, restore
 │   │   ├── seeds/           seed framework + exercise library
 │   │   └── cli.py           server-side admin commands
 │   ├── alembic/versions/    migrations (0001 = the whole schema, 0002 = planner indexes)
 │   ├── importers/           seed (320 foods RU/EN), Open Food Facts, USDA FDC (+ RU names)
-│   └── tests/               pytest suite (990+ tests)
+│   └── tests/               pytest suite (1 200+ tests)
 ├── web/                     React 18 + TS + Vite PWA
 │   ├── src/api/             fetch client, types, generated OpenAPI types
 │   ├── src/components/      design system (ui/) + shell (layout/)
-│   ├── src/features/        auth, today, food (2), ai (3), train (4), health (5), plan (6), notifications (7), settings, placeholders
+│   ├── src/features/        auth, today, food (2), ai (3), train (4), health (5), plan (6), notifications (7), game + stats (8), settings
 │   ├── src/i18n/            ru.json / en.json (all strings live here)
 │   ├── src/lib/             device, offline queue, formatting, errors, targets
 │   └── public/              icons, offline.html, sw-push.js (imported into the generated service worker)
@@ -131,7 +134,7 @@ discipline-os/
 ├── deploy/                  install.sh, update.sh, healthcheck.sh, backup/
 ├── scripts/                 dev-api.sh, smoke.sh, check-i18n.mjs, ui-check.mjs
 ├── .github/workflows/       ci.yml, deploy.yml, backup.yml
-├── docs/                    roadmap.md, stage-1 … stage-7.md, screenshots/
+├── docs/                    roadmap.md, stage-1 … stage-8.md, screenshots/
 ├── docker-compose.yml       postgres + api + caddy (production)
 ├── docker-compose.dev.yml   overlay: published postgres, api with reload
 └── Makefile                 every developer shortcut
@@ -392,14 +395,16 @@ place. New library rows are **unverified** until the owner taps *Подтвер�
 ## Testing
 
 ```bash
-# backend: 990+ tests — calorie math, food search & ranking (incl. the 150 ms
+# backend: 1 200+ tests — calorie math, food search & ranking (incl. the 150 ms
 # budget on a 50k-row library), importers (seed/USDA/OFF), live barcode fallback
 # (mocked), meal logging, recipes, day boundaries, recurrence, tokens/devices,
 # AI logging (fake provider + every adapter behind httpx.MockTransport), training
 # (search, templates, plan, idempotent sets, records, burned kcal, bounds), health
 # ingest, the planner (tasks, repeats across DST, reminders, views, PARA, timer
-# races, journal), 670 quick-add parser cases (ru + en) and web push (a real
+# races, journal), 670 quick-add parser cases (ru + en), web push (a real
 # aes128gcm round-trip, VAPID, the dispatcher's quiet hours and races, SSRF guards)
+# and gamification (the calorie curve, the safe floor in every reward, XP ledger,
+# streaks, quests, achievements, stats series, streamed exports, signed backups)
 cd api
 TEST_DATABASE_URL=postgresql+psycopg://postgres:postgres@127.0.0.1:5432/dsos_test \
   SECRET_KEY=test-secret-key-please-change-0123456789 .venv/bin/pytest -q
@@ -408,20 +413,21 @@ TEST_DATABASE_URL=postgresql+psycopg://postgres:postgres@127.0.0.1:5432/dsos_tes
 # frontend: types + production build (also verifies the PWA generation)
 cd web && npm run typecheck && npm run build
 
-# end-to-end against a running API (23 checks: pairing, scopes, targets, search
+# end-to-end against a running API (24 checks: pairing, scopes, targets, search
 # budget, barcode, recipes, AI parse without auto-save, 413 upload guard, a workout
 # end to end with food totals untouched, the Shortcut ingest, the planner — quick
 # add, a repeat's next instance, timer, journal, calendar — web push: step 16
 # starts a local receiver, sends POST /push/test to it and decrypts the push with
 # http_ece from api/.venv — the API needs VAPID keys and ENV=development for that
-# step, it is skipped otherwise — and revoke)
+# step, it is skipped otherwise — the day score, a stats week and the three exports
+# (stage 8), and revoke)
 API_BASE=http://127.0.0.1:8000/api ./scripts/smoke.sh <PAIRING-CODE>
 
 # i18n gate (also runs in the CI web job): every key the UI uses exists in both
 # locales, the locales do not drift, dynamic prefixes resolve
 node scripts/check-i18n.mjs
 
-# browser acceptance: 218 checks in a real Chromium — pairing gate, code entry,
+# browser acceptance: 325 checks in a real Chromium — pairing gate, code entry,
 # the 4-step onboarding with the live target preview, Today, quick add,
 # settings (language / theme / timezone), every route, the built PWA manifest,
 # food logging, recipes, AI text/photo review → save, offline AI message, the
@@ -431,7 +437,9 @@ node scripts/check-i18n.mjs
 # (views, editor, quick add, PARA, calendar drag, timer, time log, journal, offline;
 # scripts/ui-checks/stage6-*.mjs) and notifications (iPhone install steps,
 # prefs/quiet hours kept after reload, blocked/off/on states, a test push to a local
-# receiver decrypted in Node, history, onboarding on iPhone, ?task= deep links);
+# receiver decrypted in Node, history, onboarding on iPhone, ?task= deep links) and
+# gamification & stats (score card = API, claims, celebrations, achievements, every
+# dashboard section = API, the three downloads, the 429 message);
 # every module cleans up after itself
 # (FAKE_CAMERA plays an EAN-13 video:
 # python3 scripts/make-barcode-y4m.py 460700123456 /tmp/barcode.y4m).
@@ -858,6 +866,6 @@ dashboard) is delivered — see `docs/stage-2.md` — and stage 2b closed its ga
 budget) — see `docs/stage-2b.md`. Stage 3 (AI photo/text logging, barcode
 scanning, `docs/stage-3.md`), stage 4 (training, `docs/stage-4.md`) and stage 5
 (health ingest: the iOS Shortcut, steps, weight, sleep — `docs/stage-5.md`) and
-stage 6 (the planner — `docs/stage-6.md`) and stage 7 (web push notifications
-— `docs/stage-7.md`) are delivered; stage 8 (gamification, charts, data export)
-is next.
+stage 6 (the planner — `docs/stage-6.md`), stage 7 (web push notifications
+— `docs/stage-7.md`) and stage 8 (gamification, dashboards, data export —
+`docs/stage-8.md`) are delivered; stage 9 (hardening) is next.
