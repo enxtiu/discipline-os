@@ -319,19 +319,24 @@ function WeekDay({ day, onClick }: { day: PlanDay; onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      aria-label={t('train.plan_day_label', {
-        day: dayLabel(day.date, 'long'),
-        plan: label || t('train.nothing_planned'),
-      })}
       className={clsx(
         'flex min-h-[5rem] min-w-0 flex-col items-center gap-1 rounded-2xl border px-0.5 py-2 text-center',
         day.is_today ? 'border-aqua-400/50 bg-aqua-400/[.08]' : 'border-[rgb(var(--border))]',
       )}
     >
-      <span className={clsx('text-[11px]', day.is_today ? 'font-semibold text-[rgb(var(--accent))]' : 'muted')}>
+      <span className="sr-only">
+        {t('train.plan_day_label', { day: dayLabel(day.date, 'long'), plan: label || t('a11y.nothing_planned') })}
+        {done && `, ${t('a11y.done')}`}
+      </span>
+      <span
+        className={clsx('text-[11px]', day.is_today ? 'font-semibold text-[rgb(var(--accent))]' : 'muted')}
+        aria-hidden="true"
+      >
         {weekdayShort(day.weekday)}
       </span>
-      <span className="tnum text-sm font-semibold">{Number(day.date.slice(8, 10))}</span>
+      <span className="tnum text-sm font-semibold" aria-hidden="true">
+        {Number(day.date.slice(8, 10))}
+      </span>
       <span
         className={clsx(
           'mt-auto flex h-5 w-5 items-center justify-center rounded-full text-[10px]',
@@ -347,7 +352,9 @@ function WeekDay({ day, onClick }: { day: PlanDay; onClick: () => void }) {
       >
         {done && <IconCheck size={12} />}
       </span>
-      <span className="w-full truncate px-0.5 text-[10px] leading-tight muted">{label}</span>
+      <span className="w-full truncate px-0.5 text-[10px] leading-tight muted" aria-hidden="true">
+        {label}
+      </span>
     </button>
   )
 }

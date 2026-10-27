@@ -4,7 +4,11 @@
     "value_unit": "{{value}} {{unit}}",
     "quiet_hours_to": "Тихие часы до",
     "device_revoke": "Отключить устройство {{name}}",
-    "token_revoke": "Отозвать токен {{name}}"
+    "token_revoke": "Отозвать токен {{name}}",
+    "open_time_log": "Открыть журнал времени",
+    "score_open_provisional": "Оценка дня {{score}} из 100 {{provisional}} — из чего она складывается",
+    "nothing_planned": "ничего не запланировано",
+    "done": "выполнено"
   },
   "app": {
     "name": "DisciplineOS",

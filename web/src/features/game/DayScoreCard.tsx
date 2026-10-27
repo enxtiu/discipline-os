@@ -80,7 +80,11 @@ export function DayScoreCard() {
             type="button"
             onClick={() => setSheetOpen(true)}
             className="flex shrink-0 flex-col items-center gap-2 rounded-2xl"
-            aria-label={t('game.score_open', { score: scoreLabel })}
+            aria-label={
+              score.provisional
+                ? t('a11y.score_open_provisional', { score: scoreLabel, provisional: t('game.provisional') })
+                : t('game.score_open', { score: scoreLabel })
+            }
             data-testid="day-score-button"
           >
             <ProgressRing

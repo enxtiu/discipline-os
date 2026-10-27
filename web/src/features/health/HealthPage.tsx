@@ -128,11 +128,14 @@ function StepsChart({ data, loading, onEnter }: { data?: StepsSeries; loading: b
                   <button
                     type="button"
                     onClick={() => setActive(active === day.date ? null : day.date)}
-                    aria-label={t('health.steps_day', { day: dayLabel(day.date, 'long'), steps: number(day.steps) })}
                     aria-pressed={active === day.date}
                     className="relative flex min-h-tap w-full flex-col items-center justify-end gap-1"
                   >
+                    <span className="sr-only">
+                      {t('health.steps_day', { day: dayLabel(day.date, 'long'), steps: number(day.steps) })}
+                    </span>
                     <span
+                      aria-hidden="true"
                       className={clsx(
                         'tnum absolute top-0 whitespace-nowrap text-[11px] leading-none',
                         labelled && day.steps > 0 ? 'muted' : 'invisible',
@@ -151,7 +154,10 @@ function StepsChart({ data, loading, onEnter }: { data?: StepsSeries; loading: b
                       />
                     </span>
                     <span className="h-px w-full bg-[rgb(var(--border))]" aria-hidden="true" />
-                    <span className={clsx('tnum text-[10px] leading-none', day.date === todayDate ? 'font-semibold' : 'muted')}>
+                    <span
+                      className={clsx('tnum text-[10px] leading-none', day.date === todayDate ? 'font-semibold' : 'muted')}
+                      aria-hidden="true"
+                    >
                       {Number(day.date.slice(8))}
                     </span>
                   </button>
@@ -346,25 +352,27 @@ function SleepChart({
             const wake = timeShort(night.wake_at, tz)
             const { left, width } = span(bed, night.duration_min)
             return (
-              <div
-                key={night.date}
-                role="listitem"
-                className="flex items-center gap-2 text-xs"
-                aria-label={t('health.sleep_night', {
-                  day: dayLabel(night.date, 'long'),
-                  bed,
-                  wake,
-                  duration: sleepDuration(night.duration_min),
-                })}
-              >
-                <span className="w-12 shrink-0 muted">{shortDay(night.date)}</span>
+              <div key={night.date} role="listitem" className="flex items-center gap-2 text-xs">
+                <span className="sr-only">
+                  {t('health.sleep_night', {
+                    day: dayLabel(night.date, 'long'),
+                    bed,
+                    wake,
+                    duration: sleepDuration(night.duration_min),
+                  })}
+                </span>
+                <span className="w-12 shrink-0 muted" aria-hidden="true">
+                  {shortDay(night.date)}
+                </span>
                 <span className="relative h-3 flex-1 rounded-full bg-[rgb(var(--bg-sunken))]" aria-hidden="true">
                   <span
                     className="absolute inset-y-0 rounded-full chart-sleep"
                     style={{ left: `${(left / WINDOW) * 100}%`, width: `${(Math.min(width, WINDOW - left) / WINDOW) * 100}%` }}
                   />
                 </span>
-                <span className="tnum w-10 shrink-0 text-right">{sleepClock(night.duration_min)}</span>
+                <span className="tnum w-10 shrink-0 text-right" aria-hidden="true">
+                  {sleepClock(night.duration_min)}
+                </span>
               </div>
             )
           })}

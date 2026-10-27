@@ -238,6 +238,16 @@ export async function run(ctx) {
           }
           small.push(entry)
         }
+        // a control whose role is overridden by a non-interactive one (`<button role="listitem">`)
+        // is announced as that role: VoiceOver never says it can be pressed
+        const overridden = []
+        for (const el of root.querySelectorAll('button[role], a[href][role], input[role], select[role], textarea[role]')) {
+          if (scope !== 'dialog' && dialogs.some((dialog) => dialog.contains(el))) continue
+          const role = el.getAttribute('role')
+          if (!/^(button|link|tab|switch|checkbox|radio|menuitem|menuitemcheckbox|menuitemradio|option|combobox|searchbox|textbox|slider|spinbutton)$/.test(role)) {
+            overridden.push({ selector: window.__a11yDescribe(el), name: window.__a11yName(el), role })
+          }
+        }
         // pinch-zoom is allowed, so iOS Safari zooms into any text field under 16 px on focus
         const tinyFields = []
         for (const el of root.querySelectorAll('input, textarea, select')) {
@@ -248,7 +258,7 @@ export async function run(ctx) {
           const size = parseFloat(getComputedStyle(el).fontSize)
           if (size < 16) tinyFields.push({ selector: window.__a11yDescribe(el), name: window.__a11yName(el), size: `${size}px` })
         }
-        return { small, excepted, tinyFields }
+        return { small, excepted, tinyFields, overridden }
       },
       { scope, min: MIN_TARGET, exceptions: TARGET_EXCEPTIONS },
     )
@@ -292,6 +302,12 @@ export async function run(ctx) {
           bad(
             `a11y ${name}: text fields are at least 16 px (no zoom on focus)`,
             measured.tinyFields.slice(0, 4).map((entry) => `${entry.selector} ${entry.size}`).join(' | '),
+          )
+        }
+        if (measured.overridden.length) {
+          bad(
+            `a11y ${name}: controls keep their role (no <button role="listitem">)`,
+            measured.overridden.slice(0, 4).map((entry) => `${entry.selector} role=${entry.role}`).join(' | '),
           )
         }
       }

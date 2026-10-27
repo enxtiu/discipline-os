@@ -4,7 +4,11 @@
     "value_unit": "{{value}} {{unit}}",
     "quiet_hours_to": "Quiet hours until",
     "device_revoke": "Disconnect the device {{name}}",
-    "token_revoke": "Revoke the token {{name}}"
+    "token_revoke": "Revoke the token {{name}}",
+    "open_time_log": "Open the time log",
+    "score_open_provisional": "Day score {{score}} of 100 {{provisional}} — what it is made of",
+    "nothing_planned": "nothing planned",
+    "done": "done"
   },
   "app": {
     "name": "DisciplineOS",

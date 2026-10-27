@@ -151,7 +151,6 @@ export function MonthGrid({
               tabIndex={0}
               aria-pressed={isSelected}
               aria-current={isToday ? 'date' : undefined}
-              aria-label={t('calendar.month_day_label', { day: dayTitle(day), open: openCount, done: doneCount })}
               onClick={() => onSelect(day)}
               onKeyDown={(event) => {
                 if (event.key === 'Enter' || event.key === ' ') {
@@ -171,7 +170,10 @@ export function MonthGrid({
               data-testid="cal-month-day"
               data-date={day}
             >
-              <div className="flex items-center justify-between gap-0.5 px-0.5">
+              <span className="sr-only">
+                {t('calendar.month_day_label', { day: dayTitle(day), open: openCount, done: doneCount })}
+              </span>
+              <div className="flex items-center justify-between gap-0.5 px-0.5" aria-hidden="true">
                 <span
                   className={clsx(
                     'tnum flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[11px] font-semibold leading-none',

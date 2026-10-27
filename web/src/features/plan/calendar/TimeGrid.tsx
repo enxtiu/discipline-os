@@ -258,16 +258,20 @@ export function TimeGrid({
                     key={day}
                     type="button"
                     onClick={() => onPickDay?.(day)}
-                    aria-label={t('calendar.open_day_named', { day: dayTitle(day) })}
                     aria-current={day === today ? 'date' : undefined}
                     className="flex min-h-tap flex-col items-center justify-center gap-0.5 py-1"
                     data-testid="cal-day-header"
                     data-date={day}
                   >
-                    <span className={clsx('text-[10px] uppercase', day === today ? 'text-[rgb(var(--accent))]' : 'muted')}>
+                    <span className="sr-only">{t('calendar.open_day_named', { day: dayTitle(day) })}</span>
+                    <span
+                      className={clsx('text-[10px] uppercase', day === today ? 'text-[rgb(var(--accent))]' : 'muted')}
+                      aria-hidden="true"
+                    >
                       {weekdayShort(day)}
                     </span>
                     <span
+                      aria-hidden="true"
                       className={clsx(
                         'tnum flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-[13px] font-semibold',
                         day === today && 'bg-[rgb(var(--accent))] text-ink-950',
