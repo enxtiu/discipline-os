@@ -583,6 +583,10 @@ async def test_csv_zip_one_file_per_table_with_bom_headers_and_safe_cells(accoun
     assert orjson.loads(settings["notification_prefs"]) == section_rows(document, "settings")[0]["notification_prefs"]
     readme = archive.read("README.txt").decode()
     assert "UTF-8" in readme and "tasks.csv" in readme and str(account["user_id"]) in readme
+    assert readme.startswith("DisciplineOS — выгрузка данных (CSV)")  # the app's language: ru by default
+    assert (await client.patch("/api/v1/settings", json={"language": "en"})).status_code == 200
+    english = zip_of(await download(client, "csv")).read("README.txt").decode()
+    assert english.startswith("DisciplineOS — data export (CSV)") and "Files and rows:" in english
 
 
 # --------------------------------------------------------------------------- #

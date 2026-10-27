@@ -44,7 +44,10 @@ async def _stream(
     extension: str,
 ) -> StreamingResponse:
     ctx = context_for(principal.settings_row, principal.user_id)
-    job = export.ExportJob(user_id=principal.user_id, tz=ctx.tz, now=utcnow())
+    language = getattr(principal.settings_row, "language", None)
+    job = export.ExportJob(
+        user_id=principal.user_id, tz=ctx.tz, now=utcnow(), language=str(getattr(language, "value", language or "ru"))
+    )
     # the export reads in a snapshot of its own: end the request's transaction (and the
     # device row it touched) now instead of holding it open while the file streams
     await db.commit()

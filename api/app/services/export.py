@@ -436,6 +436,7 @@ class ExportJob:
     user_id: uuid.UUID
     tz: str
     now: datetime  # aware UTC
+    language: str = "ru"  # of the CSV export's README (the app's language)
     counts: dict[str, int] = field(default_factory=dict)
     schema_version: str | None = None
 
@@ -625,11 +626,38 @@ Exported {exported_at} (UTC) for account {user_id}, timezone {timezone}.
   that your data refers to by id.
 * Secrets are never exported: no token hashes, pairing codes, push keys or raw AI payloads.
 
-For a restorable backup use «Резервная копия» (GET /api/v1/export/backup) instead.
+For a restorable backup download the backup (GET /api/v1/export/backup) instead.
 
 Files and rows:
 {files}
 """
+
+README_RU = """DisciplineOS — выгрузка данных (CSV)
+====================================
+
+Выгружено {exported_at} (UTC), аккаунт {user_id}, часовой пояс {timezone}.
+
+* Один CSV-файл на таблицу: UTF-8 с меткой BOM (Excel открывает его сразу), разделитель —
+  запятая, первая строка — названия столбцов, одна строка — одна запись.
+* Даты — ГГГГ-ММ-ДД; моменты времени — ISO-8601 в UTC (например, 2026-10-01T09:00:00+00:00);
+  `local_day`, `entry_date`, `measured_on` … — дни в вашем часовом поясе.
+* Десятичный разделитель — точка; да/нет — true/false; пустая ячейка — нет значения.
+* Столбцы со структурированными данными (aliases, scopes, настройки, components …) — JSON.
+* Текст, который начинается с = + - @, записан с ведущим ', чтобы таблица показала его
+  как текст, а не выполнила как формулу.
+* Сожжённые калории (workout_logs.kcal_burned, health_daily.active_kcal) — это активность,
+  а не бюджет еды.
+* library_*.csv — строки общей библиотеки (продукты, упражнения, достижения, задания),
+  на которые ссылаются ваши данные.
+* Секреты не выгружаются никогда: ни хэши токенов, ни коды привязки, ни ключи push,
+  ни исходные ответы ИИ.
+
+Для восстановимой копии скачайте резервную копию (GET /api/v1/export/backup).
+
+Файлы и строки:
+{files}
+"""
+READMES = {"ru": README_RU, "en": README}
 
 
 async def _csv_table(
@@ -670,7 +698,7 @@ async def csv_zip_chunks(db: AsyncSession, job: ExportJob) -> AsyncIterator[byte
             if chunk:
                 yield chunk
         files.append((filename, job.counts[count_key]))
-    readme = README.format(
+    readme = READMES.get(job.language, README_RU).format(
         exported_at=job.now.astimezone(UTC).isoformat(timespec="seconds"),
         user_id=job.user_id,
         timezone=job.tz,
