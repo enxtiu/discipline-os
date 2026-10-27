@@ -12,6 +12,10 @@ three warm-up requests, then ``--runs`` timed ones. Per endpoint: p50, p95 and m
 ``EXPLAIN (ANALYZE, BUFFERS)`` of the slowest SELECTs of the slowest endpoints (each in a
 rolled-back transaction). The screens and their endpoints are what the browser perf run
 (``scripts/perf/perf-run.mjs``) records when each screen opens, plus the /stats series.
+
+On a busy machine the tail is noise; to compare two versions fairly, run them alternately:
+``--compare /path/to/other/api --rounds 4`` runs this tree and the other one in turns
+(child processes, ``--runs`` requests per endpoint and round) and prints both side by side.
 """
 
 from __future__ import annotations
@@ -30,17 +34,22 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # `app` from api/
+# `app` from api/ — or from another checkout's api/ (`--app-dir`, to compare two versions
+# under the same machine load: run them alternately)
+_APP_DIR = (
+    sys.argv[sys.argv.index("--app-dir") + 1] if "--app-dir" in sys.argv else str(Path(__file__).resolve().parents[1])
+)
+sys.path.insert(0, _APP_DIR)
 os.environ.setdefault("LOG_LEVEL", "WARNING")
 os.environ.setdefault("SCHEDULER_ENABLED", "false")
 
-import httpx
-from sqlalchemy import event, select, text
+import httpx  # noqa: E402
+from sqlalchemy import event, select, text  # noqa: E402
 
-from app.db import SessionLocal, engine
-from app.main import app
-from app.models import User, UserSettings
-from app.services.pairing import create_pairing_code
+from app.db import SessionLocal, engine  # noqa: E402
+from app.main import app  # noqa: E402
+from app.models import User, UserSettings  # noqa: E402
+from app.services.pairing import create_pairing_code  # noqa: E402
 
 SCREENS: dict[str, list[str]] = {
     "today": [
@@ -87,6 +96,7 @@ class Result:
     path: str
     screen: str
     ms: list[float] = field(default_factory=list)
+    cpu_ms: list[float] = field(default_factory=list)  # this process's CPU (app + client), load-insensitive
     statements: list[int] = field(default_factory=list)
     db_ms: list[float] = field(default_factory=list)
     slowest: dict[str, Statement] = field(default_factory=dict)  # normalised SQL → slowest occurrence
@@ -150,9 +160,10 @@ async def bench(client: httpx.AsyncClient, screen: str, path: str, runs: int) ->
             raise SystemExit(f"✗ {path}: HTTP {warm.status_code} {warm.text[:300]}")
     for _ in range(runs):
         CAPTURE = []
-        started = time.perf_counter()
+        started, cpu_started = time.perf_counter(), time.process_time()
         response = await client.get(f"/api{path}")
         elapsed = (time.perf_counter() - started) * 1000
+        result.cpu_ms.append((time.process_time() - cpu_started) * 1000)
         captured, CAPTURE = CAPTURE, None
         result.ms.append(elapsed)
         result.statements.append(len(captured))
@@ -176,6 +187,63 @@ async def explain(item: Statement) -> str:
             await transaction.rollback()
 
 
+def compare(args: argparse.Namespace) -> int:
+    """This tree vs ``--compare`` in alternating child processes; p50/p95 over all rounds."""
+    import subprocess
+    import tempfile
+
+    here = str(Path(__file__).resolve().parents[1])
+    versions = {"this": here, "other": str(Path(args.compare).resolve())}
+    samples: dict[str, dict[str, list[float]]] = {name: {} for name in versions}
+    cpu: dict[str, dict[str, list[float]]] = {name: {} for name in versions}
+    statements: dict[str, dict[str, float]] = {name: {} for name in versions}
+    for round_no in range(args.rounds):
+        for name, app_dir in versions.items():
+            with tempfile.NamedTemporaryFile(suffix=".json") as out:
+                command = [sys.executable, __file__, "--app-dir", app_dir, "--runs", str(args.runs), "--explain", "0"]
+                command += ["--json", out.name] + (["--only", args.only] if args.only else [])
+                subprocess.run(command, check=True, capture_output=True)  # noqa: S603 - our own script
+                for row in json.loads(Path(out.name).read_text()):
+                    samples[name].setdefault(row["path"], []).extend(row["ms"])
+                    cpu[name].setdefault(row["path"], []).extend(row["cpu_ms"])
+                    statements[name][row["path"]] = row["sql_per_request"]
+        print(f"round {round_no + 1}/{args.rounds} done", file=sys.stderr)
+
+    def pct(values: list[float], q: float) -> float:
+        ordered = sorted(values)
+        return ordered[min(len(ordered) - 1, max(0, round(q * (len(ordered) - 1))))]
+
+    print(f"{args.rounds} alternating rounds x {args.runs} requests; ms (this = {here}, other = {args.compare})")
+    print(
+        f"{'endpoint':42} {'other p50':>9} {'p95':>7} {'cpu':>6} {'sql':>4}   {'this p50':>9} {'p95':>7} {'cpu':>6}"
+        f" {'sql':>4}"
+    )
+    for path in samples["this"]:
+        this, other = samples["this"][path], samples["other"].get(path, [0.0])
+        this_cpu, other_cpu = cpu["this"][path], cpu["other"].get(path, [0.0])
+        print(
+            f"{path:42.42} {pct(other, 0.5):9.1f} {pct(other, 0.95):7.1f} {pct(other_cpu, 0.5):6.1f}"
+            f" {statements['other'].get(path, 0):4.0f}   {pct(this, 0.5):9.1f} {pct(this, 0.95):7.1f}"
+            f" {pct(this_cpu, 0.5):6.1f} {statements['this'][path]:4.0f}"
+        )
+    if args.json:
+        summary = {
+            name: {
+                path: {
+                    "p50": round(pct(values, 0.5), 1),
+                    "p95": round(pct(values, 0.95), 1),
+                    "cpu_p50": round(pct(cpu[name][path], 0.5), 1),
+                    "sql": statements[name][path],
+                    "n": len(values),
+                }
+                for path, values in rows.items()
+            }
+            for name, rows in samples.items()
+        }
+        Path(args.json).write_text(json.dumps({"versions": versions, "summary": summary}, indent=2))
+    return 0
+
+
 def write_json(path: str, results: list[Result]) -> None:
     rows = [
         {
@@ -186,7 +254,10 @@ def write_json(path: str, results: list[Result]) -> None:
             "max": round(max(item.ms), 1),
             "sql_per_request": statistics.median(item.statements),
             "db_ms_p50": round(statistics.median(item.db_ms), 1),
+            "cpu_ms_p50": round(statistics.median(item.cpu_ms), 1),
             "bytes": item.size,
+            "ms": [round(value, 2) for value in item.ms],
+            "cpu_ms": [round(value, 2) for value in item.cpu_ms],
         }
         for item in results
     ]
@@ -199,7 +270,12 @@ async def main() -> int:
     parser.add_argument("--explain", type=int, default=4, help="EXPLAIN the slowest SELECTs of the N slowest endpoints")
     parser.add_argument("--only", default="", help="comma-separated screens (today,food,plan,stats)")
     parser.add_argument("--json", default="", help="write the numbers to this file")
+    parser.add_argument("--app-dir", default="", help="import `app` from this api/ directory instead")
+    parser.add_argument("--compare", default="", help="another api/ directory to run alternately with this one")
+    parser.add_argument("--rounds", type=int, default=4, help="rounds per version with --compare")
     args = parser.parse_args()
+    if args.compare:
+        return compare(args)
     screens = [name for name in SCREENS if not args.only or name in args.only.split(",")]
 
     transport = httpx.ASGITransport(app=app)
@@ -222,11 +298,15 @@ async def main() -> int:
                 results.append(await bench(client, screen, path.format(today=today), args.runs))
 
     print(f"\n{args.runs} timed requests each (after 3 warm-up), in-process; ms")
-    print(f"{'screen':6} {'endpoint':42} {'p50':>7} {'p95':>7} {'max':>7} {'sql/req':>8} {'db p50':>7} {'kB':>6}")
+    print(
+        f"{'screen':6} {'endpoint':42} {'p50':>7} {'p95':>7} {'max':>7} {'cpu p50':>8} {'sql/req':>8} {'db p50':>7}"
+        f" {'kB':>6}"
+    )
     for item in results:
         print(
             f"{item.screen:6} {item.path:42.42} {item.pct(0.5):7.1f} {item.pct(0.95):7.1f} {max(item.ms):7.1f} "
-            f"{statistics.median(item.statements):8.0f} {statistics.median(item.db_ms):7.1f} {item.size / 1000:6.1f}"
+            f"{statistics.median(item.cpu_ms):8.1f} {statistics.median(item.statements):8.0f} "
+            f"{statistics.median(item.db_ms):7.1f} {item.size / 1000:6.1f}"
         )
     over = [item for item in results if item.pct(0.95) > 100]
     print(f"\nabove 100 ms p95: {', '.join(item.path for item in over) or 'none'}")
