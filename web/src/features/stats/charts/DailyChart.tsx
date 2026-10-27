@@ -10,9 +10,9 @@
  *
  * "Nothing logged" is never drawn as zero: a series with `ghost` marks a past
  * day without data with a small dashed placeholder (bars), a dense series
- * simply leaves the day empty, and every tooltip says «нет записей». Tooltips
- * open on tap and follow a dragging finger; the chart itself is one
- * `role="img"` whose name is the text summary the card passes.
+ * simply leaves the day empty, and every tooltip says «нет записей». The
+ * tooltip opens on a tap and follows a dragging finger (`pick.tsx`); the chart
+ * itself is one `role="img"` whose name is the text summary the card passes.
  */
 import {
   Bar,
@@ -21,14 +21,14 @@ import {
   ComposedChart,
   Line,
   ReferenceArea,
+  ReferenceDot,
   ReferenceLine,
   ResponsiveContainer,
-  Tooltip,
   XAxis,
   YAxis,
-  type TooltipProps,
 } from 'recharts'
 
+import { TipBox, useChartPick } from './pick'
 import { useChartTheme, useReducedMotion, type ChartTheme } from './theme'
 import { tickDays, tickLabel, shortDay } from '../format'
 import type { StatsRange } from '../types'
@@ -123,6 +123,7 @@ export function DailyChart<Row extends { date: string }>({
   const reduced = useReducedMotion()
   const dense = isDense(rows)
   const today = range.today
+  const { picked, ref, handlers } = useChartPick(`${range.from}|${range.to}|${series.map((item) => item.key).join(',')}`)
 
   const kinds: SeriesKind[] = series.map((item) => (dense ? (item.denseKind ?? 'line') : (item.kind ?? 'bar')))
   const values = rows.flatMap((row) => series.map((item) => item.value(row))).filter((v): v is number => v != null)
@@ -167,11 +168,25 @@ export function DailyChart<Row extends { date: string }>({
   const hasBars = kinds.includes('bar')
   const animate = !reduced
   const dotRadius = dense ? (rows.length > 120 ? 1.6 : 2.2) : 3.5
+  const pickedRow = picked ? rows[picked.index] : undefined
 
   return (
-    <div role="img" aria-label={summary} data-testid={testId} data-dense={dense || undefined} className="stats-chart -mx-1 select-none">
+    <div
+      ref={ref}
+      role="img"
+      aria-label={summary}
+      data-testid={testId}
+      data-dense={dense || undefined}
+      className="stats-chart relative -mx-1 touch-pan-y select-none"
+    >
       <ResponsiveContainer width="100%" height={height} initialDimension={{ width: 320, height }}>
-        <ComposedChart data={data} margin={{ top: 8, right: 0, bottom: 0, left: 4 }} barCategoryGap={dense ? 0 : 2} barGap={2}>
+        <ComposedChart
+          data={data}
+          margin={{ top: 8, right: 0, bottom: 0, left: 4 }}
+          barCategoryGap={dense ? 0 : 2}
+          barGap={2}
+          {...handlers}
+        >
           <CartesianGrid vertical={false} stroke={theme.grid} strokeWidth={1} />
           {band && (
             <ReferenceArea
@@ -206,15 +221,20 @@ export function DailyChart<Row extends { date: string }>({
             tick={{ fill: theme.muted, fontSize: 11 }}
             tickFormatter={(value: number) => formatY(value)}
           />
-          <Tooltip
-            content={<TooltipBox render={tooltip as (row: unknown) => TooltipLine[]} theme={theme} />}
-            cursor={hasBars ? { fill: theme.alpha(theme.ink, theme.dark ? 0.07 : 0.06) } : { stroke: theme.muted, strokeWidth: 1 }}
-            isAnimationActive={false}
-            position={{ y: 0 }}
-            offset={12}
-            allowEscapeViewBox={{ x: false, y: true }}
-            wrapperStyle={{ outline: 'none', zIndex: 5 }}
-          />
+          {pickedRow &&
+            (hasBars ? (
+              <ReferenceArea
+                x1={pickedRow.date}
+                x2={pickedRow.date}
+                ifOverflow="hidden"
+                fill={theme.ink}
+                fillOpacity={theme.dark ? 0.08 : 0.06}
+                stroke="none"
+                className="stats-picked"
+              />
+            ) : (
+              <ReferenceLine x={pickedRow.date} stroke={theme.muted} strokeWidth={1} className="stats-picked" />
+            ))}
           {!hasBars && (
             // a bar series with no values: the category axis becomes a band scale, so the days
             // of a line sit at the centres of their slots (aligned with the ticks), not on the edges
@@ -281,10 +301,27 @@ export function DailyChart<Row extends { date: string }>({
                     always={!line || item.dots === true}
                   />
                 )}
-                activeDot={{ r: 4.5, fill: item.color, stroke: theme.surface, strokeWidth: 2 }}
+                activeDot={false}
               />
             )
           })}
+          {pickedRow &&
+            series.map((item, s) => {
+              const value = item.value(pickedRow)
+              if (kinds[s] === 'bar' || value == null) return null
+              return (
+                <ReferenceDot
+                  key={`picked-${item.key}`}
+                  x={pickedRow.date}
+                  y={value}
+                  r={4.5}
+                  fill={item.colorOf ? item.colorOf(pickedRow) : item.color}
+                  stroke={theme.surface}
+                  strokeWidth={2}
+                  ifOverflow="visible"
+                />
+              )
+            })}
           {target && (
             <ReferenceLine
               y={target.value}
@@ -309,6 +346,11 @@ export function DailyChart<Row extends { date: string }>({
           )}
         </ComposedChart>
       </ResponsiveContainer>
+      {picked && pickedRow && (
+        <TipBox x={picked.x} width={ref.current?.clientWidth ?? 320}>
+          <TipLines day={pickedRow.date} lines={tooltip(pickedRow)} theme={theme} />
+        </TipBox>
+      )}
     </div>
   )
 }
@@ -378,21 +420,10 @@ function SeriesDot({
   )
 }
 
-function TooltipBox({
-  active,
-  payload,
-  render,
-  theme,
-}: TooltipProps<number, string> & { render: (row: unknown) => TooltipLine[]; theme: ChartTheme }) {
-  const datum = payload?.[0]?.payload as Datum | undefined
-  if (!active || !datum) return null
-  const lines = render(datum.__row)
+function TipLines({ day, lines, theme }: { day: string; lines: TooltipLine[]; theme: ChartTheme }) {
   return (
-    <div
-      className="pointer-events-none min-w-[9rem] max-w-[15rem] rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--bg-elevated))] px-3 py-2 text-xs shadow-card"
-      data-testid="chart-tooltip"
-    >
-      <p className="mb-1 font-medium muted">{shortDay(datum.date)}</p>
+    <>
+      <p className="mb-1 font-medium muted">{shortDay(day)}</p>
       <ul className="space-y-0.5">
         {lines.map((line, index) => (
           <li key={index} className="flex items-center gap-2">
@@ -408,6 +439,6 @@ function TooltipBox({
           </li>
         ))}
       </ul>
-    </div>
+    </>
   )
 }
