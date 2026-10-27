@@ -2071,6 +2071,93 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/integrations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Integrations and their status (Notion) */
+        get: operations["list_integrations_api_v1_integrations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integrations/notion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The Notion mirror: connection, page, databases per kind, the last run (polled while running) */
+        get: operations["get_notion_api_v1_integrations_notion_get"];
+        put?: never;
+        post?: never;
+        /** Disconnect: stop syncing, delete the secret and the links (everything in Notion stays) */
+        delete: operations["disconnect_notion_api_v1_integrations_notion_delete"];
+        options?: never;
+        head?: never;
+        /** Choose the kinds to sync (a kind switched off keeps its database and pages in Notion) */
+        patch: operations["patch_notion_api_v1_integrations_notion_patch"];
+        trace?: never;
+    };
+    "/api/v1/integrations/notion/connect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Connect: check the secret (GET /users/me) and the page (GET /pages/{id}), store the secret sealed */
+        post: operations["connect_notion_api_v1_integrations_notion_connect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integrations/notion/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create the databases the given kinds lack under the page (also «create again» for a missing one) */
+        post: operations["setup_notion_api_v1_integrations_notion_setup_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integrations/notion/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Sync now, in the background (409 notion_sync_running while one runs); poll GET /integrations/notion */
+        post: operations["sync_notion_api_v1_integrations_notion_sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -3680,6 +3767,39 @@ export interface components {
             /** Created */
             created: boolean;
         };
+        /** IntegrationListOut */
+        IntegrationListOut: {
+            /** Items */
+            items: components["schemas"]["IntegrationSummaryOut"][];
+        };
+        /** IntegrationPageOut */
+        IntegrationPageOut: {
+            /** Id */
+            id: string;
+            /** Title */
+            title: string | null;
+            /** Url */
+            url: string;
+        };
+        /** IntegrationSummaryOut */
+        IntegrationSummaryOut: {
+            /**
+             * Provider
+             * @constant
+             */
+            provider: "notion";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "connected" | "error" | "disconnected";
+            /** Connected */
+            connected: boolean;
+            /** Last Sync At */
+            last_sync_at: string | null;
+            /** Error */
+            error: string | null;
+        };
         /** JournalAreaMinutesOut */
         JournalAreaMinutesOut: {
             area?: components["schemas"]["RefOut"] | null;
@@ -4280,6 +4400,222 @@ export interface components {
             push_enabled: boolean;
             /** Active Subscriptions */
             active_subscriptions: number;
+        };
+        /** NotionConnectIn */
+        NotionConnectIn: {
+            /**
+             * Secret
+             * Format: password
+             * @description The internal connection's secret (Notion → Developer portal → the connection → Configuration)
+             */
+            secret: string;
+            /**
+             * Page
+             * @description Link to the page (or its id) the connection was given access to
+             */
+            page: string;
+        };
+        /** NotionIntegrationOut */
+        NotionIntegrationOut: {
+            /**
+             * Provider
+             * @default notion
+             * @constant
+             */
+            provider: "notion";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "connected" | "error" | "disconnected";
+            /** Connected */
+            connected: boolean;
+            /** Secret Set */
+            secret_set: boolean;
+            /** Bot Name */
+            bot_name: string | null;
+            /** Workspace Name */
+            workspace_name: string | null;
+            page: components["schemas"]["IntegrationPageOut"] | null;
+            /** Kinds */
+            kinds: components["schemas"]["NotionKindOut"][];
+            sync: components["schemas"]["NotionSyncOut"];
+            /**
+             * Error
+             * @description Why the status is error (notion_* code), else null
+             */
+            error: string | null;
+            /** Notion Version */
+            notion_version: string;
+            /**
+             * Interval Minutes
+             * @description How often the server syncs on its own
+             */
+            interval_minutes: number;
+        };
+        /** NotionKindCountsOut */
+        NotionKindCountsOut: {
+            /**
+             * Created
+             * @default 0
+             */
+            created: number;
+            /**
+             * Updated
+             * @default 0
+             */
+            updated: number;
+            /**
+             * Trashed
+             * @default 0
+             */
+            trashed: number;
+            /**
+             * Unchanged
+             * @default 0
+             */
+            unchanged: number;
+            /**
+             * Failed
+             * @default 0
+             */
+            failed: number;
+            /**
+             * Pending
+             * @default 0
+             */
+            pending: number;
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+            /**
+             * State
+             * @default ok
+             */
+            state: string;
+        };
+        /** NotionKindOut */
+        NotionKindOut: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "areas" | "projects" | "tasks" | "journal" | "days";
+            /** Enabled */
+            enabled: boolean;
+            /**
+             * Database
+             * @description ok: the database exists · missing: deleted or unshared in Notion · none: not created yet
+             * @enum {string}
+             */
+            database: "ok" | "missing" | "none";
+            /** Url */
+            url: string | null;
+            last_run?: components["schemas"]["NotionKindCountsOut"] | null;
+        };
+        /** NotionKindsIn */
+        NotionKindsIn: {
+            /**
+             * Kinds
+             * @description The kinds to sync (others are switched off)
+             */
+            kinds: ("areas" | "projects" | "tasks" | "journal" | "days")[];
+        };
+        /** NotionSetupIn */
+        NotionSetupIn: {
+            /**
+             * Kinds
+             * @description Create the databases these kinds lack (and enable them)
+             */
+            kinds: ("areas" | "projects" | "tasks" | "journal" | "days")[];
+        };
+        /** NotionSyncOut */
+        NotionSyncOut: {
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "idle" | "running";
+            /** Run Id */
+            run_id: string | null;
+            /** Started At */
+            started_at: string | null;
+            /** Finished At */
+            finished_at: string | null;
+            /** Last Sync At */
+            last_sync_at: string | null;
+            /**
+             * Result
+             * @description The last run: ok · partial (continues on the next run) · error · interrupted
+             */
+            result: ("ok" | "partial" | "error" | "interrupted") | null;
+            /**
+             * Error
+             * @description notion_* code the app explains (what happened, what to do)
+             */
+            error: string | null;
+            /** Error Kind */
+            error_kind?: ("areas" | "projects" | "tasks" | "journal" | "days") | null;
+            totals?: components["schemas"]["NotionTotalsOut"] | null;
+            /**
+             * Requests
+             * @default 0
+             */
+            requests: number;
+        };
+        /** NotionSyncStartOut */
+        NotionSyncStartOut: {
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+            /**
+             * State
+             * @default running
+             * @constant
+             */
+            state: "running";
+        };
+        /** NotionTotalsOut */
+        NotionTotalsOut: {
+            /**
+             * Created
+             * @default 0
+             */
+            created: number;
+            /**
+             * Updated
+             * @default 0
+             */
+            updated: number;
+            /**
+             * Trashed
+             * @default 0
+             */
+            trashed: number;
+            /**
+             * Unchanged
+             * @default 0
+             */
+            unchanged: number;
+            /**
+             * Failed
+             * @default 0
+             */
+            failed: number;
+            /**
+             * Pending
+             * @default 0
+             */
+            pending: number;
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
         };
         /**
          * NutritionAdherenceOut
@@ -12596,6 +12932,183 @@ export interface operations {
                 };
                 content: {
                     "application/zip": string;
+                };
+            };
+        };
+    };
+    list_integrations_api_v1_integrations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationListOut"];
+                };
+            };
+        };
+    };
+    get_notion_api_v1_integrations_notion_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotionIntegrationOut"];
+                };
+            };
+        };
+    };
+    disconnect_notion_api_v1_integrations_notion_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    patch_notion_api_v1_integrations_notion_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotionKindsIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotionIntegrationOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    connect_notion_api_v1_integrations_notion_connect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotionConnectIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotionIntegrationOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    setup_notion_api_v1_integrations_notion_setup_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotionSetupIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotionIntegrationOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sync_notion_api_v1_integrations_notion_sync_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotionSyncStartOut"];
                 };
             };
         };

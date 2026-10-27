@@ -34,6 +34,10 @@ const HealthPage = lazy(() => import('@/features/health/HealthPage').then((m) =>
 const PlanRoutes = lazy(() => import('@/features/plan/PlanRoutes'))
 // stage 8: the Stats tab (dashboards, achievements) is one lazy chunk with nested routes
 const StatsRoutes = lazy(() => import('@/features/stats/StatsRoutes'))
+// stage 9: Settings → Интеграции (the optional Notion sync) loads on first visit
+const IntegrationsScreen = lazy(() =>
+  import('@/features/integrations/IntegrationsScreen').then((m) => ({ default: m.IntegrationsScreen })),
+)
 import { FoodPage } from '@/features/food/FoodPage'
 import { SettingsHeader } from '@/features/settings/SettingsHeader'
 
@@ -72,6 +76,7 @@ function Shell() {
           <Route path="tokens" element={<TokensSection />} />
           <Route path="shortcut" element={<ShortcutSection />} />
           <Route path="data" element={<DataSection />} />
+          <Route path="integrations" element={<Lazy><IntegrationsScreen /></Lazy>} />
         </Route>
 
         <Route path="*" element={<Navigate to="/today" replace />} />

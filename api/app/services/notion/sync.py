@@ -322,8 +322,8 @@ async def connect(db: AsyncSession, *, user_id: uuid.UUID, secret_raw: str, page
             raise _app_error(exc) from None
         try:
             page = await client.retrieve_page(page_id)
-        except NotionValidation:
-            raise Unprocessable("This is not a Notion page", code="notion_page_not_shared") from None
+        except NotionValidation:  # e.g. the link of a database, not of a page
+            raise Unprocessable("This is not a link to a Notion page", code="notion_page_invalid") from None
         except NotionError as exc:
             raise _app_error(exc, page_stage=True) from None
     if page.get("in_trash") or page.get("archived"):
