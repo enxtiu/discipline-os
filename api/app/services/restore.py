@@ -21,7 +21,9 @@
   restore run again changes nothing); an unsigned one is taken by a truly empty
   account only (a second run is refused).
 * **Values are checked, never trusted** (signed or not). Every value must have its
-  column's type; JSON columns their shape; settings the API's bounds and its safety
+  column's type; JSON columns the shape the app's readers rely on (an object or an
+  array as the column's default, never ``null``; lists of text, reminder definitions,
+  a score breakdown of numbers in range …); settings the API's bounds and its safety
   rule — a safe floor below the default, or a calorie target below the floor, without
   ``safe_floor_confirmed_at`` is put back to the floor (and reported), never stored
   as it came; derived rows of a signed backup must be non-negative and within what the
@@ -60,7 +62,9 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import math
 import os
+import re
 import uuid
 import zipfile
 import zlib
@@ -413,12 +417,115 @@ def _decoder(column: sa.Column) -> Callable[[Any], Any]:
             return value
 
     elif isinstance(kind, sa.JSON):
-        return lambda value: value
+        return _json_decoder(column)
     elif isinstance(kind, sa.String):
         convert = _text
     else:  # pragma: no cover - every exported column type is listed above
         return lambda value: value
     return lambda value: None if value is None else convert(value)
+
+
+def _json_decoder(column: sa.Column) -> Callable[[Any], Any]:
+    """A JSON column holds the kind of value its default has (``'{}'`` an object, ``'[]'``
+    an array) and is never JSON ``null`` where the column is NOT NULL (readers rely on
+    both: ``row.tags`` is a list of text, ``payload.get(…)`` needs an object)."""
+    default = str(column.server_default.arg) if column.server_default is not None else ""  # e.g. '{}'::jsonb
+    container: type | None = dict if default.startswith("'{") else list if default.startswith("'[") else None
+    nullable = bool(column.nullable)
+
+    def convert(value: Any) -> Any:
+        if value is None:
+            if nullable:
+                return None
+            raise ValueError("a value is required, not null")
+        if container is not None and not isinstance(value, container):
+            raise ValueError("a JSON object is required" if container is dict else "a JSON array is required")
+        return value
+
+    return convert
+
+
+# --------------------------------------------------------------------------- #
+# JSON shapes: what the app's readers rely on (a restored value never 500s a page)
+# --------------------------------------------------------------------------- #
+HHMM = re.compile(r"([01]\d|2[0-3]):[0-5]\d")
+
+
+def _number(value: Any, low: float, high: float) -> bool:
+    return (
+        not isinstance(value, bool) and isinstance(value, int | float) and math.isfinite(value) and low <= value <= high
+    )
+
+
+def _texts(value: list[Any]) -> None:
+    if not all(isinstance(item, str) for item in value):
+        raise ValueError("every item must be text")
+
+
+def _objects(value: list[Any]) -> None:
+    if not all(isinstance(item, dict) for item in value):
+        raise ValueError("every item must be an object")
+
+
+def _days(value: list[Any]) -> None:
+    for item in value:
+        if not isinstance(item, str):
+            raise ValueError("every item must be a YYYY-MM-DD day")
+        date.fromisoformat(item)
+
+
+def _score_components(value: dict[str, Any]) -> None:
+    """``daily_scores.components`` as the score service writes it (extra keys are fine)."""
+    for flag in ("provisional", "credit", "final"):
+        if flag in value and not isinstance(value[flag], bool):
+            raise ValueError(f"{flag} must be true or false")
+    if "version" in value and not _number(value["version"], 0, 10**6):
+        raise ValueError("version must be a number")
+    items = value.get("items", [])
+    if not isinstance(items, list):
+        raise ValueError("items must be an array")
+    for item in items:
+        if not isinstance(item, dict) or not isinstance(item.get("key"), str):
+            raise ValueError("every item must be an object with a text key")
+        for name, high in (("value", 1), ("weight", 100)):
+            if item.get(name) is not None and not _number(item[name], 0, high):
+                raise ValueError(f"items[{item['key']}].{name} must be a number in 0..{high}")
+        if item.get("excluded") is not None and not isinstance(item["excluded"], bool):
+            raise ValueError(f"items[{item['key']}].excluded must be true or false")
+        if item.get("detail") is not None and not isinstance(item["detail"], dict):
+            raise ValueError(f"items[{item['key']}].detail must be an object")
+
+
+def _score_weights(value: dict[str, Any]) -> None:
+    for key, weight in value.items():
+        if not _number(weight, 0, 100):
+            raise ValueError(f"{key} must be a number in 0..100")
+
+
+def _reminder_payload(value: dict[str, Any]) -> None:
+    """A reminder's definition: ``{"lead_minutes": n}`` or ``{"date": …, "time": "HH:MM"}``."""
+    lead = value.get("lead_minutes")
+    if "lead_minutes" in value and not (isinstance(lead, int) and _number(lead, 0, 10_080)):
+        raise ValueError("lead_minutes must be a whole number of minutes in 0..10080")
+    if "date" in value:
+        if not isinstance(value["date"], str):
+            raise ValueError("date must be a YYYY-MM-DD day")
+        date.fromisoformat(value["date"])
+    if "time" in value and not (isinstance(value["time"], str) and HHMM.fullmatch(value["time"])):
+        raise ValueError("time must be HH:MM")
+
+
+SHAPES: dict[str, dict[str, Callable[[Any], None]]] = {
+    "foods": {"aliases": _texts},
+    "saved_meal_templates": {"items": _objects},
+    "exercises": {"aliases": _texts, "secondary_muscles": _texts},
+    "resources": {"tags": _texts},
+    "tasks": {"tags_snapshot": _texts},
+    "journal_entries": {"tags": _texts},
+    "reminders": {"payload": _reminder_payload},
+    "streaks": {"freeze_used_dates": _days},
+    "daily_scores": {"components": _score_components, "weights": _score_weights},
+}
 
 
 # --------------------------------------------------------------------------- #
@@ -508,6 +615,11 @@ ROW_RULES: dict[str, Callable[[dict[str, Any], list[str]], None]] = {
 
 
 def _check_values(section: Section, row: dict[str, Any], plan: _Plan) -> None:
+    for column, shape in SHAPES.get(section.name, {}).items():
+        try:
+            shape(row[column])
+        except (TypeError, ValueError) as exc:
+            raise RestoreError(f"{section.name}.{column}: {exc} — not a shape this app stores") from None
     for column, (low, high) in BOUNDS.get(section.name, {}).items():
         value = row.get(column)
         if value is not None and not low <= value <= high:
@@ -767,7 +879,9 @@ def _decode(section: Section, raw: dict[str, Any], decoders: dict[str, Callable[
         try:
             row[name] = decode(raw[name])
         except (TypeError, ValueError) as exc:
-            raise RestoreError(f"{section.name}.{name}: bad value {raw[name]!r} ({exc})") from None
+            shown = repr(raw[name])
+            shown = shown if len(shown) <= 120 else shown[:117] + "…"
+            raise RestoreError(f"{section.name}.{name}: bad value {shown} ({exc})") from None
     return row
 
 

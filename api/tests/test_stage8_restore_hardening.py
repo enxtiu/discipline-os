@@ -17,6 +17,11 @@ path is exactly the one built for that meal of the target account and the file i
 there — no ``has_photo: true`` without a picture, no way to read or delete another
 account's file.
 
+L2 — restored JSON columns have the shape the app's readers rely on (an object or
+an array as the column's default, never ``null``; lists of text, reminder
+definitions, a score breakdown of numbers in range …): anything else is refused,
+so a restored row never turns a page into a 500.
+
 L1 — a backup archive is checked before anything in it is inflated: the declared
 sizes (``manifest.json`` ≤ 1 MiB, ``data.json`` ≤ ``BACKUP_MAX_DATA_BYTES``), the
 compression ratio, and reading stops at the limit even when a header lies — a tiny
@@ -31,7 +36,7 @@ import struct
 import tracemalloc
 import uuid
 import zipfile
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -61,7 +66,16 @@ from tests.stage8_helpers import (
     xp_rows,
     xp_total,
 )
-from tests.test_stage8_export import cli, counts, populate, restore_file, rewrite_backup, save_backup, wipe
+from tests.test_stage8_export import (
+    cli,
+    counts,
+    gamify,
+    populate,
+    restore_file,
+    rewrite_backup,
+    save_backup,
+    wipe,
+)
 
 pytestmark = pytest.mark.anyio
 MiB = 1 << 20
@@ -567,7 +581,7 @@ async def test_an_unsigned_backup_goes_into_an_empty_account_and_the_engine_rebu
         ("units", "imperial", r"settings\.units: 'imperial' — the app is metric only"),
         ("xp_weights", {"score_weights": {"kcal": 500}}, r"settings\.xp_weights: score weight kcal must be"),
         ("xp_weights", {"xp_multipliers": {"nutrition": 50}}, r"settings\.xp_weights: XP multiplier nutrition"),
-        ("xp_weights", [], r"settings\.xp_weights: an object is required"),
+        ("xp_weights", [], r"settings\.xp_weights: bad value \[\] \(a JSON object is required\)"),
     ],
 )
 async def test_settings_the_app_never_stores_are_refused(authed, db, tmp_path, column, value, message) -> None:
@@ -615,3 +629,97 @@ def test_the_bounds_cover_every_award_the_engine_makes() -> None:
     )
     assert largest * MAX_XP_MULTIPLIER <= restore.MAX_EVENT_POINTS
     assert restore.MAX_FREEZE_TOKENS == MAX_FREEZE_TOKENS
+
+
+# --------------------------------------------------------------------------- #
+# L2 — JSON columns: the shapes the app's readers rely on
+# --------------------------------------------------------------------------- #
+async def test_probe_x4_a_malformed_score_breakdown_never_reaches_the_scores_endpoint(owner, db, tmp_path) -> None:
+    """Probe X4: a frozen day's ``components.items[0].value = "n/a"``. Edited: refused
+    (M3); signed: refused by its shape — ``GET /gamification/scores`` stays a 200."""
+    frozen_day = TODAY - timedelta(days=5)
+    async with other_user() as b_client:
+        b_id = await _b_id(db)
+        await configure(db, b_id)
+        await meal(db, b_id, frozen_day, 1800)
+        await run(db, b_id, NOON)  # frozen_day is finalised (and frozen) by this run
+        original = await save_backup(b_client, tmp_path / "b.zip")
+
+        def damage(document: dict[str, Any], manifest: dict[str, Any]) -> None:
+            for row in document["tables"]["daily_scores"]:
+                if row["local_day"] == frozen_day.isoformat():
+                    row["components"]["items"][0]["value"] = "n/a"
+
+        with pytest.raises(RestoreError, match="this server did not sign the backup"):
+            await restore_file(rewrite_backup(original, tmp_path / "damaged.zip", damage))
+        with pytest.raises(
+            RestoreError,
+            match=r"daily_scores\.components: items\[kcal\]\.value must be a number in 0\.\.1 — not a shape",
+        ):
+            await restore_file(rewrite_backup(original, tmp_path / "signed.zip", damage, sign=True))
+        params = {"from": (frozen_day - timedelta(days=1)).isoformat(), "to": frozen_day.isoformat()}
+        response = await b_client.get("/api/v1/gamification/scores", params=params)
+        assert response.status_code == 200, response.text
+
+
+SHAPE_CASES: list[tuple[str, str, Any, str]] = [
+    ("settings", "notification_prefs", [], r"settings\.notification_prefs: bad value \[\] \(a JSON object"),
+    ("settings", "notification_prefs", None, r"settings\.notification_prefs: bad value None \(a value is required"),
+    ("settings", "extras", "x", r"settings\.extras: bad value 'x' \(a JSON object is required"),
+    ("foods", "aliases", ["сырники", 7], r"foods\.aliases: every item must be text"),
+    ("saved_meal_templates", "items", ["2 eggs"], r"saved_meal_templates\.items: every item must be an object"),
+    ("exercises", "secondary_muscles", {"chest": 1}, r"exercises\.secondary_muscles: bad value .*a JSON array"),
+    ("health_daily", "raw_payload", [1, 2], r"health_daily\.raw_payload: bad value \[1, 2\] \(a JSON object"),
+    ("projects", "external_meta", None, r"projects\.external_meta: bad value None"),
+    ("resources", "tags", [None], r"resources\.tags: every item must be text"),
+    ("tasks", "tags_snapshot", "важное", r"tasks\.tags_snapshot: bad value 'важное' \(a JSON array"),
+    ("journal_entries", "tags", [["nested"]], r"journal_entries\.tags: every item must be text"),
+    ("reminders", "payload", {"lead_minutes": "soon"}, r"reminders\.payload: lead_minutes must be a whole number"),
+    ("reminders", "payload", {"lead_minutes": 10_081}, r"reminders\.payload: lead_minutes must be"),
+    ("reminders", "payload", {"date": "tomorrow", "time": "09:00"}, r"reminders\.payload: Invalid isoformat"),
+    ("reminders", "payload", {"date": "2026-07-14", "time": "25:00"}, r"reminders\.payload: time must be HH:MM"),
+    ("xp_events", "meta", [], r"xp_events\.meta: bad value \[\] \(a JSON object"),
+    ("streaks", "freeze_used_dates", ["yesterday"], r"streaks\.freeze_used_dates: Invalid isoformat"),
+    ("streaks", "freeze_used_dates", [20260714], r"streaks\.freeze_used_dates: every item must be a YYYY-MM-DD"),
+    ("daily_scores", "components", {"credit": "true"}, r"daily_scores\.components: credit must be true or false"),
+    ("daily_scores", "components", {"items": {"kcal": 1}}, r"daily_scores\.components: items must be an array"),
+    ("daily_scores", "components", {"items": [{"value": 1}]}, r"daily_scores\.components: every item must be an"),
+    (
+        "daily_scores",
+        "components",
+        {"items": [{"key": "water", "value": 0.5, "weight": 10, "detail": "ok"}]},
+        r"daily_scores\.components: items\[water\]\.detail must be an object",
+    ),
+    ("daily_scores", "weights", {"kcal": "25"}, r"daily_scores\.weights: kcal must be a number in 0\.\.100"),
+]
+
+
+async def test_json_columns_of_a_shape_the_app_never_stores_are_refused(authed, owner, db, tmp_path) -> None:
+    """One account with a row in every table (and the engine's rows), one malformed JSON
+    value at a time — in a backup this server signed, so the check itself is reached."""
+    await configure(db, owner.id)
+    await populate(db, owner.id)
+    await gamify(db, owner.id)
+    original = await save_backup(authed, tmp_path / "a.zip")
+    before = await counts(db, owner.id)
+    for index, (table, column, value, message) in enumerate(SHAPE_CASES):
+
+        def change(document: dict[str, Any], manifest: dict[str, Any], table=table, column=column, value=value) -> None:
+            document["tables"][table][0][column] = value
+
+        with pytest.raises(RestoreError, match=message):
+            await restore_file(rewrite_backup(original, tmp_path / f"{index}.zip", change, sign=True))
+    assert await counts(db, owner.id) == before
+
+    def tolerated(document: dict[str, Any], manifest: dict[str, Any]) -> None:
+        # what PATCH /settings itself accepts (any object; the reader falls back key by key) and
+        # a score breakdown with a key a newer engine may add
+        document["tables"]["settings"][0]["notification_prefs"] = {"meal_times": "09:00", "legacy_flag": 1}
+        document["tables"]["daily_scores"][0]["components"]["final"] = True
+
+    report = await restore_file(rewrite_backup(original, tmp_path / "tolerated.zip", tolerated, sign=True))
+    assert report.tables["settings"].updated == 1 and report.tables["daily_scores"].updated == 1
+    from app.services.notifications import DEFAULT_MEAL_TIMES
+
+    prefs = await authed.get("/api/v1/notifications/prefs")
+    assert prefs.status_code == 200 and prefs.json()["meal_times"] == list(DEFAULT_MEAL_TIMES)  # the reader's fallback
