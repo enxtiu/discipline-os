@@ -13,7 +13,12 @@
   ``app.schemas.stats`` says which.
 * **Exactly the score's numbers.** Targets, the safe floor and the calorie zone come
   from the gamification context (``context_for``), the same object the daily score
-  uses; current targets apply to the whole period, as in the streaks.
+  uses, and every per-day verdict (``in_zone``, ``on_target``, the adherence counts)
+  goes through the same predicates as the XP, streaks, quests and achievements: a
+  finished day is judged against the targets it was finalised with (its stored score
+  row), a finished week against the requirement frozen when it ended; the current
+  targets (the top-level ``target_*``/``zone``/``floor``) apply to the open window
+  (today, yesterday) and the current plan to the current week — as in the streaks.
 * **Burned calories are never nutrition.** Workout kcal and Health's active energy
   are their own series in activity; nothing here adds them to intake or a target.
 """
@@ -132,10 +137,10 @@ class NutritionSeries:
 
 
 async def nutrition(db: AsyncSession, ctx: GameContext, span: Span) -> NutritionSeries:
-    """Food and water per day (two grouped queries). Burned calories are not here."""
+    """Food and water per day (three grouped queries). Burned calories are not here."""
+    await score.load_frozen(db, ctx, span.first, span.last)  # finished days: their own targets
     food = await day_metrics.nutrition_by_day(db, ctx.user_id, span.first, span.last)
     water = await day_metrics.water_by_day(db, ctx.user_id, span.first, span.last)
-    targets, zone, floor = ctx.targets, ctx.zone, ctx.floor
     days: list[NutritionDay] = []
     adherence = {"zone_days": 0, "protein_days": 0, "water_days": 0, "logged_days": 0}
     finished: list[NutritionDay] = []
@@ -145,9 +150,19 @@ async def nutrition(db: AsyncSession, ctx: GameContext, span: Span) -> Nutrition
         ml = water.get(day)
         meals = n.meals if n is not None else 0
         logged = n is not None and meals > 0
+        # the day's verdicts go through the same predicates as XP, streaks and achievements
+        rules = ctx.rules_for(day)
+        metrics = day_metrics.DayMetrics(
+            day=day,
+            kcal=n.kcal if n is not None else 0.0,
+            protein_g=n.protein_g if n is not None else 0.0,
+            fiber_g=n.fiber_g if n is not None else 0.0,
+            meals=meals,
+            water_ml=ml or 0,
+        )
         in_zone = None
-        if logged and day < span.today and zone.target is not None:
-            in_zone = zone.contains(n.kcal)
+        if logged and day < span.today and rules.zone.target is not None:
+            in_zone = rules.in_zone(metrics)
         item = NutritionDay(
             day=day,
             kcal=round(n.kcal, 2) if logged else None,
@@ -164,12 +179,13 @@ async def nutrition(db: AsyncSession, ctx: GameContext, span: Span) -> Nutrition
             continue
         if logged:
             adherence["logged_days"] += 1
-            # never rewarded below the floor — the same rule as the protein XP and achievements
-            if targets.protein_g and n.kcal >= floor and n.protein_g >= targets.protein_g:
+            # nutrition credit (a meal at or above the floor) — the same rule as the XP,
+            # the streaks, the quests and the achievements
+            if rules.protein_met(metrics):
                 adherence["protein_days"] += 1
             if in_zone:
                 adherence["zone_days"] += 1
-        if targets.water_ml and ml is not None and ml >= targets.water_ml:
+        if rules.water_met(metrics):
             adherence["water_days"] += 1
         if day < span.today:
             if logged:
@@ -232,20 +248,22 @@ class ActivitySeries:
 
 
 async def activity(db: AsyncSession, ctx: GameContext, span: Span) -> ActivitySeries:
-    """Steps, workouts and burned calories per day, whole weeks against the plan,
-    working-set volume per muscle and the period's records (six queries)."""
+    """Steps, workouts and burned calories per day, whole weeks against the plan (a
+    finished week against the requirement frozen when it ended), working-set volume per
+    muscle and the period's records (seven queries)."""
     user_id = ctx.user_id
     week_first = week_start_for(span.first, ctx.week_start)
     week_last = week_start_for(span.last, ctx.week_start) + timedelta(days=6)
+    frozen_weeks = await score.load_frozen(db, ctx, week_first, week_last)
     health = await day_metrics.health_by_day(db, user_id, span.first, span.last)
     workouts = await day_metrics.workouts_by_day(db, user_id, week_first, week_last)
     plan = await day_metrics.plan_by_day(db, user_id, week_first, week_last)
-    target_steps = ctx.targets.steps
     days = []
     for day in span.days:
         h = health.get(day)
         w = workouts.get(day)
         steps = h.steps if h is not None else None
+        target_steps = ctx.rules_for(day).targets.steps
         days.append(
             ActivityDay(
                 day=day,
@@ -260,14 +278,17 @@ async def activity(db: AsyncSession, ctx: GameContext, span: Span) -> ActivitySe
     cursor = week_first
     while cursor <= week_last:
         week_days = [cursor + timedelta(days=offset) for offset in range(7)]
-        planned = sum(1 for day in week_days if plan.get(day) == "workout")
-        has_plan = any(day in plan for day in week_days)
+        week_plan = frozen_weeks.get(cursor) or WeekPlan(
+            cursor,
+            sum(1 for day in week_days if plan.get(day) == "workout"),
+            any(day in plan for day in week_days),
+        )
         weeks.append(
             ActivityWeek(
                 week_start=cursor,
                 workouts=sum(workouts[day].completed for day in week_days if day in workouts),
-                planned=planned,
-                required=required_workouts(WeekPlan(cursor, planned, has_plan)),
+                planned=week_plan.planned,
+                required=required_workouts(week_plan),
                 volume_kg=round(sum(workouts[day].volume_kg for day in week_days if day in workouts), 2),
             )
         )

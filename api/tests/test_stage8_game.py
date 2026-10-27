@@ -428,8 +428,9 @@ async def test_today_costs_the_same_statements_for_any_history_length(player, db
     for back in range(2, 120):
         await meal(db, user_id, today - timedelta(days=back), 700)
         await journal(db, user_id, today - timedelta(days=back))
-    backfill = await measure()  # 118 older days scored and frozen at once
+    backfill = await measure()  # a request finalises at most 60 older days (review 8, L5) …
+    rest = await measure()  # … the next one the other 58
     large = await measure()
-    print(f"\ngamification/today statements: steady {small} → {large}, backfill of 118 days {backfill}")
+    print(f"\ngamification/today statements: steady {small} → {large}, backfill of 118 days {backfill} + {rest}")
     assert large == small
-    assert backfill < 100  # extra statements follow the achievements unlocked, never the days
+    assert backfill < 100 and rest < 100  # extra statements follow the achievements unlocked, never the days

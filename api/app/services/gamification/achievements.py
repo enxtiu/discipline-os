@@ -8,8 +8,9 @@ Metrics (all server-side, all-time unless noted):
   ``tasks_completed_total``, ``p1_tasks_completed_total``, ``projects_completed_total``,
   ``tracked_minutes_total``, ``journal_entries_total`` (with content), ``weigh_ins_total``,
   ``nights_7h_total`` (sleep ≥ 420 min), ``quests_claimed_total``;
-* days: ``days_protein_target`` (protein ≥ target *and* intake ≥ the safe floor),
-  ``days_water_target``, ``days_steps_target``;
+* days: ``days_protein_target``, ``days_water_target`` (target met *and* nutrition
+  credit: a meal and intake ≥ the safe floor), ``days_steps_target`` — finished days
+  judged against the targets they were finalised with;
 * scores (finished days with credit — a meal logged and intake ≥ the floor):
   ``perfect_days`` (score ≥ 95), ``days_score_70_in_week`` (best week);
 * ``streak_longest_<kind>`` and ``level``.
@@ -126,14 +127,9 @@ async def totals(db: AsyncSession, user_id: uuid.UUID) -> dict[str, float]:
 
 
 def day_metrics(history: dict[date, DayMetrics], flags: dict[date, DayFlag], ctx: GameContext) -> dict[str, float]:
-    t = ctx.targets
-    protein = sum(
-        1
-        for m in history.values()
-        if t.protein_g and m.meals >= 1 and m.kcal >= ctx.floor and m.protein_g >= t.protein_g
-    )
-    water = sum(1 for m in history.values() if t.water_ml and m.water_ml >= t.water_ml)
-    steps = sum(1 for m in history.values() if t.steps and m.steps is not None and m.steps >= t.steps)
+    protein = sum(1 for day, m in history.items() if ctx.rules_for(day).protein_met(m))
+    water = sum(1 for day, m in history.items() if ctx.rules_for(day).water_met(m))
+    steps = sum(1 for day, m in history.items() if ctx.rules_for(day).steps_met(m))
     finished = {day: flag for day, flag in flags.items() if day < ctx.today and flag.credit}
     perfect = sum(1 for flag in finished.values() if flag.score >= PERFECT_THRESHOLD)
     strong_by_week: dict[date, int] = defaultdict(int)

@@ -864,10 +864,12 @@ async def test_a_year_costs_what_a_week_costs(player, db) -> None:
     from sqlalchemy import event
 
     from app.db import engine
+    from app.services.gamification.engine import backfill
 
     client, user_id = player["client"], player["user_id"]
     today = datetime.now(BANGKOK).date()
     await _year_of_data(db, user_id, today)
+    await backfill([user_id])  # the jobs finalise the history (a request does at most 60 days, review 8 L5)
     statements: list[str] = []
 
     def count(conn, cursor, statement, *args) -> None:

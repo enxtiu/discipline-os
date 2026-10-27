@@ -299,6 +299,7 @@ def test_achievement_day_counts_never_include_low_intake_or_unfinished_days() ->
     }
     metrics = achievement_days(history, flags, ctx())
     assert metrics["days_protein_target"] == 1  # the below-floor day never counts
-    assert metrics["days_water_target"] == 2 and metrics["days_steps_target"] == 1
+    # water needs nutrition credit too: neither the below-floor day nor the water-only day (H1)
+    assert metrics["days_water_target"] == 0 and metrics["days_steps_target"] == 1
     assert metrics["perfect_days"] == 1
     assert metrics["days_score_70_in_week"] == 1
