@@ -17,9 +17,14 @@ Notes: the streak reminder slot avoids quiet hours; the engine GETs are rate lim
 
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
 import uuid
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
+from pathlib import Path
+from typing import Any
 
 import httpx
 import pytest
@@ -38,6 +43,7 @@ from app.models import (
     UserQuest,
     UserSettings,
     WeeklyPlan,
+    XpEvent,
     XpKind,
 )
 from app.services.day_metrics import week_start_for
@@ -663,3 +669,211 @@ async def test_a_quest_claim_judges_finished_days_like_the_engine(db) -> None:
         claimed, awarded = await quests.claim(session, ctx, row_id)
         await session.commit()
     assert (claimed.progress, awarded) == (5, 60)
+
+
+# --------------------------------------------------------------------------- #
+# L5 — bounded work per request; the jobs / the CLI finish a backlog in chunks
+# --------------------------------------------------------------------------- #
+async def populate(db, user_id: uuid.UUID, last: date, days: int) -> None:
+    """``days`` dense days up to ``last`` (bulk inserts): food in the zone, water, steps,
+    sleep, a journal entry, three tasks, 90 tracked minutes, workouts Mon/Wed/Fri — with
+    a few gaps, so streaks break, freeze tokens are spent and milestones are reached."""
+    from app.models import HealthDaily, JournalEntry, SleepLog, Task, TimeEntry, WaterLog, WorkoutLog
+    from tests.stage8_helpers import local
+
+    rows: dict[Any, list[dict[str, Any]]] = {
+        model: [] for model in (MealLog, Task, WaterLog, HealthDaily, SleepLog, JournalEntry, TimeEntry, WorkoutLog)
+    }
+    for back in range(days):
+        day = last - timedelta(days=back)
+        if back % 23 in (5, 6, 7):  # a three-day gap now and then
+            continue
+        for index in range(3):
+            rows[MealLog].append(
+                {"user_id": user_id, "logged_at": local(day, 8 + 5 * index), "local_day": day, "kcal": 670}
+                | {"protein_g": 50, "fiber_g": 10}
+            )
+            rows[Task].append(
+                {"user_id": user_id, "title": f"t {day} {index}", "status": "done", "priority": 2}
+                | {"completed_at": local(day, 10 + index)}
+            )
+        rows[WaterLog].append({"user_id": user_id, "logged_at": local(day, 10), "local_day": day, "amount_ml": 2600})
+        rows[HealthDaily].append(
+            {"user_id": user_id, "local_day": day, "steps": 9000, "ingested_at": local(day, 21), "source": "manual"}
+        )
+        rows[SleepLog].append(
+            {"user_id": user_id, "local_day": day, "bed_at": local(day, 0), "wake_at": local(day, 7, 30)}
+            | {"duration_min": 450}
+        )
+        rows[JournalEntry].append({"user_id": user_id, "entry_date": day, "note_md": "ok"})
+        start = local(day, 9)
+        rows[TimeEntry].append(
+            {"user_id": user_id, "started_at": start, "ended_at": start + timedelta(minutes=90)}
+            | {"duration_s": 5400, "local_day": day}
+        )
+        if day.weekday() in (0, 2, 4):
+            rows[WorkoutLog].append(
+                {"user_id": user_id, "started_at": local(day, 18), "ended_at": local(day, 19)}
+                | {"local_day": day, "status": "completed"}
+            )
+    for model, values in rows.items():
+        for offset in range(0, len(values), 1000):
+            await db.execute(sa.insert(model), values[offset : offset + 1000])
+    await db.commit()
+
+
+async def derived_state(db, user_id: uuid.UUID) -> dict[str, Any]:
+    """Everything the engine writes, without ids and wall-clock timestamps."""
+    from app.models import Streak
+
+    db.expire_all()
+    scores = {
+        row.local_day: (row.score, row.components, row.weights, row.xp_earned, row.streak_days, row.computed_at)
+        for row in (await db.scalars(select(DailyScore).where(DailyScore.user_id == user_id))).all()
+    }
+    xp = {
+        row.dedupe_key: (row.kind, row.points, row.local_day, row.awarded_on, row.reason, row.meta)
+        for row in (await db.scalars(select(XpEvent).where(XpEvent.user_id == user_id))).all()
+    }
+    streaks = {
+        row.kind: (
+            row.current_count,
+            row.longest_count,
+            row.last_event_date,
+            row.broken_on,
+            row.freeze_tokens,
+            row.freeze_used_dates,
+            row.total_events,
+        )
+        for row in (await db.scalars(select(Streak).where(Streak.user_id == user_id))).all()
+    }
+    badges = await unlocked_codes(db, user_id)
+    quest_rows = (
+        await db.execute(
+            select(Quest.code, UserQuest.period_start, UserQuest.status, UserQuest.progress)
+            .join(Quest, Quest.id == UserQuest.quest_id)
+            .where(UserQuest.user_id == user_id)
+        )
+    ).all()
+    return {"scores": scores, "xp": xp, "streaks": streaks, "badges": badges, "quests": sorted(map(tuple, quest_rows))}
+
+
+async def wipe_derived(db, user_id: uuid.UUID) -> None:
+    from app.models import Streak
+
+    for model in (XpEvent, DailyScore, Streak, UserAchievement, UserQuest):
+        await db.execute(sa.delete(model).where(model.user_id == user_id))
+    await db.commit()
+
+
+async def test_a_request_finalises_at_most_sixty_pending_days_oldest_first(owner, db) -> None:
+    """Adapted from probe P1: the first engine run of a long history is bounded."""
+    uid = owner.id
+    await configure(db, uid)
+    await populate(db, uid, TODAY, 200)
+    first = await run(db, uid, NOON)
+    assert (first.finalised, first.pending_left) == (60, 198 - 60)  # 200 days, today and yesterday open
+    db.expire_all()
+    final_days = sorted(
+        (
+            await db.scalars(
+                select(DailyScore.local_day).where(
+                    DailyScore.user_id == uid, DailyScore.components["final"].astext == "true"
+                )
+            )
+        ).all()
+    )
+    assert final_days == [TODAY - timedelta(days=199) + timedelta(days=offset) for offset in range(60)]
+    assert not [row for row in (await xp_rows(db, uid)).values() if row.kind == XpKind.STREAK_BONUS]  # waits
+
+    calls: list[date] = []
+    original = score.compute_day_score
+
+    def counting(metrics, ctx, *, provisional):
+        calls.append(metrics.day)
+        return original(metrics, ctx, provisional=provisional)
+
+    from app.services.gamification import engine, streaks
+
+    engine.score.compute_day_score = counting  # the stage-7 reminder check is bounded too
+    try:
+        await streaks.at_risk(db, uid, NOON + timedelta(hours=8))
+    finally:
+        engine.score.compute_day_score = original
+    assert len(calls) <= engine.PENDING_PER_RUN + 2
+
+
+async def test_chunked_backfill_gives_exactly_the_rows_of_one_big_run(owner, db) -> None:
+    """The jobs finish a backlog in chunks of 60 days (oldest first, each its own
+    transaction): scores, XP, streaks, badges and quests come out identical to finalising
+    everything at once (the pre-review behaviour)."""
+    from app.db import SessionLocal
+    from app.services.gamification import engine
+
+    uid = owner.id
+    await configure(db, uid)
+    await populate(db, uid, TODAY, 200)
+    async with SessionLocal() as session:
+        whole = await engine.sync_user(session, uid, NOON, pending_limit=None)
+        await session.commit()
+    assert whole is not None and (whole.finalised, whole.pending_left) == (198, 0)
+    at_once = await derived_state(db, uid)
+    assert any(key.startswith("streak:overall:") for key in at_once["xp"])  # milestones were reached
+    assert any(state[5] for state in at_once["streaks"].values())  # freeze tokens were spent
+
+    await wipe_derived(db, uid)
+    snapshot, finalised = await engine.sync_fully(uid, NOON)
+    assert snapshot is not None and (finalised, snapshot.pending_left) == (198, 0)
+    assert await derived_state(db, uid) == at_once
+
+
+async def test_the_jobs_finish_a_backlog(owner, db) -> None:
+    from app.services.gamification import engine
+
+    uid = owner.id
+    await configure(db, uid)
+    await populate(db, uid, TODAY, 150)
+    assert await engine.run_for_all_users(("days",), NOON) == 1
+    db.expire_all()
+    stored = await score.load_flags(db, uid, TODAY - timedelta(days=200), TODAY)
+    assert len(stored) == 150 and sum(1 for flag in stored.values() if flag.is_final(TODAY)) == 148
+    again = await run(db, uid, NOON + timedelta(minutes=15))
+    assert (again.finalised, again.pending_left) == (0, 0)
+
+
+def backfill_cli(*args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(  # noqa: S603 - our own interpreter and module
+        [sys.executable, "-m", "app.cli", "backfill-scores", *args],
+        cwd=Path(__file__).resolve().parents[1],
+        env={**os.environ, "NO_COLOR": "1"},
+        capture_output=True,
+        text=True,
+        timeout=300,
+        check=False,
+    )
+
+
+async def test_cli_backfill_scores(owner, db) -> None:
+    """``python -m app.cli backfill-scores`` as a real process (the real clock)."""
+    from tests.stage8_helpers import BANGKOK
+
+    uid = owner.id
+    await configure(db, uid)
+    today = datetime.now(BANGKOK).date()
+    await populate(db, uid, today, 130)
+    bad = backfill_cli("--user-id", "nope")
+    assert bad.returncode == 1 and "--user-id must be a UUID" in bad.stdout + bad.stderr
+    unknown = backfill_cli("--user-id", str(uuid.uuid4()))
+    assert unknown.returncode == 1 and "no such active account" in unknown.stdout + unknown.stderr
+    done = backfill_cli("--user-id", str(uid))
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert f"{uid}: 128 day(s) finalised" in done.stdout and "1 account(s) up to date" in done.stdout
+    db.expire_all()
+    final = await db.scalar(
+        select(sa.func.count())
+        .select_from(DailyScore)
+        .where(DailyScore.user_id == uid, DailyScore.components["final"].astext == "true")
+    )
+    assert final == 128
+    again = backfill_cli()
+    assert again.returncode == 0 and f"{uid}: 0 day(s) finalised" in again.stdout

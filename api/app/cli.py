@@ -7,6 +7,7 @@
     python -m app.cli revoke-device <uuid>
     python -m app.cli recompute-targets
     python -m app.cli run-job housekeeping
+    python -m app.cli backfill-scores [--user-id <uuid>]
     python -m app.cli vapid-keys
     python -m app.cli stats
     python -m app.cli restore-backup disciplineos-2026-10-01.zip [--user-id <uuid>] [--dry-run]
@@ -250,6 +251,32 @@ def run_job_cmd(
         else:
             typer.secho(f"✗ unknown job '{job_id}'", fg=typer.colors.RED)
             raise typer.Exit(1)
+
+    _run(_inner())
+
+
+@cli.command("backfill-scores")
+def backfill_scores_cmd(
+    user_id: Annotated[str | None, typer.Option("--user-id", help="Only this account (default: all active)")] = None,
+) -> None:
+    """Score and freeze every pending day (after the stage-8 deploy or a long downtime) in
+    chunks of 60 days per transaction, then streaks, achievements and quests. The jobs do
+    the same every 15 minutes; requests finalise at most 60 days each. Idempotent."""
+    from app.services.gamification.engine import backfill
+
+    async def _inner() -> None:
+        try:
+            ids = [uuid.UUID(user_id)] if user_id else None
+        except ValueError:
+            typer.secho("✗ --user-id must be a UUID", fg=typer.colors.RED)
+            raise typer.Exit(1) from None
+        done = await backfill(ids)
+        if ids and not done:
+            typer.secho("✗ no such active account", fg=typer.colors.RED)
+            raise typer.Exit(1)
+        for account, days in done.items():
+            typer.echo(f"{account}: {days} day(s) finalised")
+        typer.secho(f"✓ {len(done)} account(s) up to date", fg=typer.colors.GREEN)
 
     _run(_inner())
 
