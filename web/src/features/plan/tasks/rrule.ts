@@ -30,6 +30,18 @@ export interface RuleParts {
 
 export const DEFAULT_PARTS: RuleParts = { freq: 'WEEKLY', interval: 1, byday: [], bymonthday: null }
 
+/** The server's bounds (`services/planner/recur.py`): INTERVAL 1..999; every N > 1 months only on days 1..28. */
+export const MAX_INTERVAL = 999
+export const MAX_SPACED_MONTHDAY = 28
+
+/** Keep the parts inside what the server accepts (a 31st every two months would be `invalid_rrule`). */
+export function normalizeParts(parts: RuleParts): RuleParts {
+  if (parts.freq === 'MONTHLY' && parts.interval > 1 && parts.bymonthday !== null && parts.bymonthday > MAX_SPACED_MONTHDAY) {
+    return { ...parts, bymonthday: MAX_SPACED_MONTHDAY }
+  }
+  return parts
+}
+
 const FREQS: Freq[] = ['DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY']
 const ALLOWED_KEYS = new Set(['FREQ', 'INTERVAL', 'BYDAY', 'BYMONTHDAY', 'WKST'])
 
@@ -57,7 +69,7 @@ export function parseRule(rule: string | null | undefined): RuleParts | null {
   const freq = map.get('FREQ') as Freq | undefined
   if (!freq || !FREQS.includes(freq)) return null
   const interval = map.has('INTERVAL') ? Number(map.get('INTERVAL')) : 1
-  if (!Number.isInteger(interval) || interval < 1 || interval > 365) return null
+  if (!Number.isInteger(interval) || interval < 1 || interval > MAX_INTERVAL) return null
   const byday = (map.get('BYDAY')?.split(',') ?? []).map((day) => day.trim())
   if (byday.some((day) => !(WEEKDAYS as readonly string[]).includes(day))) return null
   const monthday = map.has('BYMONTHDAY') ? Number(map.get('BYMONTHDAY')) : null

@@ -704,6 +704,7 @@
     "repeat_monthday": "{{base}}, {{day}}-го числа",
     "repeat_monthday_label": "Число месяца",
     "repeat_weekdays": "Дни недели",
+    "repeat_monthday_max": "Раз в несколько месяцев — только числа с 1 по {{max}}: они есть в каждом месяце.",
     "repeat_until": "До",
     "repeat_summary_until": "{{repeat}} · до {{date}}",
     "repeat_raw": "Своё правило: {{rule}}",

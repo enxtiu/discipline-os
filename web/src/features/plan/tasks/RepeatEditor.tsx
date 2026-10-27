@@ -15,6 +15,9 @@ import {
   describeRepeat,
   type Freq,
   isPresetKey,
+  MAX_INTERVAL,
+  MAX_SPACED_MONTHDAY,
+  normalizeParts,
   parseRule,
   type PresetKey,
   PRESETS,
@@ -62,7 +65,8 @@ export function RepeatEditor({
     else if (next === 'custom') onChange(buildRule(mode !== 'none' && mode !== 'custom' ? PRESET_PARTS[mode] : DEFAULT_PARTS), until)
     else onChange(next, until)
   }
-  const update = (patch: Partial<RuleParts>) => onChange(buildRule({ ...(parts ?? DEFAULT_PARTS), ...patch }), until)
+  const update = (patch: Partial<RuleParts>) =>
+    onChange(buildRule(normalizeParts({ ...(parts ?? DEFAULT_PARTS), ...patch })), until)
   const toggleDay = (day: Weekday) => {
     const current = parts?.byday ?? []
     update({ byday: current.includes(day) ? current.filter((value) => value !== day) : [...current, day] })
@@ -100,13 +104,13 @@ export function RepeatEditor({
                 type="number"
                 inputMode="numeric"
                 min={1}
-                max={365}
+                max={MAX_INTERVAL}
                 className="w-20 tnum"
                 value={intervalText}
                 onChange={(event) => {
                   setIntervalText(event.target.value)
                   const n = Math.round(Number(event.target.value))
-                  if (Number.isFinite(n) && n >= 1 && n <= 365) update({ interval: n })
+                  if (Number.isFinite(n) && n >= 1 && n <= MAX_INTERVAL) update({ interval: n })
                 }}
                 data-testid="repeat-interval"
               />
@@ -145,7 +149,11 @@ export function RepeatEditor({
               </div>
             )}
             {parts.freq === 'MONTHLY' && (
-              <MonthdayInput value={parts.bymonthday} onChange={(bymonthday) => update({ bymonthday })} />
+              <MonthdayInput
+                value={parts.bymonthday}
+                max={parts.interval > 1 ? MAX_SPACED_MONTHDAY : 31}
+                onChange={(bymonthday) => update({ bymonthday })}
+              />
             )}
           </div>
         ) : (
@@ -183,31 +191,51 @@ export function RepeatEditor({
   )
 }
 
-function MonthdayInput({ value, onChange }: { value: number | null; onChange: (next: number | null) => void }) {
+function MonthdayInput({
+  value,
+  max,
+  onChange,
+}: {
+  value: number | null
+  /** 31, or 28 when the repeat skips months (the server rule). */
+  max: number
+  onChange: (next: number | null) => void
+}) {
   const { t } = useTranslation()
   const id = useId()
   const [text, setText] = useState(value ? String(value) : '')
+  const typed = Number(text)
+  const outOfRange = text !== '' && (!Number.isFinite(typed) || typed < 1 || typed > max)
+  // follow the rule when it changes from outside (e.g. clamped to 28)
+  useEffect(() => {
+    setText((current) => (Number(current) === value || (current === '' && value === null) ? current : value ? String(value) : ''))
+  }, [value])
   return (
-    <div className="flex items-center gap-2">
-      <label htmlFor={id} className="text-sm">
-        {t('task.repeat_monthday_label')}
-      </label>
-      <Input
-        id={id}
-        type="number"
-        inputMode="numeric"
-        min={1}
-        max={31}
-        className="w-20 tnum"
-        value={text}
-        placeholder="—"
-        onChange={(event) => {
-          setText(event.target.value)
-          const n = Math.round(Number(event.target.value))
-          if (event.target.value === '') onChange(null)
-          else if (Number.isFinite(n) && n >= 1 && n <= 31) onChange(n)
-        }}
-      />
+    <div className="space-y-1">
+      <div className="flex items-center gap-2">
+        <label htmlFor={id} className="text-sm">
+          {t('task.repeat_monthday_label')}
+        </label>
+        <Input
+          id={id}
+          type="number"
+          inputMode="numeric"
+          min={1}
+          max={max}
+          className={clsx('w-20 tnum', outOfRange && 'border-rose-400')}
+          value={text}
+          placeholder="—"
+          aria-invalid={outOfRange || undefined}
+          onChange={(event) => {
+            setText(event.target.value)
+            const n = Math.round(Number(event.target.value))
+            if (event.target.value === '') onChange(null)
+            else if (Number.isFinite(n) && n >= 1 && n <= max) onChange(n)
+          }}
+          data-testid="repeat-monthday"
+        />
+      </div>
+      {max < 31 && <p className="text-xs muted">{t('task.repeat_monthday_max', { max })}</p>}
     </div>
   )
 }

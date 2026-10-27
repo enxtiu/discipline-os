@@ -704,6 +704,7 @@
     "repeat_monthday": "{{base}}, on day {{day}}",
     "repeat_monthday_label": "Day of month",
     "repeat_weekdays": "Weekdays",
+    "repeat_monthday_max": "Every few months — days 1 to {{max}} only: every month has them.",
     "repeat_until": "Until",
     "repeat_summary_until": "{{repeat}} · until {{date}}",
     "repeat_raw": "Custom rule: {{rule}}",
