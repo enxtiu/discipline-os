@@ -178,8 +178,10 @@ export async function run(ctx) {
       .evaluateAll((items) => items.map((item) => item.getAttribute('data-date')))
     const todayColumn = week.indexOf(today)
     const columnWidth = layerBox.width / 7
+    // within the column (other blocks at that hour put it side by side)
+    const columnLeft = layerBox.x + todayColumn * columnWidth
     check(
-      todayColumn >= 0 && !!blockBox && Math.abs(blockBox.x - (layerBox.x + todayColumn * columnWidth)) < 3,
+      todayColumn >= 0 && !!blockBox && blockBox.x >= columnLeft - 1 && blockBox.x + blockBox.width <= columnLeft + columnWidth + 1,
       'week grid: the block sits in today’s column (the week starts on settings.week_start)',
       `${week[0]} … ${week[6]}, week_start ${settings.week_start}`,
     )
@@ -331,9 +333,14 @@ export async function run(ctx) {
     await page.goto(`${WEB_URL}/plan/calendar?view=month&date=${today}`, { waitUntil: 'networkidle' })
     await page.locator('[data-testid="cal-month"]').waitFor({ timeout: 10000 })
     check((await page.locator('[data-testid="cal-month-day"]').count()) === 42, 'month: 6×7 grid')
+    // (a crowded day hides chips behind «+N», so count the repeat's chips over the whole grid)
+    const repeatDays = await page
+      .locator('[data-testid="cal-month-day"]', { has: page.locator('[data-testid="cal-month-repeat"]', { hasText: titles.repeat }) })
+      .evaluateAll((cells) => cells.map((cell) => cell.getAttribute('data-date')))
     check(
-      (await page.locator(`[data-testid="cal-month-day"][data-date="${addDays(today, 1)}"] [data-testid="cal-month-repeat"]`).count()) > 0,
-      'month: virtual repeats of the daily task from tomorrow on',
+      repeatDays.length > 0 && repeatDays.every((day) => day > today),
+      'month: virtual repeats of the daily task, only after today',
+      `${repeatDays.length} days from ${repeatDays[0]}`,
     )
     await page.locator(`[data-testid="cal-month-day"][data-date="${monthFrom}"]`).evaluate((element) => element.scrollIntoView({ block: 'center' }))
     await page.waitForTimeout(250)
