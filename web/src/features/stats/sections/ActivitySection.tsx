@@ -16,7 +16,7 @@ import { DailyChart, isDense, type TooltipLine } from '../charts/DailyChart'
 import { useChartTheme } from '../charts/theme'
 import { WeeksChart } from '../charts/WeeksChart'
 import { activityTotals, elapsedDays, hasBurned, hasSteps, hasWorkouts } from '../derive'
-import { compact, compactAxis, dayMonth, periodLabel, shortDay } from '../format'
+import { compact, compactAxis, dayMonth, periodLabel, shortDay, weekRange } from '../format'
 import { CardEmpty, DataTable, Legend, StatCard, Tiles } from '../parts'
 import type { ActivityDay, ActivityStats } from '../types'
 
@@ -214,6 +214,25 @@ function WorkoutsCard({ stats, dimmed }: { stats: ActivityStats; dimmed: boolean
               { mark: 'line', color: theme.ink, label: t('stats.activity.legend_required') },
             ]}
           />
+          <DataTable
+            caption={t('stats.activity.workouts_title')}
+            testId="table-weeks"
+            columns={[
+              { label: t('stats.col.week') },
+              { label: t('stats.col.workouts'), align: 'right' },
+              { label: t('stats.col.required'), align: 'right' },
+              { label: t('stats.col.volume'), align: 'right' },
+            ]}
+            rows={() =>
+              stats.weeks
+                .filter((week) => week.week_start <= stats.today)
+                .map((week) => ({
+                  key: week.week_start,
+                  muted: week.workouts === 0,
+                  cells: [weekRange(week.week_start), number(week.workouts), number(week.required), number(Math.round(week.volume_kg))],
+                }))
+            }
+          />
         </>
       )}
     </StatCard>
@@ -277,6 +296,24 @@ function BurnedCard({ stats, dimmed }: { stats: ActivityStats; dimmed: boolean }
               { mark: isDense(stats.days) ? 'line' : 'bar', color: theme.move, label: t('stats.activity.burn_active') },
               { mark: 'dot', color: theme.burn, label: t('stats.activity.burn_workouts') },
             ]}
+          />
+          <DataTable
+            caption={t('stats.activity.burned_title')}
+            testId="table-burned"
+            columns={[
+              { label: t('stats.col.day') },
+              { label: t('stats.col.burn_workouts'), align: 'right' },
+              { label: t('stats.col.burn_active'), align: 'right' },
+            ]}
+            rows={() =>
+              stats.days
+                .filter((day) => day.date <= stats.today)
+                .map((day) => ({
+                  key: day.date,
+                  muted: day.workout_kcal === 0 && day.active_kcal == null,
+                  cells: [shortDay(day.date), number(day.workout_kcal), day.active_kcal != null ? number(day.active_kcal) : '—'],
+                }))
+            }
           />
         </>
       ) : (

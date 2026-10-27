@@ -826,7 +826,12 @@
       "weight": "Weight, kg",
       "avg7": "7-day avg",
       "score": "Score",
-      "sleep": "Sleep"
+      "sleep": "Sleep",
+      "burn_workouts": "Workouts, kcal",
+      "burn_active": "Active, kcal",
+      "week": "Week",
+      "required": "Needed",
+      "volume": "Volume, kg"
     },
     "nutrition": {
       "kcal_title": "Calories",

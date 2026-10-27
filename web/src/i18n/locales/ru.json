@@ -826,7 +826,12 @@
       "weight": "Вес, кг",
       "avg7": "Среднее 7 дн.",
       "score": "Оценка",
-      "sleep": "Сон"
+      "sleep": "Сон",
+      "burn_workouts": "Трен., ккал",
+      "burn_active": "Актив., ккал",
+      "week": "Неделя",
+      "required": "Нужно",
+      "volume": "Объём, кг"
     },
     "nutrition": {
       "kcal_title": "Калории",
