@@ -140,6 +140,18 @@ async def test_profile_shape_progress_and_secret_masking(player, db) -> None:
     assert "perfect" not in names.lower()  # secret names never leak while locked
 
 
+async def test_an_unknown_category_never_breaks_the_profile(player, db) -> None:
+    from app.seeds.gamification import seed_gamification
+
+    await seed_gamification(db)
+    db.add(Achievement(code="custom_1", name_ru="Своё", name_en="Custom", category="mine", criteria={"metric": "x"}))
+    await db.commit()
+    response = await player["client"].get(f"{G}/profile")
+    assert response.status_code == 200, response.text
+    custom = next(item for item in response.json()["achievements"] if item["code"] == "custom_1")
+    assert custom["category"] == "special" and custom["progress"] == {"value": 0.0, "target": 0.0}
+
+
 async def test_achievements_unlock_once_and_pay_once(player, db) -> None:
     user_id = player["user_id"]
     await meal(db, user_id, YESTERDAY, 700)

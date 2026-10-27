@@ -1044,6 +1044,7 @@ _SCORE_STATES = frozenset(
     }
 )
 _DETAIL_UNITS = frozenset({"kcal", "g", "ml", "steps", "min"})
+_CATEGORIES = frozenset({"nutrition", "training", "activity", "planner", "review", "streaks", "levels", "special"})
 _MASK_NAME = ("Секретное достижение", "Secret achievement")
 _MASK_DESCRIPTION = ("Откроется, когда вы его заработаете", "Unlocks when you earn it")
 
@@ -1177,7 +1178,7 @@ def achievement_out(view: AchievementView) -> AchievementOut:
         description_ru=_MASK_DESCRIPTION[0] if view.masked else row.description_ru,
         description_en=_MASK_DESCRIPTION[1] if view.masked else row.description_en,
         icon="lock" if view.masked else row.icon,
-        category=row.category,  # type: ignore[arg-type]
+        category=row.category if row.category in _CATEGORIES else "special",  # type: ignore[arg-type]
         rarity=rarity,
         xp_reward=int(row.xp_reward or 0),
         is_secret=bool(row.is_secret),
