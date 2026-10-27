@@ -371,6 +371,20 @@ export async function run(ctx) {
     const agenda = page.locator(`[data-testid="cal-agenda"][data-date="${monthTo}"]`)
     check(await visible(agenda.filter({ hasText: titles.month }).filter({ hasText: '15:00–16:00' }), 5000), 'month: tapping a day lists its tasks below the grid')
 
+    // offline: the chip moves at once, the change waits in the queue and is sent on reconnect
+    await setOffline(true)
+    await dragChip(monthId, monthFrom)
+    const movedOffline =
+      (await visible(page.locator(`[data-testid="cal-month-day"][data-date="${monthFrom}"] [data-testid="cal-month-chip"][data-task-id="${monthId}"]`), 3000)) &&
+      (await visible(toast('перенос сохранится'), 3000))
+    await setOffline(false)
+    task = await taskUntil(monthId, (value) => value.due_date === monthFrom)
+    check(
+      movedOffline && task?.due_date === monthFrom && task?.due_time === '08:30',
+      'month: a chip moved offline shows at once, is queued, and reaches the server on reconnect (API)',
+      `${task?.due_date} ${task?.due_time}`,
+    )
+
     // ---- timer -------------------------------------------------------------------------
     const foreign = (await apiFetch(`${P}/timer`)).body?.running
     if (foreign) await post(`${P}/timer/stop`, { entry_id: foreign.entry.id })
