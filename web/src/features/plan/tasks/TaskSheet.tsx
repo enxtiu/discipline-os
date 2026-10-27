@@ -30,10 +30,11 @@ import {
   useTimerStart,
   useUpdateTask,
 } from '../queries'
-import type { Ref, TaskIn } from '../types'
+import type { ReminderIn, Ref, TaskIn } from '../types'
 import { buildCreate, buildPatch, draftFromPrefill, draftFromTask, useTaskDraft, type Draft } from './draft'
 import { BlockEditor, DueEditor, EstimateEditor, FieldSection, PriorityPicker, StatusPicker } from './fields'
 import { ReminderEditor } from './ReminderEditor'
+import { isRelativeReminder, MAX_REMINDERS, reminderInLabel, sameReminder } from './reminders'
 import { RepeatEditor } from './RepeatEditor'
 import { PendingSubtasks, SubtaskList } from './SubtaskList'
 import { TagEditor } from './TagEditor'
@@ -198,12 +199,15 @@ export function TaskSheet({
   const [pendingSubtasks, setPendingSubtasks] = useState<string[]>([])
   const [formError, setFormError] = useState<FormError | null>(null)
   const [pendingAction, setPendingAction] = useState<null | (() => void)>(null)
+  // «before» reminders taken off because the task lost its date and block
+  const [dropped, setDropped] = useState<ReminderIn[]>([])
   const [lastSession, setLastSession] = useState(sessionKey)
   if (lastSession !== sessionKey) {
     setLastSession(sessionKey)
     setPendingSubtasks([])
     setFormError(null)
     setPendingAction(null)
+    setDropped([])
   }
 
   const errors = useMemo(() => {
@@ -220,6 +224,31 @@ export function TaskSheet({
   const set = <K extends keyof Draft>(field: K, value: Draft[K]) => {
     form.set(field, value)
     if (formError) setFormError(null)
+  }
+
+  /**
+   * Change the task's anchors (date, block). A «30 min before» reminder needs
+   * one (the server answers `invalid_reminder` otherwise), so removing the last
+   * anchor takes those reminders off in the same save — with a note — and
+   * giving the task a date or a block again brings them back.
+   */
+  const setAnchors = (values: Pick<Partial<Draft>, 'due_date' | 'due_time' | 'block'>) => {
+    if (formError) setFormError(null)
+    const next = { ...draft, ...values }
+    if (!next.due_date && !next.block) {
+      const relative = next.reminders.filter(isRelativeReminder)
+      if (relative.length > 0) {
+        form.setMany({ ...values, reminders: next.reminders.filter((reminder) => !isRelativeReminder(reminder)) })
+        setDropped(relative)
+        return
+      }
+    } else if (dropped.length > 0) {
+      const back = dropped.filter((reminder) => !next.reminders.some((item) => sameReminder(item, reminder)))
+      form.setMany({ ...values, reminders: [...next.reminders, ...back].slice(0, MAX_REMINDERS) })
+      setDropped([])
+      return
+    }
+    form.setMany(values)
   }
 
   const hasEdits = mode === 'edit' ? form.dirty : draft.title.trim() !== '' || pendingSubtasks.length > 0
@@ -453,11 +482,15 @@ export function TaskSheet({
               date={draft.due_date}
               time={draft.due_time}
               today={today}
-              onChange={(date, time) => {
-                form.setMany({ due_date: date, due_time: time })
-                if (formError) setFormError(null)
-              }}
+              onChange={(date, time) => setAnchors({ due_date: date, due_time: time })}
             />
+            {dropped.length > 0 && (
+              <p className="text-xs text-[rgb(var(--warn))]" data-testid="reminders-dropped">
+                {t('task.reminders_dropped', {
+                  list: dropped.map((reminder) => t('task.quoted', { text: reminderInLabel(reminder, today) })).join(', '),
+                })}
+              </p>
+            )}
           </FieldSection>
 
           <FieldSection label={t('task.block')} error={errors.block} hint={t('task.block_hint')} testId="task-block">
@@ -466,7 +499,7 @@ export function TaskSheet({
               fallbackDate={draft.due_date ?? today}
               fallbackStart={draft.due_time}
               defaultMinutes={draft.estimate_minutes ?? 60}
-              onChange={(block) => set('block', block)}
+              onChange={(block) => setAnchors({ block })}
             />
           </FieldSection>
 

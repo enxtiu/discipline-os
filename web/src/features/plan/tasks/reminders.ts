@@ -6,6 +6,14 @@ import type { Reminder, ReminderIn } from '../types'
 /** Relative reminders the editor offers in one tap (minutes before the due/block start). */
 export const LEAD_PRESETS = [0, 15, 30, 60, 1440] as const
 
+/** The server keeps at most this many pending reminders per task (`too_many_reminders`). */
+export const MAX_REMINDERS = 5
+
+/** «30 min before» — counted from the due time / block start, so it needs a date or a block. */
+export function isRelativeReminder(reminder: ReminderIn): reminder is { lead_minutes: number } {
+  return 'lead_minutes' in reminder
+}
+
 export function leadLabel(lead: number): string {
   if (lead === 0) return i18n.t('task.reminder_at_due')
   if (lead === 1440) return i18n.t('task.reminder_day_before')

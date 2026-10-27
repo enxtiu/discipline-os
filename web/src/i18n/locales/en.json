@@ -724,6 +724,8 @@
     "reminder_remove": "Remove reminder: {{label}}",
     "reminder_history": "Earlier: {{list}}",
     "reminder_needs_date": "“N minutes before” reminders need a date or a block.",
+    "reminders_dropped": "Reminders {{list}} are off: without a date there is nothing to count from. Set a date and they come back.",
+    "quoted": "“{{text}}”",
     "reminder_stage7": "Push notifications arrive in stage 7 — for now reminders are stored and shown here.",
     "tags": "Tags",
     "tag_placeholder": "New tag, Enter to add",

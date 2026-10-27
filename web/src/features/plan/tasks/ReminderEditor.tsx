@@ -10,10 +10,16 @@ import { Button, Input } from '@/components/ui'
 import { IconClose } from '@/components/ui/icons'
 import { IconBellSmall } from '../icons'
 import type { Reminder, ReminderIn } from '../types'
-import { LEAD_PRESETS, leadChip, reminderInLabel, reminderOutLabel, sameReminder } from './reminders'
+import {
+  isRelativeReminder,
+  LEAD_PRESETS,
+  leadChip,
+  MAX_REMINDERS,
+  reminderInLabel,
+  reminderOutLabel,
+  sameReminder,
+} from './reminders'
 import { Chip } from './ui'
-
-const MAX_REMINDERS = 5
 
 export function ReminderEditor({
   reminders,
@@ -42,7 +48,7 @@ export function ReminderEditor({
     if (full || reminders.some((item) => sameReminder(item, reminder))) return
     onChange([...reminders, reminder])
   }
-  const orphaned = !hasAnchor && reminders.some((reminder) => 'lead_minutes' in reminder)
+  const orphaned = !hasAnchor && reminders.some(isRelativeReminder)
 
   return (
     <div className="space-y-2">
