@@ -209,6 +209,9 @@ async def test_water_only_days_earn_no_xp_streak_or_achievement(owner, db) -> No
     assert streak_of(snapshot, StreakKind.WATER).current == 0
     assert "water_7" not in await unlocked_codes(db, uid)
     assert snapshot.metrics is not None and snapshot.metrics["days_water_target"] == 0
+    from app.services.gamification.streaks import has_streak
+
+    assert not await has_streak(db, uid)  # so no evening reminder protects a water-only streak (stage 7)
 
     # food below the floor does not make water count either (1400 kcal, floor 1500)
     for back in range(0, 8):
