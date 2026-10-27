@@ -64,7 +64,9 @@ async def test_a_write_is_committed_when_its_response_starts(authed: httpx.Async
         async with httpx.AsyncClient(transport=transport, base_url="http://testserver", headers=authed.headers) as http:
             created = await http.post("/api/v1/planner/tasks", json={"title": "сначала коммит"})
             # the very next request sees the row (a subtask needs its parent)
-            child = await http.post("/api/v1/planner/tasks", json={"title": "подзадача", "parent_id": created.json()["id"]})
+            child = await http.post(
+                "/api/v1/planner/tasks", json={"title": "подзадача", "parent_id": created.json()["id"]}
+            )
     finally:
         event.remove(Session, "after_commit", count_commit)
 
