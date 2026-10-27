@@ -583,16 +583,27 @@ export function Sheet({
 // --------------------------------------------------------------------------- //
 // Progress
 // --------------------------------------------------------------------------- //
+/**
+ * A thin progress bar. Decorative (hidden from screen readers) unless `label`
+ * is given: everywhere in the app the numbers it draws are also written as
+ * text next to it, and reading them twice only adds noise. Give it a `label`
+ * (and a `valueText` such as «3 из 5 дней») when the bar is the only place
+ * the value appears.
+ */
 export function ProgressBar({
   value,
   max,
   tone = 'accent',
   className,
+  label,
+  valueText,
 }: {
   value: number
   max: number
   tone?: 'accent' | 'violet' | 'warn'
   className?: string
+  label?: string
+  valueText?: string
 }) {
   const ratio = max > 0 ? Math.max(0, Math.min(1, value / max)) : 0
   const tones = {
@@ -600,13 +611,20 @@ export function ProgressBar({
     violet: 'bg-violet-400 shadow-[0_0_12px_rgb(139_92_246/.6)]',
     warn: 'bg-amber-400 shadow-[0_0_12px_rgb(251_191_36/.6)]',
   }
+  const semantics = label
+    ? {
+        role: 'progressbar',
+        'aria-label': label,
+        'aria-valuenow': Math.round(ratio * 100),
+        'aria-valuemin': 0,
+        'aria-valuemax': 100,
+        'aria-valuetext': valueText,
+      }
+    : { 'aria-hidden': true }
   return (
     <div
       className={clsx('h-2 w-full overflow-hidden rounded-pill bg-[rgb(var(--bg-sunken))]', className)}
-      role="progressbar"
-      aria-valuenow={Math.round(ratio * 100)}
-      aria-valuemin={0}
-      aria-valuemax={100}
+      {...semantics}
     >
       <motion.div
         className={clsx('h-full rounded-pill', tones[tone])}

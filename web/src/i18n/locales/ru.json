@@ -1,4 +1,8 @@
 {
+  "a11y": {
+    "value_of": "{{value}} из {{target}} {{unit}}",
+    "value_unit": "{{value}} {{unit}}"
+  },
   "app": {
     "name": "DisciplineOS",
     "tagline": "Дисциплина по данным, а не по ощущениям",
