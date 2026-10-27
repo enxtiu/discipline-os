@@ -21,6 +21,10 @@ are cheap to exhaust:
   BYMONTH);
 * ordinal weekdays never combine with ``BYMONTHDAY``; a BYMONTH × BYMONTHDAY
   pair must exist on some calendar (Feb 29 counts); no time-of-day parts.
+
+Every expansion ends at the series' ``until`` and never later than the last day
+the API accepts (``LATEST_DATE``, 2100-12-31): a date the server derives can
+always be sent back, and an occurrence past that day is the end of the series.
 """
 
 from __future__ import annotations
@@ -30,6 +34,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 
 from app.core.errors import Unprocessable
+from app.schemas.planner import LATEST_DATE
 from app.services.recurrence import RECURRENCE_PRESETS, parse_rule
 
 __all__ = [
@@ -40,6 +45,7 @@ __all__ = [
     "occurrences_between",
     "parse_stored",
     "preset_of",
+    "series_end",
     "validate_rule",
 ]
 
@@ -243,29 +249,34 @@ def parse_stored(text: str) -> Rule:
     return Rule(text=text, parts=parts, until=until)
 
 
-def _rrule(rule: Rule, dtstart: datetime, bound: datetime | None = None):
-    text = rule.expansion_text
-    if bound is not None:
-        text = f"{text};UNTIL={bound:%Y%m%dT%H%M%S}"
-    return parse_rule(text, dtstart)
+def series_end(until: date | None) -> date:
+    """The last day a series can reach: its ``until``, never past the last supported day."""
+    return LATEST_DATE if until is None else min(until, LATEST_DATE)
+
+
+def _rrule(rule: Rule, dtstart: datetime, bound: datetime):
+    """The rule expanded from ``dtstart`` and cut at ``bound`` (dateutil stops iterating there)."""
+    return parse_rule(f"{rule.expansion_text};UNTIL={bound:%Y%m%dT%H%M%S}", dtstart)
 
 
 def first_on_or_after(rule: Rule, day: date, until: date | None = None) -> date | None:
-    """First occurrence on/after ``day`` with the rule anchored at ``day`` 00:00."""
-    start = datetime.combine(day, time.min)
-    found = _rrule(rule, start).after(start, inc=True)
-    if found is None or (until is not None and found.date() > until):
+    """First occurrence on/after ``day`` with the rule anchored at ``day`` 00:00 (``None`` past the end)."""
+    end = series_end(until)
+    if day > end:
         return None
-    return found.date()
+    start = datetime.combine(day, time.min)
+    found = _rrule(rule, start, datetime.combine(end, time.max)).after(start, inc=True)
+    return found.date() if found is not None else None
 
 
 def next_after(rule: Rule, anchor: datetime, today: date, until: date | None = None) -> datetime | None:
-    """First occurrence strictly after ``anchor`` (naive local) on a local date after ``today``."""
+    """First occurrence strictly after ``anchor`` (naive local) on a local date after ``today``
+    (``None`` past the end of the series)."""
     cursor = max(anchor, datetime.combine(today, time.max))
-    found = _rrule(rule, anchor).after(cursor, inc=False)
-    if found is None or (until is not None and found.date() > until):
+    end = datetime.combine(series_end(until), time.max)
+    if cursor >= end:
         return None
-    return found
+    return _rrule(rule, anchor, end).after(cursor, inc=False)
 
 
 def occurrences_between(
@@ -285,7 +296,7 @@ def occurrences_between(
     including ones before ``first``.
     """
     lo = after + timedelta(days=1)
-    hi = min(last, until) if until is not None else last
+    hi = min(last, series_end(until))
     if hi < lo or hi < first or (remaining is not None and remaining <= 0):
         return []
     bound = datetime.combine(hi, time.max)

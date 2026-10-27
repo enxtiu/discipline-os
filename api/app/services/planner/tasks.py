@@ -48,6 +48,7 @@ from app.models import (
     TaskStatus,
     task_tags,
 )
+from app.schemas.planner import LATEST_DATE
 from app.services.planner import recur
 from app.services.planner.common import (
     FUTURE_TOLERANCE,
@@ -411,7 +412,10 @@ async def _copy_reminders(
         target = tasks[sources[row.task_id]]
         payload = dict(row.payload or {})
         if "lead_minutes" not in payload and "date" in payload:
-            payload["date"] = (date.fromisoformat(payload["date"]) + shift).isoformat()
+            shifted = date.fromisoformat(payload["date"]) + shift
+            if shifted > LATEST_DATE:
+                continue  # past the last supported day: not copied
+            payload["date"] = shifted.isoformat()
         key = (target.id, _reminder_key(payload))
         if key in seen or ("lead_minutes" not in payload and "date" not in payload):
             continue
@@ -589,6 +593,20 @@ def _copy_values(source: Task, new_task_id: uuid.UUID, shift: timedelta, clock: 
     return values
 
 
+def _within_range(values: dict[str, Any], clock: Clock) -> bool:
+    """Drops a shifted due day or block that lies past the last day the API accepts
+    (a stored date must always be accepted back); ``False`` when it dropped one."""
+    kept = True
+    if values["due_date"] is not None and values["due_date"] > LATEST_DATE:
+        values.update(due_date=None, due_at=None)
+        kept = False
+    start = values["scheduled_start"]
+    if start is not None and clock.local_day(start) > LATEST_DATE:
+        values.update(scheduled_start=None, scheduled_end=None, status=TaskStatus.OPEN)
+        kept = False
+    return kept
+
+
 async def _copy_tags(db: AsyncSession, user_id: uuid.UUID, mapping: dict[uuid.UUID, uuid.UUID]) -> None:
     if not mapping:
         return
@@ -620,6 +638,8 @@ async def _create_next_instance(db: AsyncSession, task: Task, clock: Clock) -> T
     shift = timedelta(days=(occurrence.date() - anchor.date()).days)
     next_id = new_id()
     values = _copy_values(task, next_id, shift, clock)
+    if not _within_range(values, clock):
+        return None  # its due day or block would lie past the supported dates: the series ends here
     values.update(
         recurrence_mode=RecurrenceMode.RRULE,
         recurrence_rule=task.recurrence_rule,
@@ -671,6 +691,7 @@ async def _copy_subtree(
         for child in children:
             child_id = new_id()
             values = _copy_values(child, child_id, shift, clock)
+            _within_range(values, clock)  # a step dated past the supported dates is copied without that date
             values["parent_id"] = level[child.parent_id]
             rows.append(values)
             next_level[child.id] = child_id

@@ -147,6 +147,48 @@ async def test_until_in_the_past_has_no_first_occurrence(authed: httpx.AsyncClie
     assert response.status_code == 422 and code(response) == "invalid_rrule"
 
 
+async def test_series_never_leaves_the_supported_dates(authed: httpx.AsyncClient) -> None:
+    """Server-derived dates stay within 2000–2100 (what the API accepts back): past it the series ends."""
+    leap = "FREQ=YEARLY;INTERVAL=999;BYMONTH=2;BYMONTHDAY=29"  # first occurrence from today: 4024-02-29
+    far = await authed.post(f"{API}/tasks", json={"title": "високосный", "recurrence_rule": leap})
+    assert far.status_code == 422 and code(far) == "invalid_rrule", far.text
+    plain = await make_task(authed, "без даты")
+    made = await authed.patch(f"{API}/tasks/{plain['id']}", json={"recurrence_rule": leap})
+    assert made.status_code == 422 and code(made) == "invalid_rrule", made.text
+
+    await set_timezone(authed, "America/Los_Angeles")
+    rare = await make_task(
+        authed,
+        "раз в 991 год",
+        due_date="2071-12-31",
+        due_time="23:30",
+        recurrence_rule="FREQ=YEARLY;INTERVAL=991;BYMONTH=12;BYMONTHDAY=31",
+    )
+    assert (await complete(authed, rare["id"]))["next_instance"] is None  # 3062: the series ends
+
+    last = await make_task(
+        authed,
+        "последние дни",
+        due_date="2100-12-30",
+        due_time="23:30",
+        recurrence_rule="daily",
+        reminders=[{"lead_minutes": 30}, {"date": "2100-12-31", "time": "08:00"}],
+    )
+    await make_task(authed, "шаг позже срока", parent_id=last["id"], due_date="2100-12-31")
+    nxt = (await complete(authed, last["id"]))["next_instance"]
+    assert (nxt["due_date"], nxt["due_time"]) == ("2100-12-31", "23:30")
+    assert [item["lead_minutes"] for item in nxt["reminders"]] == [30]  # 2101-01-01 08:00 is not copied
+    detail = await get_task(authed, nxt["id"])
+    assert [(sub["title"], sub["due_date"]) for sub in detail["subtasks"]] == [("шаг позже срока", None)]
+    echo = await authed.patch(f"{API}/tasks/{nxt['id']}", json={"title": "эхо", "due_date": nxt["due_date"]})
+    assert echo.status_code == 200, echo.text  # every server-derived date can be sent back
+    assert (await complete(authed, nxt["id"]))["next_instance"] is None
+    block = await make_task(
+        authed, "блок", block={"date": "2100-12-31", "start": "23:00", "end": "01:00"}, recurrence_rule="daily"
+    )
+    assert (await complete(authed, block["id"]))["next_instance"] is None
+
+
 async def test_completion_creates_exactly_one_next_instance(authed: httpx.AsyncClient) -> None:
     now = today()
     project = (await authed.post(f"{API}/projects", json={"name": "Здоровье"})).json()
