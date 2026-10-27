@@ -5,10 +5,12 @@ training, steps, PARA tasks and planner, time tracking, gamification. Built as a
 mobile-first PWA for iPhone (iOS 17+, Safari → Add to Home Screen), dark by
 default, one-handed, every frequent action within two taps.
 
-> **Status: stages 1, 2, 2b, 3 and 4 of 9 are complete** — foundation, nutrition
-> core, nutrition backfill, AI logging (photo/text → review → save, camera
-> barcode scanner) and training (templates, weekly plan, live logger, records,
-> burned calories kept out of the food budget). The foundation is live: repository,
+> **Status: stages 1–6 of 10 are complete** — foundation, nutrition core,
+> nutrition backfill, AI logging (photo/text → review → save, camera barcode
+> scanner), training (templates, weekly plan, live logger, records, burned
+> calories kept out of the food budget), health ingest (iOS Shortcut, steps,
+> weight, sleep) and the planner (PARA, tasks with repeats and reminders,
+> calendar with drag, natural-language quick add, timer, journal). The foundation is live: repository,
 > infrastructure, the full database schema for every entity of the whole
 > product, device-token auth with pairing, settings with target calculation, the
 > design system and app shell with bottom navigation, i18n (ru/en), PWA basics
@@ -66,7 +68,8 @@ default, one-handed, every frequent action within two taps.
 | Camera barcode scanner (`@zxing/browser`, works in iOS Safari) with typed-digits fallback | ✅ stage 3 |
 | Training: exercise library (ru/en search, your own exercises), templates, weekly plan, live workout logger with rest timer (sets work offline), personal records, quick cardio, burned calories on their own card/chart — never food budget | ✅ stage 4 |
 | Health: iOS Shortcut ingest (scoped token, idempotent per day, lenient numbers, 62-day backfill), steps on Today with a manual fallback, weight (profile + targets follow) and sleep entries, a /health page with 14-day steps, 90-day weight and a sleep timeline | ✅ stage 5 |
-| Planner, push, gamification | stages 6–8 |
+| Planner: PARA (inbox, projects, areas, resources, archive), tasks P1–P4 with tags, subtasks, due dates, time blocks, estimates, RRULE repeats, reminders and Markdown notes; Today / Inbox / Upcoming / Calendar (day, week, month with drag) and project, area, tag and search pages; natural-language quick add (ru/en) with a live preview; a timer that survives reloads and device switches, a time log; a daily journal with the server's day summary — all offline-queued | ✅ stage 6 |
+| Push notifications, gamification and charts, hardening, redesign | stages 7–10 |
 
 ---
 
@@ -104,20 +107,20 @@ discipline-os/
 ├── api/                     FastAPI service
 │   ├── app/
 │   │   ├── ai/              provider adapters, strict schema, runner, prompts/*.vN.md (stage 3)
-│   │   ├── api/             routers (v1: auth, devices, tokens, settings, meta, foods, nutrition, ai, training)
+│   │   ├── api/             routers (v1: auth, devices, tokens, settings, meta, foods, nutrition, ai, training, health, planner)
 │   │   ├── core/            config, logging, errors, security, rate limit, tz, ids
 │   │   ├── models/          SQLAlchemy 2 models — every entity, every stage
 │   │   ├── schemas/         pydantic v2 request/response models
-│   │   ├── services/        pairing, tokens, targets, settings, scheduler, recurrence
+│   │   ├── services/        pairing, tokens, targets, settings, scheduler, recurrence, planner/, task_parser
 │   │   ├── seeds/           seed framework + exercise library
 │   │   └── cli.py           server-side admin commands
-│   ├── alembic/versions/    migrations (0001 = the whole schema)
+│   ├── alembic/versions/    migrations (0001 = the whole schema, 0002 = planner indexes)
 │   ├── importers/           seed (320 foods RU/EN), Open Food Facts, USDA FDC (+ RU names)
-│   └── tests/               pytest suite (174 tests)
+│   └── tests/               pytest suite (920+ tests)
 ├── web/                     React 18 + TS + Vite PWA
 │   ├── src/api/             fetch client, types, generated OpenAPI types
 │   ├── src/components/      design system (ui/) + shell (layout/)
-│   ├── src/features/        auth, today, food (stage 2), ai (stage 3), train (stage 4), settings, placeholders
+│   ├── src/features/        auth, today, food (2), ai (3), train (4), health (5), plan (6), settings, placeholders
 │   ├── src/i18n/            ru.json / en.json (all strings live here)
 │   ├── src/lib/             device, offline queue, formatting, errors, targets
 │   └── public/              icons, offline.html, sw-push.js (stage 7)
@@ -125,7 +128,7 @@ discipline-os/
 ├── deploy/                  install.sh, update.sh, healthcheck.sh, backup/
 ├── scripts/                 dev-api.sh, smoke.sh, check-i18n.mjs, ui-check.mjs
 ├── .github/workflows/       ci.yml, deploy.yml, backup.yml
-├── docs/                    roadmap.md, stage-1/2/2b/3/4.md, screenshots/
+├── docs/                    roadmap.md, stage-1 … stage-6.md, screenshots/
 ├── docker-compose.yml       postgres + api + caddy (production)
 ├── docker-compose.dev.yml   overlay: published postgres, api with reload
 └── Makefile                 every developer shortcut
@@ -352,11 +355,13 @@ place. New library rows are **unverified** until the owner taps *Подтвер�
 ## Testing
 
 ```bash
-# backend: 174 tests — calorie math, food search & ranking (incl. the 150 ms
+# backend: 920+ tests — calorie math, food search & ranking (incl. the 150 ms
 # budget on a 50k-row library), importers (seed/USDA/OFF), live barcode fallback
 # (mocked), meal logging, recipes, day boundaries, recurrence, tokens/devices,
 # AI logging (fake provider + every adapter behind httpx.MockTransport), training
-# (search, templates, plan, idempotent sets, records, burned kcal, bounds)
+# (search, templates, plan, idempotent sets, records, burned kcal, bounds), health
+# ingest, the planner (tasks, repeats across DST, reminders, views, PARA, timer
+# races, journal) and 670 quick-add parser cases (ru + en)
 cd api
 TEST_DATABASE_URL=postgresql+psycopg://postgres:postgres@127.0.0.1:5432/dsos_test \
   SECRET_KEY=test-secret-key-please-change-0123456789 .venv/bin/pytest -q
@@ -365,22 +370,25 @@ TEST_DATABASE_URL=postgresql+psycopg://postgres:postgres@127.0.0.1:5432/dsos_tes
 # frontend: types + production build (also verifies the PWA generation)
 cd web && npm run typecheck && npm run build
 
-# end-to-end against a running API (20 checks: pairing, scopes, targets, search
+# end-to-end against a running API (22 checks: pairing, scopes, targets, search
 # budget, barcode, recipes, AI parse without auto-save, 413 upload guard, a workout
-# end to end with food totals untouched, revoke)
+# end to end with food totals untouched, the Shortcut ingest, the planner — quick
+# add, a repeat's next instance, timer, journal, calendar — and revoke)
 API_BASE=http://127.0.0.1:8000/api ./scripts/smoke.sh <PAIRING-CODE>
 
 # i18n gate (also runs in the CI web job): every key the UI uses exists in both
 # locales, the locales do not drift, dynamic prefixes resolve
 node scripts/check-i18n.mjs
 
-# browser acceptance: 112 checks in a real Chromium — pairing gate, code entry,
+# browser acceptance: 218 checks in a real Chromium — pairing gate, code entry,
 # the 4-step onboarding with the live target preview, Today, quick add,
 # settings (language / theme / timezone), every route, the built PWA manifest,
 # food logging, recipes, AI text/photo review → save, offline AI message, the
 # camera barcode scanner, and training (template, plan, live sets incl. offline,
 # finish, records, cardio, burned kcal apart from food), and health (Shortcut token + ingest,
-# manual steps incl. offline, weight → profile, sleep, /health; cleans up after itself)
+# manual steps incl. offline, weight → profile, sleep, /health), and the planner
+# (views, editor, quick add, PARA, calendar drag, timer, time log, journal, offline;
+# scripts/ui-checks/stage6-*.mjs); every module cleans up after itself
 # (FAKE_CAMERA plays an EAN-13 video:
 # python3 scripts/make-barcode-y4m.py 460700123456 /tmp/barcode.y4m).
 # Needs a running api (AI_PROVIDER=fake) + web and a fresh single-use code:
@@ -669,5 +677,6 @@ dashboard) is delivered — see `docs/stage-2.md` — and stage 2b closed its ga
 (320-food seed, USDA + RU names, OFF fallback, recipe yield/portions, the search
 budget) — see `docs/stage-2b.md`. Stage 3 (AI photo/text logging, barcode
 scanning, `docs/stage-3.md`), stage 4 (training, `docs/stage-4.md`) and stage 5
-(health ingest: the iOS Shortcut, steps, weight, sleep — `docs/stage-5.md`) are
-delivered; stage 6 (the planner) is next.
+(health ingest: the iOS Shortcut, steps, weight, sleep — `docs/stage-5.md`) and
+stage 6 (the planner — `docs/stage-6.md`) are delivered; stage 7 (web push
+notifications) is next.
