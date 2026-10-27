@@ -1284,3 +1284,25 @@ async def test_jobs_are_registered_and_run(ready, db) -> None:
     assert str(jobs["plan_daily_reminders"].trigger) == "interval[0:15:00]"
     assert await run_job_now("plan_daily_reminders") is True
     assert await run_job_now("dispatch_notifications") is True
+
+
+def test_cli_vapid_keys_prints_a_working_pair(monkeypatch) -> None:
+    """`python -m app.cli vapid-keys` → .env lines the server can sign with (and the browser can use)."""
+    from typer.testing import CliRunner
+
+    from app.cli import cli
+    from app.core.config import get_settings
+    from app.services import push
+
+    result = CliRunner().invoke(cli, ["vapid-keys"])
+    assert result.exit_code == 0, result.output
+    lines = dict(line.split("=", 1) for line in result.output.splitlines() if line.startswith("VAPID_"))
+    public, private = lines["VAPID_PUBLIC_KEY"], lines["VAPID_PRIVATE_KEY"]
+    assert "\n" not in private and private.startswith("-----BEGIN PRIVATE KEY-----\\n")  # one .env line
+    raw = base64.urlsafe_b64decode(public + "=" * (-len(public) % 4))
+    assert len(raw) == 65 and raw[0] == 4  # the browser's applicationServerKey
+    monkeypatch.setattr(get_settings(), "vapid_public_key", public)
+    monkeypatch.setattr(get_settings(), "vapid_private_key", private)
+    key = push.vapid()
+    signed = key.sign({"sub": "mailto:owner@example.com", "aud": "https://push.example.test"})
+    assert Vapid02.verify(signed["Authorization"]) and signed["Authorization"].endswith(f"k={public}")
