@@ -190,7 +190,9 @@ try {
     check(await hasText('Ограничения'), 'step 4 is named in the progress bar')
     await page.getByRole('button', { name: 'Сохранить и продолжить' }).click()
     await page.waitForLoadState('networkidle')
-    await page.waitForTimeout(800)
+    // the app shell renders once the saved settings are back (slow on a busy machine)
+    await page.locator('nav.tabbar').waitFor({ timeout: 20000 }).catch(() => {})
+    await page.waitForTimeout(300)
   }
   check(await hasText('Сегодня'), 'wizard saved → Today page')
   await shot('04-today')
@@ -633,9 +635,11 @@ try {
   // live workout
   await page.getByRole('button', { name: 'Начать по плану' }).click()
   await page.waitForURL(/\/train\/workout\//, { timeout: 8000 })
-  await page.waitForTimeout(800)
   const workoutId = page.url().split('/').pop()
   const card = page.locator('[data-testid="workout-exercise"]').first()
+  // the three planned rows render once the workout is loaded (slow on a busy machine)
+  await card.locator('input[inputmode="decimal"]').nth(2).waitFor({ timeout: 20000 }).catch(() => {})
+  await page.waitForTimeout(300)
   const weights = await card.locator('input[inputmode="decimal"]').evaluateAll((els) => els.map((el) => el.value))
   // rows come from the last workout with this exercise, else from the template target (60 kg)
   const started = (await apiFetch(`/v1/training/workouts/${workoutId}`)).body
@@ -823,7 +827,7 @@ try {
   await page.getByRole('tab', { name: 'Вчера' }).click()
   await page.locator('#steps-input').fill('4321')
   await page.getByRole('button', { name: 'Сохранить шаги' }).click()
-  await page.waitForTimeout(700)
+  await page.getByText('Нет сети — сохранится').first().waitFor({ timeout: 8000 }).catch(() => {})
   check(await hasText('Нет сети — сохранится'), 'offline steps are queued with a clear message')
   await context.setOffline(false)
   offlineMode = false
