@@ -286,7 +286,7 @@ async def test_search_ru_en_partial_and_other_kinds(authed: httpx.AsyncClient) -
     assert [item["name"] for item in kitchen["projects"]] == ["Ремонт кухни"]
     assert [item["name"] for item in kitchen["resources"]] == ["Идеи для кухни"]
     assert kitchen["journal"][0]["date"] == today().isoformat() and "кухни" in kitchen["journal"][0]["snippet"]
-    assert (await search("Health"))["areas"][0]["name"] == "Health"
+    assert (await search("здоров"))["areas"][0]["name"] == "Здоровье"
     percent = await search("100%")
     assert percent["tasks"] == []
     for bad in ("к", " к ", "x" * 101):

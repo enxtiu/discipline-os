@@ -111,7 +111,7 @@ async def test_quick_add_project_block_reminder_recurrence(authed: httpx.AsyncCl
 
 async def test_quick_add_en_line_and_title_fallback(authed: httpx.AsyncClient) -> None:
     now = today()
-    english = await _quick(authed, "tomorrow 6pm gym #Health p1", captured_at=at(now, 10))
+    english = await _quick(authed, "tomorrow 6pm gym #ЗДОРОВЬЕ p1", captured_at=at(now, 10))
     task = english["task"]
     assert (task["title"], task["due_date"], task["due_time"], task["priority"]) == (
         "gym",
@@ -119,7 +119,7 @@ async def test_quick_add_en_line_and_title_fallback(authed: httpx.AsyncClient) -
         "18:00",
         1,
     )
-    assert [tag["name"] for tag in task["tags"]] == ["health"]  # the existing tag, matched case-insensitively
+    assert [tag["name"] for tag in task["tags"]] == ["здоровье"]  # the default tag, matched case-insensitively
     only_tokens = await _quick(authed, "завтра p1", captured_at=at(now, 10))
     assert only_tokens["task"]["title"] == "завтра p1"  # nothing left: the raw text is the title
     assert (only_tokens["task"]["due_date"], only_tokens["task"]["priority"]) == (
@@ -268,7 +268,7 @@ async def test_mapping_of_every_parsed_field(authed: httpx.AsyncClient, fake_par
     assert call["now"].utcoffset() == timedelta(hours=7) and call["now"].hour == 9 and call["now"].minute == 30
     assert call["week_start"] == 1
     kinds = [(container.kind, container.name) for container in call["containers"]]
-    assert ("project", "Сад") in kinds and kinds.index(("project", "Сад")) < kinds.index(("area", "Health"))
+    assert ("project", "Сад") in kinds and kinds.index(("project", "Сад")) < kinds.index(("area", "Здоровье"))
 
 
 async def test_mapping_defaults_fallbacks_and_replays(authed: httpx.AsyncClient, fake_parser) -> None:

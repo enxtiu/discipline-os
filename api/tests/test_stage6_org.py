@@ -7,9 +7,13 @@ from datetime import UTC, datetime, timedelta
 
 import httpx
 import pytest
+from sqlalchemy import select
 
 from app.db import SessionLocal
-from app.models import TimeEntry
+from app.models import Area, Tag, TimeEntry, User, UserStatus
+from app.models.user import LanguageCode
+from app.services.bootstrap import ensure_defaults
+from app.services.settings_service import get_or_create_settings
 from tests.stage6_helpers import API, code, complete, get_task, make_task, other_user, patch_task, today, uid
 
 pytestmark = pytest.mark.anyio
@@ -23,7 +27,7 @@ async def _post(client: httpx.AsyncClient, path: str, body: dict, status: int = 
 
 async def test_areas_crud_order_and_counts(authed: httpx.AsyncClient, owner) -> None:
     defaults = (await authed.get(f"{API}/areas")).json()["items"]
-    assert [area["name"] for area in defaults][:2] == ["Health", "Work"] and len(defaults) == 7
+    assert [area["name"] for area in defaults][:2] == ["Здоровье", "Работа"] and len(defaults) == 7
     area_id = uid()
     sport = await _post(
         authed, "/areas", {"id": area_id, "name": "Спорт", "color": "#FF0000", "weekly_target_minutes": 300}
@@ -37,10 +41,10 @@ async def test_areas_crud_order_and_counts(authed: httpx.AsyncClient, owner) -> 
     assert sport["counts"] == {"open_tasks": 0, "active_projects": 0} and sport["week_minutes"] == 0
     replay = await _post(authed, "/areas", {"id": area_id, "name": "Спорт"})
     assert replay["id"] == area_id and replay["created_at"] == sport["created_at"]
-    for name in ("спорт", "HEALTH"):
+    for name in ("спорт", "ЗДОРОВЬЕ"):
         taken = await authed.post(f"{API}/areas", json={"name": name})
         assert taken.status_code == 409 and code(taken) == "name_taken", name
-    renamed = await authed.patch(f"{API}/areas/{area_id}", json={"name": "work"})
+    renamed = await authed.patch(f"{API}/areas/{area_id}", json={"name": "работа"})
     assert renamed.status_code == 409 and code(renamed) == "name_taken"
     same_case = await authed.patch(f"{API}/areas/{area_id}", json={"name": "СПОРТ", "icon": "dumbbell"})
     assert same_case.status_code == 200 and same_case.json()["name"] == "СПОРТ"
@@ -213,18 +217,18 @@ async def test_resources_and_tags(authed: httpx.AsyncClient) -> None:
     assert (await authed.delete(f"{API}/resources/{newer['id']}")).status_code == 404
 
     tag_id = uid()
-    focus = await _post(authed, "/tags", {"id": tag_id, "name": "#Фокус", "color": "#00AA00"})
-    assert (focus["name"], focus["color"], focus["open_tasks"]) == ("Фокус", "#00AA00", 0)
-    assert (await _post(authed, "/tags", {"id": tag_id, "name": "Фокус"}))["id"] == tag_id  # replay
-    taken = await authed.post(f"{API}/tags", json={"name": "фокус"})
+    focus = await _post(authed, "/tags", {"id": tag_id, "name": "#Чтение", "color": "#00AA00"})
+    assert (focus["name"], focus["color"], focus["open_tasks"]) == ("Чтение", "#00AA00", 0)
+    assert (await _post(authed, "/tags", {"id": tag_id, "name": "Чтение"}))["id"] == tag_id  # replay
+    taken = await authed.post(f"{API}/tags", json={"name": "чтение"})
     assert taken.status_code == 409 and code(taken) == "name_taken"
     invalid = await authed.post(f"{API}/tags", json={"name": "два слова"})
     assert invalid.status_code == 422 and code(invalid) == "invalid_tag"
-    task = await make_task(authed, "глубокая работа", tags=["фокус"])
+    task = await make_task(authed, "глубокая работа", tags=["чтение"])
     assert task["tags"][0]["id"] == tag_id
     names = [tag["name"] for tag in (await authed.get(f"{API}/tags")).json()["items"]]
-    assert names == sorted(names, key=str.lower) and "Фокус" in names
-    clash = await authed.patch(f"{API}/tags/{tag_id}", json={"name": "Health"})
+    assert names == sorted(names, key=str.lower) and "Чтение" in names
+    clash = await authed.patch(f"{API}/tags/{tag_id}", json={"name": "Фокус"})  # the default "фокус"
     assert clash.status_code == 409 and code(clash) == "name_taken"
     renamed = (await authed.patch(f"{API}/tags/{tag_id}", json={"name": "deep_focus", "color": None})).json()
     assert (renamed["name"], renamed["color"], renamed["open_tasks"]) == ("deep_focus", None, 1)
@@ -232,6 +236,30 @@ async def test_resources_and_tags(authed: httpx.AsyncClient) -> None:
     assert (await authed.delete(f"{API}/tags/{tag_id}")).status_code == 204
     assert (await get_task(authed, task["id"]))["tags"] == []
     assert (await authed.delete(f"{API}/tags/{tag_id}")).status_code == 404
+
+
+async def test_default_areas_and_tags_follow_the_language() -> None:
+    """Defaults are named in the user's language; a later run in the other language adds nothing."""
+    async with SessionLocal() as session:
+        user = User(display_name="English", status=UserStatus.ACTIVE, is_owner=False, max_devices=3)
+        session.add(user)
+        await session.flush()
+        settings = await get_or_create_settings(session, user)
+        settings.language = LanguageCode.EN
+        await ensure_defaults(session, user)
+
+        async def names() -> tuple[list[str], list[str]]:
+            areas = await session.scalars(select(Area.name).where(Area.user_id == user.id).order_by(Area.sort_order))
+            tags = await session.scalars(select(Tag.name).where(Tag.user_id == user.id).order_by(Tag.name))
+            return list(areas), list(tags)
+
+        english = await names()
+        assert english[0][:3] == ["Health", "Work", "Finance"] and len(english[0]) == 7
+        assert english[1] == ["call", "deep-work", "errand", "health", "idea", "quick"]
+        settings.language = LanguageCode.RU
+        await ensure_defaults(session, user)  # the user's rows already cover every default
+        assert await names() == english
+        await session.rollback()
 
 
 async def test_every_row_kind_is_scoped(authed: httpx.AsyncClient) -> None:

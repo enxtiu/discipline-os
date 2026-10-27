@@ -419,12 +419,12 @@ async def test_reminder_validation(authed: httpx.AsyncClient) -> None:
 # tags, small fields, bounds
 # --------------------------------------------------------------------------- #
 async def test_tags_on_tasks(authed: httpx.AsyncClient) -> None:
-    task = await make_task(authed, "зал", tags=["#Здоровье", "здоровье", "deep-work", "HEALTH"])
-    assert [tag["name"] for tag in task["tags"]] == ["deep-work", "health", "Здоровье"]  # default "health" matched
+    task = await make_task(authed, "зал", tags=["#Здоровье", "здоровье", "deep-work", "ИДЕЯ"])
+    assert [tag["name"] for tag in task["tags"]] == ["deep-work", "здоровье", "идея"]  # defaults matched, any case
     tags = {tag["name"]: tag for tag in (await authed.get(f"{API}/tags")).json()["items"]}
-    assert tags["Здоровье"]["open_tasks"] == 1 and tags["deep-work"]["open_tasks"] == 1
-    replaced = await patch_task(authed, task["id"], tags=["здоровье"])
-    assert [tag["name"] for tag in replaced["task"]["tags"]] == ["Здоровье"]
+    assert tags["здоровье"]["open_tasks"] == 1 and tags["deep-work"]["open_tasks"] == 1
+    replaced = await patch_task(authed, task["id"], tags=["Здоровье"])
+    assert [tag["name"] for tag in replaced["task"]["tags"]] == ["здоровье"]
     cleared = await patch_task(authed, task["id"], tags=None)
     assert cleared["task"]["tags"] == []
     for bad in (["a b"], ["#"], ["x" * 65], ["x!"], ["tag", "#?"]):

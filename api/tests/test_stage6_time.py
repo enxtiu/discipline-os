@@ -249,7 +249,7 @@ async def test_entry_list_and_summary(authed: httpx.AsyncClient) -> None:
         230,
     )
     by_area = {(item["area"] or {}).get("name"): item for item in week["by_area"]}
-    assert (by_area["Health"]["minutes"], by_area["Health"]["target_minutes"]) == (90, 300)
+    assert (by_area[health["name"]]["minutes"], by_area[health["name"]]["target_minutes"]) == (90, 300)
     assert by_area[areas[3]["name"]]["minutes"] == 120 and by_area[None]["minutes"] == 20
     assert {(item["project"] or {}).get("name"): item["minutes"] for item in week["by_project"]} == {
         "Диплом": 120,
@@ -264,7 +264,7 @@ async def test_entry_list_and_summary(authed: httpx.AsyncClient) -> None:
     month = (await authed.get(f"{API}/time/summary", params={"period": "month", "date": anchor.isoformat()})).json()
     assert month["from"] == anchor.replace(day=1).isoformat() and month["total_minutes"] == 230
     assert (
-        next(item for item in month["by_area"] if item["area"] and item["area"]["name"] == "Health")["target_minutes"]
+        next(item for item in month["by_area"] if item["area"] and item["area"]["id"] == health["id"])["target_minutes"]
         == 1305
     )
     assert (await authed.get(f"{API}/time/summary", params={"period": "year"})).status_code == 422
