@@ -146,4 +146,4 @@ def _fingerprint_hash(fingerprint: str | None) -> str | None:
 
 
 def get_db_dep():  # pragma: no cover - kept for symmetry/typing
-    return Depends(get_db)
+    return Depends(get_db, scope="function")

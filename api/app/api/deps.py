@@ -74,7 +74,7 @@ async def _touch_device(db: AsyncSession, device: Device) -> None:
 async def get_principal(
     request: Request,
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_db, scope="function")],
 ) -> Principal:
     if credentials is None or not credentials.credentials:
         raise Unauthorized("Missing bearer token")
@@ -177,4 +177,9 @@ async def require_device(
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
 CurrentPrincipal = Annotated[Principal, Depends(get_principal)]
-DbSession = Annotated[AsyncSession, Depends(get_db)]
+# scope="function": the session commits when the endpoint returns, *before* the
+# response is sent (a yield dependency's default "request" scope commits after
+# it). A client that writes and immediately reads — the offline queue replaying
+# a task and then its subtask — must see its own write. Every use of get_db
+# needs the same scope, or FastAPI would open a second session per request.
+DbSession = Annotated[AsyncSession, Depends(get_db, scope="function")]

@@ -24,7 +24,7 @@ router = APIRouter(prefix="/meta", tags=["meta"])
 
 
 @router.get("/health", response_model=HealthOut, summary="Liveness / readiness probe")
-async def health(db: AsyncSession = Depends(get_db)) -> HealthOut:
+async def health(db: AsyncSession = Depends(get_db, scope="function")) -> HealthOut:
     settings = get_settings()
     db_ok = await ping()
     fuzzy = await search_ready() if db_ok else None
