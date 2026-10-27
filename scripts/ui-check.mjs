@@ -297,7 +297,11 @@ try {
   const todayText = await text()
   // the sheet pre-fills the food's default serving (150 g → 165 kcal)
   check(/165/.test(todayText), 'Today ring shows the logged 165 kcal (150 g buckwheat)')
-  check(await hasText('Завтрак') || await hasText('Обед') || await hasText('Ужин'), 'meal appears under its type')
+  // the log sheet picks the type from the browser's clock (Moscow here), so after 22:00 it is a snack
+  check(
+    (await hasText('Завтрак')) || (await hasText('Обед')) || (await hasText('Ужин')) || (await hasText('Перекус')),
+    'meal appears under its type',
+  )
   await shot('12-today-with-meal')
 
   // water quick-add from the dashboard
