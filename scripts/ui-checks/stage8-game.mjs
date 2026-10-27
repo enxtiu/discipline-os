@@ -68,13 +68,17 @@ export async function run(ctx) {
         .evaluateAll((els) => els.map((el) => [el.getAttribute('data-ring'), Number(el.getAttribute('data-value'))])),
     ),
     xpToday: norm(await card.locator('[data-testid="day-xp-today"]').innerText()),
-    xpTotal: norm(await card.locator('[data-testid="day-xp-total"]').innerText()),
+    xpNext: norm(await card.locator('[data-testid="day-xp-next"]').innerText()),
+    total: Number(await card.locator('[data-testid="day-level"]').getAttribute('data-total')),
     level: Number(await card.locator('[data-testid="day-level"]').getAttribute('data-level')),
     levelText: norm(await card.locator('[data-testid="day-level"]').innerText()),
     provisional: (await card.locator('[data-testid="score-provisional"]').count()) > 0,
     streaks: await card
       .locator('[data-testid="streak-chip"]')
       .evaluateAll((els) => els.map((el) => `${el.getAttribute('data-kind')}:${el.getAttribute('data-current')}`)),
+    atRisk: await card
+      .locator('[data-testid="streak-at-risk"]')
+      .evaluateAll((els) => els.map((el) => el.getAttribute('data-kinds')).join('|')),
     quests: await card
       .locator('[data-testid="today-quests"] [data-testid="quest-row"]')
       .evaluateAll((els) => els.map((el) => `${el.getAttribute('data-quest')}:${el.getAttribute('data-status')}`)),
@@ -112,20 +116,24 @@ export async function run(ctx) {
       shown.score === Math.round(start.score.value) &&
         sameRings(shown.rings, start) &&
         shown.xpToday.includes(`+${ru(start.xp.today)} XP`) &&
-        shown.xpTotal.startsWith(
-          lvl.next_min_xp != null ? `${ru(start.xp.total)} / ${ru(lvl.next_min_xp)} XP` : `${ru(start.xp.total)}`,
-        ) &&
+        shown.total === start.xp.total &&
+        shown.xpNext ===
+          (lvl.next_min_xp != null
+            ? `ещё ${ru(lvl.next_min_xp - start.xp.total)} XP до ур. ${lvl.level + 1}`
+            : `Высший уровень · ${ru(start.xp.total)} XP`) &&
         shown.level === lvl.level &&
         shown.levelText.includes(lvl.title_ru),
-      'Today card = GET /gamification/today (score, 3 rings, XP today/total, level and title)',
-      `score ${shown.score}, XP +${start.xp.today}/${start.xp.total}, ур. ${lvl.level} «${lvl.title_ru}»`,
+      'Today card = GET /gamification/today (score, 3 rings, XP today, level, title, XP to the next level)',
+      `score ${shown.score}, XP +${start.xp.today} (${start.xp.total}), ур. ${lvl.level} «${lvl.title_ru}», ${shown.xpNext}`,
     )
     const apiStreaks = start.streaks.filter((s) => s.current > 0).map((s) => `${s.kind}:${s.current}`)
+    const apiAtRisk = start.streaks.filter((s) => s.at_risk).map((s) => s.kind).join(',')
     check(
       JSON.stringify(shown.streaks) === JSON.stringify(apiStreaks) &&
+        shown.atRisk === apiAtRisk &&
         JSON.stringify(shown.quests) === JSON.stringify(cardQuests(start)),
-      'card streak flames and today’s quests = the API',
-      `${apiStreaks.join(', ') || 'no streaks yet'} · ${cardQuests(start).join(', ')}`,
+      'card streak flames, the evening at-risk hint and today’s quests = the API',
+      `${apiStreaks.join(', ') || 'no streaks yet'} · at risk: ${apiAtRisk || 'none'} · ${cardQuests(start).join(', ')}`,
     )
     check(start.score.provisional === true && shown.provisional, 'today’s score is labelled «предварительно» (provisional)')
 

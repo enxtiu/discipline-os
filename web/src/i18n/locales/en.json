@@ -960,9 +960,9 @@
         "review": "write today's review",
         "workout": "do this week's planned workouts"
       },
-      "at_risk": "“{{name}}” — {{length}} in a row. Today does not count yet: {{action}}.",
-      "at_risk_freeze": "If you miss it, a freeze is used ({{count}} left) and the streak goes on.",
-      "at_risk_no_freeze": "No freezes left.",
+      "at_risk_title": "Not counted yet today",
+      "at_risk_freeze": "Miss it and a freeze is used — the streak goes on.",
+      "at_risk_no_freeze": "no freezes left",
       "longest": "Best {{length}}",
       "today_met": "Today counts",
       "today_pending": "Not yet today",

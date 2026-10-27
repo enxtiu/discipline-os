@@ -9,6 +9,7 @@
  * purpose — it lives in the Today chunk: SVG rings, no charts.
  */
 import { useEffect, useRef, useState, type RefObject } from 'react'
+import clsx from 'clsx'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 
@@ -146,28 +147,29 @@ function LevelBlock({ xp }: { xp: XpToday }) {
   const { t } = useTranslation()
   const { level } = xp
   return (
-    <Link to="/stats/achievements" className="block space-y-2" data-testid="day-level" data-level={level.level}>
+    <Link
+      to="/stats/achievements"
+      className="block space-y-2"
+      data-testid="day-level"
+      data-level={level.level}
+      data-total={xp.total}
+    >
       <div className="flex items-center gap-2">
         <span className="tnum shrink-0 rounded-lg bg-[rgb(var(--accent-2))]/15 px-2 py-0.5 text-xs font-semibold text-[rgb(var(--accent-2))]">
           {t('game.level_short', { level: level.level })}
         </span>
         <span className="min-w-0 flex-1 truncate font-semibold">{levelTitle(level)}</span>
-        <span className="tnum shrink-0 text-sm font-semibold text-[rgb(var(--accent-2))]" data-testid="day-xp-today">
-          {t('game.xp_today', { xp: number(xp.today) })}
-        </span>
       </div>
       <ProgressBar value={level.progress} max={1} tone="violet" />
-      <div className="tnum flex flex-wrap justify-between gap-x-3 gap-y-0.5 text-xs muted">
-        {level.next_min_xp != null ? (
-          <>
-            <span data-testid="day-xp-total">
-              {t('game.xp_progress', { total: number(xp.total), next: number(level.next_min_xp) })}
-            </span>
-            <span>{t('game.xp_to_next', { xp: number(level.next_min_xp - xp.total), level: level.level + 1 })}</span>
-          </>
-        ) : (
-          <span data-testid="day-xp-total">{t('game.xp_max', { total: number(xp.total) })}</span>
-        )}
+      <div className="tnum flex items-baseline justify-between gap-3 text-xs">
+        <span className="font-semibold text-[rgb(var(--accent-2))]" data-testid="day-xp-today">
+          {t('game.xp_today', { xp: number(xp.today) })}
+        </span>
+        <span className="muted" data-testid="day-xp-next">
+          {level.next_min_xp != null
+            ? t('game.xp_to_next', { xp: number(level.next_min_xp - xp.total), level: level.level + 1 })
+            : t('game.xp_max', { total: number(xp.total) })}
+        </span>
       </div>
     </Link>
   )
@@ -181,62 +183,70 @@ function StreakBlock({ streaks }: { streaks: Streak[] }) {
     <section className="space-y-2.5" data-testid="day-streaks" aria-label={t('game.streaks_title')}>
       <p className="label">{t('game.streaks_title')}</p>
       {going.length ? (
-        <ul className="flex flex-wrap gap-2">
+        <ul className="grid grid-cols-3 gap-2">
           {going.map((streak) => (
             <li
               key={streak.kind}
-              className="inline-flex items-center gap-1.5 rounded-pill bg-[rgb(var(--bg-sunken))] px-3 py-1.5 text-sm"
+              className="surface-sunken min-w-0 px-2.5 py-2"
               data-testid="streak-chip"
               data-kind={streak.kind}
               data-current={streak.current}
+              data-met={streak.today_met}
             >
-              <IconFlameLit
-                lit={streak.today_met}
-                size={16}
-                className={streak.today_met ? 'text-[rgb(var(--warn))]' : 'text-[rgb(var(--text-muted))]'}
-              />
-              <span className="tnum font-semibold">{streakLength(streak, streak.current)}</span>
-              <span className="muted">{t(`game.streak.name.${streak.kind}`)}</span>
+              <span className="flex items-center gap-1">
+                <IconFlameLit
+                  lit={streak.today_met}
+                  size={16}
+                  className={clsx('shrink-0', streak.today_met ? 'text-[rgb(var(--warn))]' : 'text-[rgb(var(--text-muted))]')}
+                />
+                <span className="tnum truncate text-sm font-semibold">{streakLength(streak, streak.current)}</span>
+              </span>
+              <span className="mt-0.5 block truncate text-xs muted">{t(`game.streak.name.${streak.kind}`)}</span>
             </li>
           ))}
         </ul>
       ) : (
         <p className="text-sm leading-relaxed muted">{t('game.streaks_none')}</p>
       )}
-      {risky.map((streak) => (
-        <AtRiskHint key={streak.kind} streak={streak} />
-      ))}
+      {risky.length > 0 && <AtRiskHint streaks={risky} />}
     </section>
   )
 }
 
-/** After 18:00 (server rule): today does not count yet — what keeps the streak going. Never about eating less. */
-function AtRiskHint({ streak }: { streak: Streak }) {
+/**
+ * After 18:00 (server rule): the streaks whose today does not count yet, and
+ * what keeps each going — one box for all of them. Never about eating less.
+ */
+function AtRiskHint({ streaks }: { streaks: Streak[] }) {
   const { t } = useTranslation()
+  const freezes = streaks.some((streak) => streak.freeze_tokens > 0)
   return (
     <div
-      className="flex gap-2.5 rounded-2xl border border-[rgb(var(--warn))]/40 bg-[rgb(var(--warn))]/10 px-3 py-2.5 text-sm leading-relaxed"
+      className="space-y-1.5 rounded-2xl border border-[rgb(var(--warn))]/40 bg-[rgb(var(--warn))]/10 px-3 py-2.5 text-sm leading-snug"
       data-testid="streak-at-risk"
-      data-kind={streak.kind}
+      data-kinds={streaks.map((streak) => streak.kind).join(',')}
     >
-      <IconFlameLit size={18} className="mt-0.5 shrink-0 text-[rgb(var(--warn))]" />
-      <p>
-        {t('game.streak.at_risk', {
-          name: t(`game.streak.name.${streak.kind}`),
-          length: streakLength(streak, streak.current),
-          action: t(`game.streak.action.${streak.kind}`),
-        })}{' '}
-        <span className="muted">
-          {streak.freeze_tokens > 0 ? (
-            <>
-              <IconSnowflake size={13} className="mb-0.5 mr-0.5 inline" />
-              {t('game.streak.at_risk_freeze', { count: streak.freeze_tokens })}
-            </>
-          ) : (
-            t('game.streak.at_risk_no_freeze')
-          )}
-        </span>
+      <p className="flex items-center gap-1.5 font-semibold">
+        <IconFlameLit size={16} className="shrink-0 text-[rgb(var(--warn))]" />
+        {t('game.streak.at_risk_title')}
       </p>
+      <ul className="space-y-1">
+        {streaks.map((streak) => (
+          <li key={streak.kind} data-kind={streak.kind}>
+            <span className="font-medium">
+              {t(`game.streak.name.${streak.kind}`)} · <span className="tnum">{streakLength(streak, streak.current)}</span>
+            </span>
+            <span className="muted"> — {t(`game.streak.action.${streak.kind}`)}</span>
+            {streak.freeze_tokens === 0 && <span className="muted"> · {t('game.streak.at_risk_no_freeze')}</span>}
+          </li>
+        ))}
+      </ul>
+      {freezes && (
+        <p className="flex gap-1.5 text-xs muted">
+          <IconSnowflake size={13} className="mt-px shrink-0 text-[rgb(var(--accent))]" />
+          {t('game.streak.at_risk_freeze')}
+        </p>
+      )}
     </div>
   )
 }
