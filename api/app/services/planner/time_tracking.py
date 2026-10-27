@@ -8,7 +8,9 @@
 * **Replays.** A replayed start (same client id) returns the current state and
   never creates a second row; stopping without a running timer is a no-op.
 * **Bounds.** A timer may start ≤ 24 h back and ≤ 5 min ahead; an entry lasts at
-  most 24 h; a timer running longer than that needs an explicit ``ended_at``.
+  most 24 h; a timer running longer than that needs an explicit ``ended_at``. A day
+  is a day of wall clock: midnight to midnight across a fall-back night (25 real
+  hours) is within the limit.
 * **Attribution.** An entry belongs to the local day of ``started_at``; a timer
   on a task inherits the task's project and area (an area also comes from the
   project), and the task's ``actual_minutes`` is recomputed after every change.
@@ -119,6 +121,12 @@ async def _attribution(
     return task_id, project_id, area_id
 
 
+def _longer_than_a_day(start: datetime, end: datetime, clock: Clock) -> bool:
+    """More than 24 hours both in real time and on the user's wall clock: 00:00–00:00 on a
+    fall-back day (25 real hours) is one day, 00:00–00:30 the next day is not."""
+    return end - start > MAX_ENTRY and clock.naive(end) - clock.naive(start) > MAX_ENTRY
+
+
 def _stop(entry: TimeEntry, ended_at: datetime) -> None:
     entry.ended_at = ended_at
     entry.duration_s = int((ended_at - entry.started_at).total_seconds())
@@ -152,7 +160,7 @@ async def start_timer(db: AsyncSession, *, user_id: uuid.UUID, clock: Clock, pay
     stopped = await running_entry(db, user_id, lock=True)
     if stopped is not None:
         ended_at = max(started_at, stopped.started_at)
-        if ended_at - stopped.started_at > MAX_ENTRY:
+        if _longer_than_a_day(stopped.started_at, ended_at, clock):
             raise _too_long(stopped)
         _stop(stopped, ended_at)
         await db.flush()
@@ -199,14 +207,14 @@ async def stop_timer(db: AsyncSession, *, user_id: uuid.UUID, clock: Clock, payl
         if entry is None:
             return None
     if payload.ended_at is None:
-        if clock.now - entry.started_at > MAX_ENTRY:
+        if _longer_than_a_day(entry.started_at, clock.now, clock):
             raise _too_long(entry)
         ended_at = max(clock.now, entry.started_at)
     else:
         ended_at = clock.instant(payload.ended_at)
         if ended_at < entry.started_at or ended_at > clock.now + FUTURE_TOLERANCE:
             raise _invalid("ended_at must be after the start and not in the future")
-        if ended_at - entry.started_at > MAX_ENTRY:
+        if _longer_than_a_day(entry.started_at, ended_at, clock):
             raise _invalid("A time entry lasts at most 24 hours")
     _stop(entry, ended_at)
     await db.flush()
@@ -219,8 +227,7 @@ def _manual_bounds(day: date, start: str, end: str, clock: Clock) -> tuple[datet
     start_t, end_t = parse_hhmm(start), parse_hhmm(end)
     end_day = day + timedelta(days=1) if end_t <= start_t else day
     started_at, ended_at = clock.at(day, start_t), clock.at(end_day, end_t)
-    length = ended_at - started_at
-    if not MIN_MANUAL <= length <= MAX_ENTRY:
+    if ended_at - started_at < MIN_MANUAL or _longer_than_a_day(started_at, ended_at, clock):
         raise _invalid("A time entry lasts between 1 minute and 24 hours")
     if ended_at > clock.now + FUTURE_TOLERANCE:
         raise _invalid("A time entry cannot end in the future")

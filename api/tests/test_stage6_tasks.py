@@ -168,10 +168,26 @@ async def test_dst_days_in_berlin(authed: httpx.AsyncClient) -> None:
     twice = await make_task(authed, "дважды", due_date="2026-10-25", due_time="02:30")
     assert datetime.fromisoformat(twice["due_at"]) == datetime(2026, 10, 25, 0, 30, tzinfo=UTC)  # first 02:30
     assert twice["due_time"] == "02:30"
-    long_night = await authed.post(
-        f"{API}/tasks", json={"title": "x", "block": {"date": "2026-10-25", "start": "00:00", "end": "00:00"}}
+    # the fall-back day is one whole day of wall clock: 24 h on the clock, 25 real hours
+    long_day = await make_task(authed, "длинный день", block={"date": "2026-10-25", "start": "00:00", "end": "00:00"})
+    block = long_day["block"]
+    assert (block["date"], block["start"], block["end"], block["minutes"], block["ends_next_day"]) == (
+        "2026-10-25",
+        "00:00",
+        "00:00",
+        1500,
+        True,
     )
-    assert long_night.status_code == 422 and code(long_night) == "invalid_block"  # 25 hours
+    assert datetime.fromisoformat(block["start_at"]) == datetime(2026, 10, 24, 22, 0, tzinfo=UTC)
+    assert datetime.fromisoformat(block["end_at"]) == datetime(2026, 10, 25, 23, 0, tzinfo=UTC)
+    echoed = await patch_task(authed, long_day["id"], block={"date": "2026-10-25", "start": "00:00", "end": "00:00"})
+    assert echoed["task"]["block"]["minutes"] == 1500
+    short_day = await make_task(authed, "короткий день", block={"date": "2026-03-29", "start": "00:00", "end": "00:00"})
+    assert short_day["block"]["minutes"] == 1380
+    skipped = await authed.post(
+        f"{API}/tasks", json={"title": "x", "block": {"date": "2026-03-29", "start": "02:30", "end": "03:00"}}
+    )
+    assert skipped.status_code == 422 and code(skipped) == "invalid_block"  # the clock skips 02:00-03:00
     summer = await make_task(authed, "лето", due_date="2026-07-01", due_time="09:00")
     assert datetime.fromisoformat(summer["due_at"]) == datetime(2026, 7, 1, 7, 0, tzinfo=UTC)
     winter = await make_task(authed, "зима", due_date="2026-12-01", due_time="09:00")

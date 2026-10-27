@@ -96,11 +96,17 @@ async def get_task(db: AsyncSession, user_id: uuid.UUID, task_id: uuid.UUID, *, 
 # Local fields ↔ instants
 # --------------------------------------------------------------------------- #
 def block_instants(day: date, start: str, end: str, clock: Clock) -> tuple[datetime, datetime]:
-    """A local block → instants; ``end`` ≤ ``start`` ends the next day; 0 < length ≤ 24 h."""
+    """A local block → instants; ``end`` ≤ ``start`` ends the next day.
+
+    The 24-hour limit is wall clock: a 00:00–00:00 block on a fall-back day is one whole
+    day although it lasts 25 real hours (``minutes`` shows the real length). A block that
+    ends before it starts in real time — inside a spring-forward gap — is refused.
+    """
     start_t, end_t = parse_hhmm(start), parse_hhmm(end)
     end_day = day + timedelta(days=1) if end_t <= start_t else day
     start_at, end_at = clock.at(day, start_t), clock.at(end_day, end_t)
-    if not timedelta(0) < end_at - start_at <= MAX_BLOCK:
+    wall = datetime.combine(end_day, end_t) - datetime.combine(day, start_t)
+    if not (start_at < end_at and wall <= MAX_BLOCK):
         raise Unprocessable(
             "A block lasts more than 0 minutes and at most 24 hours",
             code="invalid_block",

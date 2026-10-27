@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import httpx
 import pytest
@@ -12,7 +12,7 @@ from sqlalchemy import func, select
 
 from app.db import SessionLocal
 from app.models import TimeEntry
-from tests.stage6_helpers import API, BANGKOK, code, get_task, make_task, today, uid
+from tests.stage6_helpers import API, BANGKOK, code, get_task, make_task, set_timezone, today, uid
 
 pytestmark = pytest.mark.anyio
 
@@ -267,3 +267,40 @@ async def test_entry_list_and_summary(authed: httpx.AsyncClient) -> None:
         == 1305
     )
     assert (await authed.get(f"{API}/time/summary", params={"period": "year"})).status_code == 422
+
+
+async def test_dst_fall_back_day_is_one_whole_day(authed: httpx.AsyncClient, owner) -> None:
+    """24 hours of wall clock are 25 real hours on the fall-back day: entries and timers take the whole day."""
+    await set_timezone(authed, "Europe/Berlin")
+    whole = await authed.post(f"{API}/time-entries", json={"date": "2026-10-25", "start": "00:00", "end": "00:00"})
+    assert whole.status_code == 201, whole.text
+    body = whole.json()
+    assert (body["duration_s"], body["date"], body["start"], body["end"], body["ends_next_day"]) == (
+        25 * 3600,
+        "2026-10-25",
+        "00:00",
+        "00:00",
+        True,
+    )
+    again = await authed.patch(
+        f"{API}/time-entries/{body['id']}", json={"date": "2026-10-25", "start": "00:00", "end": "00:00"}
+    )
+    assert again.status_code == 200 and again.json()["duration_s"] == 25 * 3600
+    gap = await authed.post(f"{API}/time-entries", json={"date": "2026-03-29", "start": "02:30", "end": "03:00"})
+    assert gap.status_code == 422 and code(gap) == "invalid_time_entry"  # the clock skips 02:00-03:00
+
+    started_at = datetime(2026, 10, 24, 22, 0, tzinfo=UTC)  # 2026-10-25 00:00 in Berlin
+    async with SessionLocal() as session:
+        forgotten = TimeEntry(user_id=owner.id, started_at=started_at, local_day=date(2026, 10, 25), source="timer")
+        session.add(forgotten)
+        await session.commit()
+        forgotten_id = str(forgotten.id)
+    too_long = await authed.post(  # 00:30 the next day: 24 h 30 min of wall clock
+        f"{API}/timer/stop", json={"entry_id": forgotten_id, "ended_at": "2026-10-25T23:30:00Z"}
+    )
+    assert too_long.status_code == 422 and code(too_long) == "invalid_time_entry"
+    midnight = await authed.post(  # midnight to midnight: 24 h of wall clock, 25 real hours
+        f"{API}/timer/stop", json={"entry_id": forgotten_id, "ended_at": "2026-10-25T23:00:00Z"}
+    )
+    assert midnight.status_code == 200, midnight.text
+    assert (midnight.json()["stopped"]["duration_s"], midnight.json()["stopped"]["end"]) == (25 * 3600, "00:00")
