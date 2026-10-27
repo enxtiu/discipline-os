@@ -12,8 +12,10 @@
  *   non-passive `touchmove` listener that already existed when the touch
  *   began, so one window listener lives as long as the hook and decides per
  *   event from the drag state.
- * * After a drop the click the browser synthesises is swallowed, so a drop
- *   never also taps the item (which would open the editor).
+ * * A drop never also counts as a tap (which would open the editor or a new
+ *   task): a touch drop cancels its `touchend`, which suppresses the
+ *   synthetic click; after a mouse drop the click that follows `mouseup` (on
+ *   the common ancestor of where the press started and ended) is swallowed.
  * * Touch events keep targeting the element the touch started on, so that
  *   element must stay mounted until the finger lifts: consumers leave it in
  *   place (dimmed) and draw a separate preview where it would land.
@@ -77,14 +79,14 @@ function findTouch(list: TouchList, id: number | null): Touch | null {
   return null
 }
 
-/** Swallow the click a browser fires right after a drop (capture phase, once, ≤ 500 ms). */
+/** Swallow the click that follows a mouse drop (capture phase, once, within 250 ms). */
 function swallowNextClick(): void {
   const swallow = (event: MouseEvent) => {
     event.preventDefault()
     event.stopPropagation()
     remove()
   }
-  const timeout = window.setTimeout(() => remove(), 500)
+  const timeout = window.setTimeout(() => remove(), 250)
   const remove = () => {
     window.clearTimeout(timeout)
     window.removeEventListener('click', swallow, true)
@@ -139,10 +141,11 @@ export function useDrag<T>(options: DragOptions<T>) {
     const finish = (point: DragPoint, cancelled: boolean) => {
       const state = stateRef.current
       const item = state.item
+      const source = state.source
       const wasDragging = state.phase === 'dragging'
       reset()
       if (!wasDragging || item === null) return
-      swallowNextClick()
+      if (source === 'mouse') swallowNextClick()
       if (cancelled) optionsRef.current.onCancel?.(item)
       else optionsRef.current.onDrop(item, point)
     }

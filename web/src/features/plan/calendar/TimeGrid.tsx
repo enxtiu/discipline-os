@@ -1,12 +1,18 @@
 /**
- * Day & week time grid: hours 00–24 in their own vertical scroller, the
- * all-day strip, blocks placed from the server's local `block.start` /
- * `block.end` strings (no timezone math), overlapping blocks side by side, a
+ * Day & week time grid: hours 00–24 (52 px per hour) in the page flow, the
+ * toolbar, week header and all-day strip as one sticky stack under the app
+ * header, blocks placed from the server's local `block.start` / `block.end`
+ * strings (no timezone math), overlapping blocks side by side, a
  * current-time line, and drag — move (across days in the week) and resize
  * from the bottom edge, both snapped to 15 minutes, the snapped time shown
  * while dragging.
+ *
+ * The page is the only scroll container (no box scrolling inside the page):
+ * on iOS a nested scroller traps swipes and shows a few hours at a time. On
+ * mount the page scrolls to the current time (when today is shown) or 07:00;
+ * dragging near the top or bottom edge scrolls the page.
  */
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import clsx from 'clsx'
 
@@ -24,7 +30,18 @@ import {
   snapMinutes,
   weekdayShort,
 } from './dates'
-import { gridItems, isDone, layoutColumns, PRIORITY_CHIP, PRIORITY_TINT, visibleEnd, type DayBucket, type GridItem, type Placed } from './model'
+import {
+  gridItems,
+  isDone,
+  layoutColumns,
+  PRIORITY_CHIP,
+  PRIORITY_TINT,
+  visibleEnd,
+  type DayBucket,
+  type GridItem,
+  type Placed,
+} from './model'
+import { shellInsets, useEdgeAutoScroll, useShellInsets } from './shell'
 import { DRAG_SURFACE, useDrag, type DragBindings, type DragPoint } from './useDrag'
 
 /** ≈ 52 px per hour: 15 minutes = 13 px, a day = 1248 px. */
@@ -33,7 +50,6 @@ const PX_PER_MIN = HOUR_PX / 60
 const MIN_BLOCK_PX = 22
 const MIN_VISUAL_MIN = Math.ceil(MIN_BLOCK_PX / PX_PER_MIN)
 const GRID_PX = 24 * HOUR_PX
-const AUTOSCROLL_EDGE = 40
 
 export interface BlockChange {
   date: string
@@ -83,6 +99,7 @@ export function TimeGrid({
   index,
   today,
   timeZone,
+  toolbar,
   onChange,
   onPickDay,
 }: {
@@ -92,12 +109,16 @@ export function TimeGrid({
   /** The server's today (the "now" line is drawn in that column only). */
   today: string | undefined
   timeZone: string
+  /** View switcher and navigation: sticks with the week header. */
+  toolbar?: ReactNode
   onChange: (task: Task, change: BlockChange) => void
   /** Week view: a day header or "+N" opens that day. */
   onPickDay?: (day: string) => void
 }) {
   const { t } = useTranslation()
-  const scrollerRef = useRef<HTMLDivElement>(null)
+  const insets = useShellInsets()
+  const stickyRef = useRef<HTMLDivElement>(null)
+  const gridRef = useRef<HTMLDivElement>(null)
   const layerRef = useRef<HTMLDivElement>(null)
   const count = days.length
   const multi = count > 1
@@ -112,14 +133,17 @@ export function TimeGrid({
     [days, index],
   )
 
-  // Opens around the current time when today is visible, otherwise at 07:00.
+  // Opens at the current time when today is shown, otherwise at 07:00: the
+  // page scrolls so that hour sits right under the sticky headers. Only when
+  // the grid mounts (switching day ↔ week remounts it); week-to-week
+  // navigation keeps the hour the user scrolled to.
   useLayoutEffect(() => {
-    const scroller = scrollerRef.current
-    if (!scroller) return
+    const grid = gridRef.current
+    if (!grid) return
     const target = todayIndex >= 0 && now !== null ? now - 90 : 7 * 60
-    scroller.scrollTop = Math.max(0, target * PX_PER_MIN)
-    // only when the grid mounts (switching day ↔ week remounts it); later
-    // navigation keeps the hour the user scrolled to
+    const headers = shellInsets().top + (stickyRef.current?.offsetHeight ?? 0)
+    const top = grid.getBoundingClientRect().top + window.scrollY + Math.max(0, target) * PX_PER_MIN - headers
+    window.scrollTo({ top: Math.max(0, top), behavior: 'auto' })
   }, [])
 
   // ---- drag ---------------------------------------------------------------------
@@ -155,6 +179,14 @@ export function TimeGrid({
     [locate, multi],
   )
 
+  const stopDrag = () => {
+    window.cancelAnimationFrame(frame.current)
+    frame.current = 0
+    dragItem.current = null
+    lastPoint.current = null
+    setPreview(null)
+  }
+
   const drag = useDrag<DragItem>({
     onStart: (item, start) => {
       grabOffset.current = locate(start).minutes - (item.mode === 'move' ? item.start : item.end)
@@ -174,61 +206,29 @@ export function TimeGrid({
       })
     },
     onDrop: (item, point) => {
-      window.cancelAnimationFrame(frame.current)
-      frame.current = 0
       const next = compute(item, point)
-      dragItem.current = null
-      lastPoint.current = null
-      setPreview(null)
+      stopDrag()
       if (next.dayIndex === item.dayIndex && next.start === item.start && next.end === item.end) return
       onChange(item.task, { date: days[next.dayIndex], start: next.start, end: next.end })
     },
-    onCancel: () => {
-      window.cancelAnimationFrame(frame.current)
-      frame.current = 0
-      dragItem.current = null
-      lastPoint.current = null
-      setPreview(null)
-    },
+    onCancel: stopDrag,
   })
   const dragging = drag.dragging !== null
 
-  // Auto-scroll near the scroller's edges while dragging; the preview follows.
-  useEffect(() => {
-    if (!dragging) return
-    const scroller = scrollerRef.current
-    if (!scroller) return
-    let raf = 0
-    const tick = () => {
-      const point = lastPoint.current
-      const item = dragItem.current
-      if (point && item) {
-        const rect = scroller.getBoundingClientRect()
-        let delta = 0
-        if (point.y < rect.top + AUTOSCROLL_EDGE) delta = -(rect.top + AUTOSCROLL_EDGE - point.y)
-        else if (point.y > rect.bottom - AUTOSCROLL_EDGE) delta = point.y - (rect.bottom - AUTOSCROLL_EDGE)
-        if (delta !== 0) {
-          const before = scroller.scrollTop
-          scroller.scrollTop = before + clamp(delta / 3, -14, 14)
-          if (scroller.scrollTop !== before) setPreview(compute(item, point))
-        }
-      }
-      raf = window.requestAnimationFrame(tick)
-    }
-    raf = window.requestAnimationFrame(tick)
-    const onScroll = () => {
+  // While dragging, the page scrolls near the edges (below the sticky headers,
+  // above the tab bar) and the preview follows the content under the finger.
+  useEdgeAutoScroll(
+    dragging,
+    lastPoint,
+    () => insets.top + (stickyRef.current?.offsetHeight ?? 0),
+    () => {
       const point = lastPoint.current
       const item = dragItem.current
       if (point && item) setPreview(compute(item, point))
-    }
-    scroller.addEventListener('scroll', onScroll, { passive: true })
-    return () => {
-      window.cancelAnimationFrame(raf)
-      scroller.removeEventListener('scroll', onScroll)
-    }
-  }, [dragging, compute])
+    },
+  )
 
-  // ---- tap on an empty slot → new task in that hour --------------------------------
+  // ---- tap on an empty slot → a new task in that half hour ------------------------
   const onEmptyTap = (event: React.MouseEvent<HTMLDivElement>) => {
     if (event.target !== event.currentTarget) return
     const { minutes, dayIndex } = locate({ x: event.clientX, y: event.clientY })
@@ -241,134 +241,144 @@ export function TimeGrid({
     const bucket = index.get(day)
     return !!bucket && (bucket.allDay.length > 0 || bucket.occurrences.some((occurrence) => !occurrence.block))
   })
+  const hasHeader = multi || hasAllDay
+  const showNow = now !== null && todayIndex >= 0
 
   return (
-    <div className="card overflow-hidden" data-testid="cal-grid" data-view={multi ? 'week' : 'day'}>
-      {multi && (
-        <div className="grid border-b border-[rgb(var(--border))]" style={template}>
-          <span aria-hidden="true" />
-          {days.map((day) => (
-            <button
-              key={day}
-              type="button"
-              onClick={() => onPickDay?.(day)}
-              aria-label={t('calendar.open_day_named', { day: dayTitle(day) })}
-              aria-current={day === today ? 'date' : undefined}
-              className="flex min-h-tap flex-col items-center justify-center gap-0.5 py-1"
-            >
-              <span className={clsx('text-[10px] uppercase', day === today ? 'text-[rgb(var(--accent))]' : 'muted')}>
-                {weekdayShort(day)}
-              </span>
-              <span
-                className={clsx(
-                  'tnum flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-[13px] font-semibold',
-                  day === today && 'bg-[rgb(var(--accent))] text-ink-950',
-                )}
+    <div data-testid="cal-grid" data-view={multi ? 'week' : 'day'}>
+      <div ref={stickyRef} className="sticky z-20 bg-[rgb(var(--bg))] pt-1" style={{ top: insets.top }}>
+        {toolbar && <div className="pb-3">{toolbar}</div>}
+        {hasHeader && (
+          <div className="rounded-t-card border border-b-0 border-[rgb(var(--border))] bg-[rgb(var(--bg-elevated))]">
+            {multi && (
+              <div className="grid" style={template}>
+                <span aria-hidden="true" />
+                {days.map((day) => (
+                  <button
+                    key={day}
+                    type="button"
+                    onClick={() => onPickDay?.(day)}
+                    aria-label={t('calendar.open_day_named', { day: dayTitle(day) })}
+                    aria-current={day === today ? 'date' : undefined}
+                    className="flex min-h-tap flex-col items-center justify-center gap-0.5 py-1"
+                    data-testid="cal-day-header"
+                    data-date={day}
+                  >
+                    <span className={clsx('text-[10px] uppercase', day === today ? 'text-[rgb(var(--accent))]' : 'muted')}>
+                      {weekdayShort(day)}
+                    </span>
+                    <span
+                      className={clsx(
+                        'tnum flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-[13px] font-semibold',
+                        day === today && 'bg-[rgb(var(--accent))] text-ink-950',
+                      )}
+                    >
+                      {dayNumber(day)}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {hasAllDay && (
+              <div
+                className={clsx('grid py-1', multi && 'border-t border-[rgb(var(--border))]/70')}
+                style={template}
+                data-testid="cal-allday"
               >
-                {dayNumber(day)}
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
-
-      {hasAllDay && (
-        <div
-          className="grid border-b border-[rgb(var(--border))] py-1"
-          style={template}
-          data-testid="cal-allday"
-        >
-          <span className="self-center px-0.5 text-center text-[9px] leading-tight muted">{t('calendar.all_day_short')}</span>
-          {days.map((day) => (
-            <AllDayCell key={day} day={day} bucket={index.get(day)} compact={multi} onPickDay={onPickDay} />
-          ))}
-        </div>
-      )}
+                <span className="self-center px-0.5 text-center text-[9px] leading-tight muted">
+                  {t('calendar.all_day_short')}
+                </span>
+                {days.map((day) => (
+                  <AllDayCell key={day} day={day} bucket={index.get(day)} compact={multi} onPickDay={onPickDay} />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       <div
-        ref={scrollerRef}
-        className="relative overflow-y-auto overscroll-y-contain"
-        style={{
-          height: 'calc(100dvh - 13.5rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))',
-          minHeight: '18rem',
-        }}
-        data-testid="cal-scroller"
+        ref={gridRef}
+        className={clsx(
+          'relative overflow-hidden rounded-b-card border border-[rgb(var(--border))] bg-[rgb(var(--bg-elevated))] shadow-card',
+          !hasHeader && 'rounded-t-card',
+        )}
+        style={{ height: GRID_PX }}
+        data-testid="cal-hours"
       >
-        <div className="relative" style={{ height: GRID_PX }}>
-          {/* hour lines and labels */}
-          {Array.from({ length: 24 }, (_, hour) => (
-            <div
-              key={hour}
-              className="pointer-events-none absolute inset-x-0 flex items-start"
-              style={{ top: hour * HOUR_PX }}
-              aria-hidden="true"
-            >
-              <span className="tnum w-10 shrink-0 -translate-y-1/2 pr-1.5 text-right text-[10px] leading-none muted">
-                {hour === 0 ? '' : fromMinutes(hour * 60)}
-              </span>
-              <span className="h-px flex-1 bg-[rgb(var(--border))]/70" />
-            </div>
-          ))}
-          {now !== null && todayIndex >= 0 && (
+        {/* hour lines and labels */}
+        {Array.from({ length: 24 }, (_, hour) => (
+          <div
+            key={hour}
+            className="pointer-events-none absolute inset-x-0 flex items-start"
+            style={{ top: hour * HOUR_PX }}
+            aria-hidden="true"
+          >
+            <span className="tnum w-10 shrink-0 -translate-y-1/2 pr-1.5 text-right text-[10px] leading-none muted">
+              {hour === 0 || (showNow && Math.abs((now ?? 0) - hour * 60) < 14) ? '' : fromMinutes(hour * 60)}
+            </span>
+            <span className="h-px flex-1 bg-[rgb(var(--border))]/70" />
+          </div>
+        ))}
+        {showNow && (
+          <span
+            className="tnum pointer-events-none absolute left-0 z-20 w-10 -translate-y-1/2 bg-[rgb(var(--bg-elevated))] pr-1.5 text-right text-[10px] font-semibold leading-none text-[rgb(var(--accent))]"
+            style={{ top: now * PX_PER_MIN }}
+            aria-hidden="true"
+          >
+            {fromMinutes(now)}
+          </span>
+        )}
+
+        <div
+          ref={layerRef}
+          className={clsx('absolute inset-y-0 left-10 right-0', dragging && 'cursor-grabbing')}
+          onClick={onEmptyTap}
+          data-testid="cal-layer"
+        >
+          {multi &&
+            days.map((day, dayIndex) =>
+              dayIndex === 0 ? null : (
+                <span
+                  key={day}
+                  className="pointer-events-none absolute inset-y-0 border-l border-[rgb(var(--border))]/70"
+                  style={{ left: `${(dayIndex / count) * 100}%` }}
+                  aria-hidden="true"
+                />
+              ),
+            )}
+          {multi && todayIndex >= 0 && (
             <span
-              className="tnum pointer-events-none absolute left-0 z-20 w-10 -translate-y-1/2 bg-[rgb(var(--bg-elevated))] pr-1.5 text-right text-[10px] font-semibold leading-none text-[rgb(var(--accent))]"
-              style={{ top: now * PX_PER_MIN }}
+              className="pointer-events-none absolute inset-y-0 bg-[rgb(var(--accent))]/[0.05]"
+              style={{ left: `${(todayIndex / count) * 100}%`, width: `${100 / count}%` }}
+              aria-hidden="true"
+            />
+          )}
+
+          <BlocksLayer
+            columns={columns}
+            days={days}
+            draggingId={drag.dragging?.task.id ?? null}
+            bind={drag.bind}
+            compact={multi}
+          />
+
+          {showNow && (
+            <span
+              className="pointer-events-none absolute z-20 h-0.5 rounded-full bg-[rgb(var(--accent))]"
+              style={{
+                top: now * PX_PER_MIN - 1,
+                left: `${(todayIndex / count) * 100}%`,
+                width: `${100 / count}%`,
+              }}
+              data-testid="cal-now"
               aria-hidden="true"
             >
-              {fromMinutes(now)}
+              <span className="absolute -left-1 -top-[3px] h-2 w-2 rounded-full bg-[rgb(var(--accent))]" />
             </span>
           )}
 
-          <div
-            ref={layerRef}
-            className={clsx('absolute inset-y-0 left-10 right-0', dragging && 'cursor-grabbing')}
-            onClick={onEmptyTap}
-            data-testid="cal-layer"
-          >
-            {multi &&
-              days.map((day, dayIndex) =>
-                dayIndex === 0 ? null : (
-                  <span
-                    key={day}
-                    className="pointer-events-none absolute inset-y-0 border-l border-[rgb(var(--border))]/70"
-                    style={{ left: `${(dayIndex / count) * 100}%` }}
-                    aria-hidden="true"
-                  />
-                ),
-              )}
-            {multi && todayIndex >= 0 && (
-              <span
-                className="pointer-events-none absolute inset-y-0 bg-[rgb(var(--accent))]/[0.05]"
-                style={{ left: `${(todayIndex / count) * 100}%`, width: `${100 / count}%` }}
-                aria-hidden="true"
-              />
-            )}
-
-            <BlocksLayer
-              columns={columns}
-              days={days}
-              draggingId={drag.dragging?.task.id ?? null}
-              bind={drag.bind}
-              compact={multi}
-            />
-
-            {now !== null && todayIndex >= 0 && (
-              <span
-                className="pointer-events-none absolute z-20 h-0.5 rounded-full bg-[rgb(var(--accent))]"
-                style={{
-                  top: now * PX_PER_MIN - 1,
-                  left: `${(todayIndex / count) * 100}%`,
-                  width: `${100 / count}%`,
-                }}
-                data-testid="cal-now"
-                aria-hidden="true"
-              >
-                <span className="absolute -left-1 -top-[3px] h-2 w-2 rounded-full bg-[rgb(var(--accent))]" />
-              </span>
-            )}
-
-            {preview && <DragPreview item={preview} count={count} compact={multi} />}
-          </div>
+          {preview && <DragPreview item={preview} count={count} compact={multi} />}
         </div>
       </div>
     </div>
@@ -405,6 +415,9 @@ const BlocksLayer = memo(function BlocksLayer({
             left: `calc(${((dayIndex + column / span) / count) * 100}% + 1px)`,
             width: `calc(${(1 / span / count) * 100}% - 2px)`,
           }
+          // what fits: two title lines from 38 px, the time from 34 px (day) / 60 px (week)
+          const twoLines = height >= 38
+          const showTime = compact ? height >= 60 : height >= 34
 
           if (item.kind === 'occurrence') {
             const occurrence = item.occurrence
@@ -424,16 +437,21 @@ const BlocksLayer = memo(function BlocksLayer({
                 })}
                 data-testid="cal-occurrence"
               >
-                <span className="block truncate font-medium">{occurrence.title}</span>
-                {height >= 36 && <span className="tnum block truncate muted">{blockLabel(occurrence.block)}</span>}
+                <span className={clsx('block font-medium', twoLines ? 'line-clamp-2 hyphens-auto break-words' : 'truncate')}>
+                  {occurrence.title}
+                </span>
+                {showTime && (
+                  <span className="tnum block truncate muted">
+                    {compact ? occurrence.block?.start : blockLabel(occurrence.block)}
+                  </span>
+                )}
               </button>
             )
           }
 
           const task = item.task
           const done = isDone(task)
-          const continuation = item.kind === 'continuation'
-          const movable = !continuation
+          const movable = item.kind === 'task'
           const resizable = movable && !task.block?.ends_next_day && height >= 30
           const origin: DragItem = { task, mode: 'move', dayIndex, start: item.start, end: item.end }
           return (
@@ -453,17 +471,25 @@ const BlocksLayer = memo(function BlocksLayer({
               )}
               style={{ ...style, borderLeftColor: task.project?.color ?? undefined }}
               aria-label={t('calendar.block_label', { title: task.title, time: blockLabel(task.block) })}
-              data-testid="cal-block"
+              data-testid={movable ? 'cal-block' : 'cal-continuation'}
               data-task-id={task.id}
               data-start={task.block?.start}
               data-end={task.block?.end}
               data-date={task.block?.date}
             >
-              <span className={clsx('block font-semibold', height >= 34 && !compact ? 'line-clamp-2' : 'truncate', done && 'line-through')}>
+              <span
+                className={clsx(
+                  'block font-semibold',
+                  twoLines ? 'line-clamp-2 hyphens-auto break-words' : 'truncate',
+                  done && 'line-through',
+                )}
+              >
                 {task.title}
               </span>
-              {height >= 40 && <span className="tnum block truncate opacity-75">{blockLabel(task.block)}</span>}
-              {!compact && height >= 60 && (task.project || task.area) && (
+              {showTime && (
+                <span className="tnum block truncate opacity-75">{compact ? task.block?.start : blockLabel(task.block)}</span>
+              )}
+              {!compact && height >= 64 && (task.project || task.area) && (
                 <span className="block truncate opacity-75">{task.project?.name ?? task.area?.name}</span>
               )}
               {resizable && (
@@ -504,8 +530,17 @@ function DragPreview({ item, count, compact }: { item: DragItem; count: number; 
       }}
       data-testid="cal-drag-preview"
     >
-      <span className="tnum block whitespace-nowrap font-semibold text-[rgb(var(--accent))]" data-testid="cal-drag-time">
-        {fromMinutes(item.start)}–{endLabel(item.end)}
+      <span className="tnum block font-semibold text-[rgb(var(--accent))]" data-testid="cal-drag-time">
+        {compact ? (
+          <>
+            <span className="block whitespace-nowrap">{fromMinutes(item.start)}</span>
+            <span className="block whitespace-nowrap opacity-80">{endLabel(item.end)}</span>
+          </>
+        ) : (
+          <span className="whitespace-nowrap">
+            {fromMinutes(item.start)}–{endLabel(item.end)}
+          </span>
+        )}
       </span>
       <span className="block truncate">{item.task.title}</span>
     </div>
@@ -536,39 +571,47 @@ function AllDayCell({
   const hidden = total - shownTasks.length - shownRepeats.length
 
   return (
-    <div className={clsx('min-w-0 px-0.5', compact ? 'space-y-0.5' : 'flex flex-wrap gap-1.5 px-1.5')}>
-      {shownTasks.map((task) => (
-        <button
-          key={task.id}
-          type="button"
-          onClick={() => openTask(task.id)}
-          className={clsx(
-            'block max-w-full truncate rounded-md text-left',
-            compact ? 'w-full px-1 text-[10px] leading-5' : 'min-h-tap px-3 text-sm',
-            PRIORITY_CHIP[task.priority],
-            isDone(task) && 'line-through opacity-50',
-          )}
-          aria-label={task.due_time ? `${task.due_time} ${task.title}` : task.title}
-          data-testid="cal-allday-task"
-          data-task-id={task.id}
-        >
-          {task.due_time && <span className="tnum mr-1 opacity-75">{task.due_time}</span>}
-          {task.title}
-        </button>
-      ))}
+    <div
+      className={clsx('min-w-0', compact ? 'space-y-0.5 px-0.5' : 'flex gap-1.5 overflow-x-auto px-1.5 py-0.5')}
+      style={compact ? undefined : { scrollbarWidth: 'none' }}
+    >
+      {shownTasks.map((task) => {
+        const label = task.due_time ? `${task.due_time} ${task.title}` : task.title
+        return (
+          <button
+            key={task.id}
+            type="button"
+            onClick={() => openTask(task.id)}
+            className={clsx(
+              'block truncate rounded-md text-left',
+              compact ? 'w-full max-w-full px-1 text-[10px] leading-5' : 'min-h-tap max-w-[15rem] shrink-0 px-3 text-sm',
+              PRIORITY_CHIP[task.priority],
+              isDone(task) && 'line-through opacity-50',
+            )}
+            title={label}
+            aria-label={label}
+            data-testid="cal-allday-task"
+            data-task-id={task.id}
+          >
+            {/* week columns are too narrow for the time: it is in the label, the day view and the editor */}
+            {!compact && task.due_time && <span className="tnum mr-1.5 opacity-75">{task.due_time}</span>}
+            {task.title}
+          </button>
+        )
+      })}
       {shownRepeats.map((occurrence) => (
         <button
           key={`${occurrence.task_id}:${occurrence.date}`}
           type="button"
           onClick={() => openTask(occurrence.task_id)}
           className={clsx(
-            'block max-w-full truncate rounded-md border border-dashed border-[rgb(var(--text-muted))]/60 text-left opacity-75',
-            compact ? 'w-full px-1 text-[10px] leading-[18px]' : 'min-h-tap px-3 text-sm',
+            'block truncate rounded-md border border-dashed border-[rgb(var(--text-muted))]/60 text-left opacity-75',
+            compact ? 'w-full max-w-full px-1 text-[10px] leading-[18px]' : 'min-h-tap max-w-[15rem] shrink-0 px-3 text-sm',
           )}
           aria-label={t('calendar.repeat_label', { title: occurrence.title, time: occurrence.due_time ?? '' })}
           data-testid="cal-occurrence"
         >
-          {occurrence.due_time && <span className="tnum mr-1">{occurrence.due_time}</span>}
+          {!compact && occurrence.due_time && <span className="tnum mr-1.5">{occurrence.due_time}</span>}
           {occurrence.title}
         </button>
       ))}

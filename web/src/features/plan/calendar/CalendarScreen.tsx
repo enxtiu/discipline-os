@@ -8,7 +8,7 @@
  * read the same week range (switching between them is instant), month reads
  * its 6-week grid (≤ 42 days, under the 62-day limit).
  */
-import { useMemo, useState } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import clsx from 'clsx'
@@ -36,6 +36,7 @@ import {
 } from './dates'
 import { indexCalendar, isDone, type DayBucket } from './model'
 import { MonthGrid } from './MonthGrid'
+import { shellInsets } from './shell'
 import { CalendarSkeleton } from './CalendarSkeleton'
 import { TimeGrid, type BlockChange } from './TimeGrid'
 import { useMoveTask } from './useMoveTask'
@@ -68,6 +69,20 @@ export default function CalendarScreen() {
   const anchor = readDayKey(params.get('date')) ?? today ?? null
   const [picked, setPicked] = useState<string | null>(null)
   const move = useMoveTask()
+  const rootRef = useRef<HTMLDivElement>(null)
+  const shownView = useRef(view)
+
+  // Day and week scroll the page to an hour; switching to the month brings its
+  // toolbar back into view if that left it above the screen.
+  useLayoutEffect(() => {
+    if (shownView.current === view) return
+    shownView.current = view
+    const root = rootRef.current
+    if (view !== 'month' || !root) return
+    const top = shellInsets().top
+    const rect = root.getBoundingClientRect()
+    if (rect.top < top) window.scrollTo({ top: Math.max(0, rect.top + window.scrollY - top - 8), behavior: 'auto' })
+  }, [view])
 
   const go = (next: { view?: View; date?: string | null }) => {
     const query = new URLSearchParams(params)
@@ -138,50 +153,8 @@ export default function CalendarScreen() {
     go({ view: 'day', date: day })
   }
 
-  let content: React.ReactNode
-  if (!anchor) {
-    content = counts.isError ? (
-      <ErrorState message={errorMessage(counts.error)} onRetry={() => void counts.refetch()} retryLabel={t('app.retry')} />
-    ) : (
-      <CalendarSkeleton view={view} />
-    )
-  } else if (calendar.isError && !calendar.data) {
-    content = (
-      <ErrorState message={errorMessage(calendar.error)} onRetry={() => void calendar.refetch()} retryLabel={t('app.retry')} />
-    )
-  } else if (!calendar.data) {
-    content = <CalendarSkeleton view={view} />
-  } else if (view === 'month') {
-    content = visible && selected ? (
-      <>
-        <MonthGrid
-          days={visible.days}
-          month={anchor}
-          index={index}
-          today={today}
-          selected={selected}
-          onSelect={setPicked}
-          onMove={onMonthMove}
-        />
-        <DayAgenda day={selected} bucket={index.get(selected)} today={today} loading={!ready} onOpenDay={openDay} />
-      </>
-    ) : null
-  } else if (visible) {
-    content = (
-      <TimeGrid
-        key={view}
-        days={visible.days}
-        index={index}
-        today={today}
-        timeZone={timeZone}
-        onChange={onBlockChange}
-        onPickDay={openDay}
-      />
-    )
-  }
-
-  return (
-    <div className="space-y-3" data-testid="calendar">
+  const toolbar = (
+    <div className="space-y-2" data-testid="cal-toolbar">
       <SegmentedControl
         value={view}
         onChange={(next) => go({ view: next })}
@@ -198,9 +171,7 @@ export default function CalendarScreen() {
           <h2 className="truncate text-center text-[15px] font-semibold" data-testid="cal-title">
             {title}
           </h2>
-          {(calendar.isFetching || (calendar.isPlaceholderData && !ready)) && (
-            <Spinner size={14} className="shrink-0 muted" />
-          )}
+          {calendar.isFetching && !ready && <Spinner size={14} className="shrink-0 muted" />}
         </div>
         <IconButton
           label={t(`calendar.next.${view}`)}
@@ -221,6 +192,60 @@ export default function CalendarScreen() {
           {t('calendar.today')}
         </Button>
       </div>
+    </div>
+  )
+
+  // Day and week: the toolbar sticks with the week header inside the grid.
+  if (anchor && calendar.data && view !== 'month' && visible) {
+    return (
+      <div ref={rootRef} data-testid="calendar">
+        <TimeGrid
+          key={view}
+          days={visible.days}
+          index={index}
+          today={today}
+          timeZone={timeZone}
+          toolbar={toolbar}
+          onChange={onBlockChange}
+          onPickDay={openDay}
+        />
+      </div>
+    )
+  }
+
+  let content: React.ReactNode = null
+  if (!anchor) {
+    content = counts.isError ? (
+      <ErrorState message={errorMessage(counts.error)} onRetry={() => void counts.refetch()} retryLabel={t('app.retry')} />
+    ) : (
+      <CalendarSkeleton view={view} />
+    )
+  } else if (calendar.isError && !calendar.data) {
+    content = (
+      <ErrorState message={errorMessage(calendar.error)} onRetry={() => void calendar.refetch()} retryLabel={t('app.retry')} />
+    )
+  } else if (!calendar.data) {
+    content = <CalendarSkeleton view={view} />
+  } else if (visible && selected) {
+    content = (
+      <>
+        <MonthGrid
+          days={visible.days}
+          month={anchor}
+          index={index}
+          today={today}
+          selected={selected}
+          onSelect={setPicked}
+          onMove={onMonthMove}
+        />
+        <DayAgenda day={selected} bucket={index.get(selected)} today={today} loading={!ready} onOpenDay={openDay} />
+      </>
+    )
+  }
+
+  return (
+    <div ref={rootRef} className="space-y-3" data-testid="calendar">
+      {toolbar}
       {content}
     </div>
   )

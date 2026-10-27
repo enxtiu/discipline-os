@@ -12,6 +12,7 @@ import { clamp } from '@/lib/format'
 import type { Occurrence, Task } from '../types'
 import { dayNumber, dayTitle, monthTitle, sameMonth, weekdayShort } from './dates'
 import { isDone, PRIORITY_CHIP, type DayBucket } from './model'
+import { shellInsets, useEdgeAutoScroll } from './shell'
 import { DRAG_SURFACE, useDrag, type DragPoint } from './useDrag'
 
 const CHIPS_PER_DAY = 3
@@ -59,6 +60,7 @@ export function MonthGrid({
   const gridRef = useRef<HTMLDivElement>(null)
   const [pointer, setPointer] = useState<DragPoint | null>(null)
   const [target, setTarget] = useState<string | null>(null)
+  const lastPoint = useRef<DragPoint | null>(null)
 
   const cellAt = useCallback(
     (point: DragPoint): string | null => {
@@ -82,24 +84,38 @@ export function MonthGrid({
 
   const drag = useDrag<ChipDrag>({
     onStart: (item, start) => {
+      lastPoint.current = start
       setPointer(start)
       setTarget(item.from)
     },
     onMove: (_item, point) => {
+      lastPoint.current = point
       setPointer(point)
       setTarget(cellAt(point))
     },
     onDrop: (item, point) => {
       const day = cellAt(point)
+      lastPoint.current = null
       setPointer(null)
       setTarget(null)
       if (day && day !== item.from) onMove(item.task, day)
     },
     onCancel: () => {
+      lastPoint.current = null
       setPointer(null)
       setTarget(null)
     },
   })
+
+  // a row under the tab bar (or above the fold) is reachable while dragging
+  useEdgeAutoScroll(
+    drag.dragging !== null,
+    lastPoint,
+    () => shellInsets().top,
+    () => {
+      if (lastPoint.current) setTarget(cellAt(lastPoint.current))
+    },
+  )
 
   const header = days.slice(0, 7)
 
