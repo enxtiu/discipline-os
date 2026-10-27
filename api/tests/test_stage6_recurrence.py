@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import time as timer
 import uuid
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -13,6 +15,9 @@ from sqlalchemy import func, select, update
 
 from app.db import SessionLocal
 from app.models import Task
+from app.schemas.planner import LATEST_DATE
+from app.services.planner import recur
+from app.services.recurrence import parse_rule
 from tests.stage6_helpers import (
     API,
     BANGKOK,
@@ -431,3 +436,150 @@ async def test_completed_at_and_instance_of_instance(authed: httpx.AsyncClient) 
     assert future.status_code == 422
     nan = await authed.post(f"{API}/tasks/{task['id']}/complete", json={"completed_at": "9999-12-31T23:59:59Z"})
     assert nan.status_code == 422
+
+
+# --------------------------------------------------------------------------- #
+# expansion cost (dateutil walks every period from dtstart)
+# --------------------------------------------------------------------------- #
+SHAPES = (
+    "FREQ=DAILY",
+    "FREQ=DAILY;INTERVAL=3",
+    "FREQ=DAILY;INTERVAL=17",
+    "FREQ=DAILY;BYDAY=MO,WE,FR",
+    "FREQ=DAILY;BYMONTH=2;BYMONTHDAY=29",
+    "FREQ=WEEKLY",
+    "FREQ=WEEKLY;INTERVAL=2",
+    "FREQ=WEEKLY;INTERVAL=3;BYDAY=MO,SU",
+    "FREQ=WEEKLY;INTERVAL=2;BYDAY=TU,SA;WKST=SU",
+    "weekdays",
+    "FREQ=MONTHLY",
+    "FREQ=MONTHLY;INTERVAL=5",
+    "FREQ=MONTHLY;BYMONTHDAY=31",
+    "FREQ=MONTHLY;BYMONTHDAY=-1",
+    "FREQ=MONTHLY;BYDAY=-1FR",
+    "FREQ=MONTHLY;INTERVAL=2;BYDAY=2TU",
+    "FREQ=MONTHLY;BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1",
+    "FREQ=MONTHLY;BYMONTH=1,7",
+    "FREQ=YEARLY",
+    "FREQ=YEARLY;INTERVAL=4",
+    "FREQ=YEARLY;BYMONTH=3",
+    "FREQ=YEARLY;BYMONTH=3;BYDAY=2SU",
+    "FREQ=YEARLY;BYDAY=20MO",
+    "FREQ=YEARLY;BYMONTHDAY=15",
+    "FREQ=YEARLY;INTERVAL=3;BYMONTH=2;BYMONTHDAY=29",
+)
+
+
+def naive_between(rule, anchor, *, first, last, after, until=None, remaining=None):
+    """The plain expansion: dateutil from the series' own anchor through every period."""
+    lo = after + timedelta(days=1)
+    hi = min(last, until or LATEST_DATE, LATEST_DATE)
+    if hi < lo or hi < first or (remaining is not None and remaining <= 0):
+        return []
+    bound = datetime.combine(hi, time.max)
+    expansion = parse_rule(f"{rule.expansion_text};UNTIL={bound:%Y%m%dT%H%M%S}", anchor)
+    dates = []
+    for occurrence in expansion.between(max(anchor, datetime.combine(lo, time.min)), bound, inc=True):
+        if occurrence.date() < lo or occurrence <= anchor:
+            continue
+        if remaining is not None:
+            if remaining <= 0:
+                break
+            remaining -= 1
+        if occurrence.date() >= first:
+            dates.append(occurrence.date())
+    return dates
+
+
+async def test_expansion_matches_the_plain_expansion() -> None:
+    """Starting the expansion near the window yields exactly the occurrences of the series' own anchor."""
+    anchors = (datetime(2004, 1, 31, 7, 30), datetime(2008, 2, 29), datetime(2011, 6, 18, 23, 45))
+    for raw in SHAPES:
+        rule = recur.validate_rule(raw)
+        for anchor in anchors:
+            for gap, span in ((40, 20), (400, 62), (1500, 62), (3000, 31)):
+                after = anchor.date() + timedelta(days=gap)
+                for first, remaining in ((after - timedelta(days=9), None), (after + timedelta(days=200), None),
+                                         (after, 3), (after + timedelta(days=100), 40)):  # fmt: skip
+                    last = first + timedelta(days=span)
+                    window = {"first": first, "last": last, "after": after, "remaining": remaining}
+                    assert recur.occurrences_between(rule, anchor, **window) == naive_between(rule, anchor, **window), (
+                        raw,
+                        anchor,
+                        window,
+                    )
+                today = anchor.date() + timedelta(days=gap)
+                expected = parse_rule(
+                    f"{rule.expansion_text};UNTIL={datetime.combine(LATEST_DATE, time.max):%Y%m%dT%H%M%S}", anchor
+                ).after(datetime.combine(today, time.max))
+                assert recur.next_after(rule, anchor, today) == expected, (raw, anchor, today)
+
+
+def _busy() -> bool:
+    try:
+        return os.getloadavg()[0] > (os.cpu_count() or 1)
+    except OSError:  # pragma: no cover - no load average on this platform
+        return False
+
+
+async def test_expansion_cost_does_not_grow_with_the_anchor_age() -> None:
+    """A series anchored in 2000 viewed in 2100 used to cost one dateutil iteration per day since 2000."""
+    anchor = datetime(2000, 1, 1, 7, 0)
+    window = {"first": date(2100, 11, 1), "last": date(2100, 12, 31), "after": date(2026, 10, 27)}
+    slow: list[tuple[str, float]] = []
+    for raw in SHAPES:
+        rule = recur.validate_rule(raw)
+        best = float("inf")
+        for _ in range(2):  # the better of two runs: a shared box has hiccups
+            started = timer.perf_counter()
+            dates = recur.occurrences_between(rule, anchor, **window)
+            recur.next_after(rule, anchor, date(2100, 11, 1))
+            best = min(best, timer.perf_counter() - started)
+        assert all(window["first"] <= day <= window["last"] for day in dates), raw
+        if best > 0.05:
+            slow.append((raw, round(best * 1000)))
+    if slow and _busy():
+        pytest.skip(f"the box is busy, timings not meaningful: {slow}")
+    assert not slow, f"expansions slower than 50 ms (ms): {slow}"
+    daily = recur.occurrences_between(recur.validate_rule("daily"), anchor, **window)
+    assert daily == [date(2100, 11, 1) + timedelta(days=n) for n in range(61)]
+
+
+async def test_calendar_of_an_old_series_far_ahead(authed: httpx.AsyncClient) -> None:
+    """The virtual occurrences of a series overdue since 2000 are right in a calendar of 2100."""
+    daily = await make_task(authed, "с 2000 года", due_date="2000-01-01", due_time="07:00", recurrence_rule="daily")
+    monthly = await make_task(authed, "последний день", due_date="2000-01-31", recurrence_rule="FREQ=MONTHLY")
+    view = await authed.get(f"{API}/views/calendar", params={"from": "2100-11-01", "to": "2100-12-31"})
+    assert view.status_code == 200, view.text
+
+    def virtual(task_id: str) -> list[str]:
+        return [day["date"] for day in view.json()["days"] for item in day["occurrences"] if item["task_id"] == task_id]
+
+    assert virtual(daily["id"]) == [(date(2100, 11, 1) + timedelta(days=n)).isoformat() for n in range(61)]
+    assert virtual(monthly["id"]) == ["2100-12-31"]  # November has no 31st
+
+
+async def test_expansion_starts_near_the_window(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Load-independent: dateutil is started close to the window, not at a series anchor from 2000."""
+    starts: list[datetime] = []
+    original = recur.parse_rule
+
+    def spy(text: str, dtstart: datetime):
+        starts.append(dtstart)
+        return original(text, dtstart)
+
+    monkeypatch.setattr(recur, "parse_rule", spy)
+    anchor = datetime(2000, 1, 1, 7, 0)
+    for raw in SHAPES:
+        rule = recur.validate_rule(raw)
+        starts.clear()
+        recur.occurrences_between(
+            rule, anchor, first=date(2100, 11, 1), last=date(2100, 12, 31), after=date(2026, 10, 27)
+        )
+        recur.next_after(rule, anchor, date(2100, 11, 1))
+        assert starts and min(starts) >= datetime(2095, 1, 1), (raw, starts)  # within INTERVAL periods of it
+        starts.clear()
+        recur.occurrences_between(  # COUNT counts from the day after today: start near today, not in 2000
+            rule, anchor, first=date(2100, 11, 1), last=date(2100, 12, 31), after=date(2026, 10, 27), remaining=5
+        )
+        assert starts and min(starts) >= datetime(2021, 1, 1), (raw, starts)
