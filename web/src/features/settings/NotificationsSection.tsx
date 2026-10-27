@@ -7,7 +7,7 @@
  * `PUT /notifications/prefs` (each toggle/time on its own, optimistically);
  * quiet hours stay in the settings row (`PATCH /settings`).
  */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import clsx from 'clsx'
@@ -45,7 +45,6 @@ const TIMES: Partial<Record<Category, { field: 'meal_times' | 'water_times'; max
   evening_review: { field: 'evening_review_time' },
 }
 
-const COMMIT_DELAY_MS = 800
 
 export function NotificationsSection() {
   const { t } = useTranslation()
@@ -96,18 +95,24 @@ function SwitchRow({
   checked: boolean
   onChange: (next: boolean) => void
 }) {
+  const hintId = useId()
   return (
     <button
       type="button"
       role="switch"
       aria-checked={checked}
       aria-label={label}
+      aria-describedby={hint ? hintId : undefined}
       onClick={() => onChange(!checked)}
       className="flex min-h-tap w-full items-center gap-3 py-3 text-left"
     >
       <span className="min-w-0 flex-1">
         <span className="block text-[15px] font-medium">{label}</span>
-        {hint && <span className="mt-0.5 block text-xs text-[rgb(var(--text-muted))]">{hint}</span>}
+        {hint && (
+          <span id={hintId} className="mt-0.5 block text-xs text-[rgb(var(--text-muted))]">
+            {hint}
+          </span>
+        )}
       </span>
       <span
         aria-hidden="true"
@@ -172,7 +177,11 @@ function CategoryBlock({
   )
 }
 
-/** A time input that saves after a short pause (or on blur), never on every wheel tick. */
+/**
+ * A time input that saves when the picker is done (blur — iOS blurs when its wheel
+ * closes), never on every wheel tick; an edit still open when the screen goes away
+ * is saved too.
+ */
 function TimeField({
   label,
   value,
@@ -185,14 +194,22 @@ function TimeField({
   trailing?: React.ReactNode
 }) {
   const [draft, setDraft] = useState(value)
-  const timer = useRef<number | undefined>(undefined)
-  useEffect(() => setDraft(value), [value])
-  useEffect(() => () => window.clearTimeout(timer.current), [])
+  // what the server has (or was just sent) — the unmount save must not repeat a commit
+  const saved = useRef(value)
+  const latest = useRef({ draft, onCommit })
+  latest.current = { draft, onCommit }
+  useEffect(() => {
+    saved.current = value
+    setDraft(value)
+  }, [value])
 
-  const commit = (next: string) => {
-    window.clearTimeout(timer.current)
-    if (/^\d{2}:\d{2}/.test(next) && next.slice(0, 5) !== value) onCommit(next.slice(0, 5))
+  const commit = (next: string, save: (value: string) => void = onCommit) => {
+    const time = next.slice(0, 5)
+    if (!/^\d{2}:\d{2}$/.test(time) || time === saved.current) return
+    saved.current = time
+    save(time)
   }
+  useEffect(() => () => commit(latest.current.draft, latest.current.onCommit), []) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="flex items-center gap-2">
@@ -201,12 +218,7 @@ function TimeField({
         aria-label={label}
         value={draft}
         className="min-h-tap tnum"
-        onChange={(event) => {
-          const next = event.target.value
-          setDraft(next)
-          window.clearTimeout(timer.current)
-          timer.current = window.setTimeout(() => commit(next), COMMIT_DELAY_MS)
-        }}
+        onChange={(event) => setDraft(event.target.value)}
         onBlur={(event) => commit(event.target.value)}
       />
       {trailing}
