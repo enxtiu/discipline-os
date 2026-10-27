@@ -9,6 +9,7 @@
     python -m app.cli run-job housekeeping
     python -m app.cli vapid-keys
     python -m app.cli stats
+    python -m app.cli restore-backup disciplineos-2026-10-01.zip [--user-id <uuid>] [--dry-run]
 
 Run it inside the container:  docker compose exec api python -m app.cli create-owner
 """
@@ -430,6 +431,75 @@ def stats_cmd() -> None:
                 )
 
     _run(_inner())
+
+
+@cli.command("restore-backup")
+def restore_backup_cmd(
+    path: Annotated[str, typer.Argument(help="Backup zip from GET /api/v1/export/backup")],
+    user_id: Annotated[
+        str | None,
+        typer.Option("--user-id", help="Restore into this account (default: the backup's own); it must be empty"),
+    ] = None,
+    dry_run: Annotated[bool, typer.Option("--dry-run", help="Report what would change and write nothing")] = False,
+) -> None:
+    """Restore a backup (idempotent: restoring twice changes nothing)."""
+    from app.services.restore import RestoreError, read_backup, restore
+
+    try:
+        target = uuid.UUID(user_id) if user_id else None
+    except ValueError:
+        typer.secho(f"✗ --user-id is not a UUID: {user_id}", fg=typer.colors.RED)
+        raise typer.Exit(1) from None
+
+    async def _inner():
+        backup = read_backup(path)
+        async with SessionLocal() as db:
+            try:
+                report = await restore(db, backup, user_id=target, dry_run=dry_run)
+            except BaseException:
+                await db.rollback()
+                raise
+            if dry_run:
+                await db.rollback()
+            else:
+                await db.commit()
+        return report
+
+    try:
+        report = _run(_inner())
+    except RestoreError as exc:
+        typer.secho(f"✗ {exc}", fg=typer.colors.RED)
+        raise typer.Exit(1) from None
+
+    same = report.source_user_id == report.target_user_id
+    typer.echo(f"backup of {report.created_at} · schema {report.schema_version}")
+    typer.echo(
+        f"account {report.target_user_id}"
+        + (" (the backup's own)" if same else f" (empty; the backup is of {report.source_user_id})")
+    )
+    if report.dry_run:
+        typer.secho("DRY RUN — nothing was written; a real run would do exactly this:", fg=typer.colors.YELLOW)
+    typer.echo(
+        f"\n{'table':24} {'rows':>7} {'inserted':>9} {'updated':>8} {'unchanged':>10} {'merged':>7} {'skipped':>8}"
+    )
+    for name, item in report.tables.items():
+        if item.rows:
+            typer.echo(
+                f"{name:24} {item.rows:>7} {item.inserted:>9} {item.updated:>8} {item.unchanged:>10} "
+                f"{item.merged:>7} {item.skipped:>8}"
+            )
+    for name, lib in report.library.items():
+        if lib.referenced:
+            typer.echo(
+                f"library {name}: {lib.referenced} referenced · {lib.same_id} same id · {lib.matched} matched · "
+                f"{lib.copied} recreated as your own · {lib.missing} unknown here (rows skipped)"
+            )
+    verb = "would restore" if report.dry_run else "restored"
+    typer.secho(
+        f"\n✓ {verb}: {report.inserted} inserted, {report.updated} updated, "
+        f"{report.unchanged} unchanged, {report.skipped} skipped",
+        fg=typer.colors.GREEN,
+    )
 
 
 if __name__ == "__main__":  # pragma: no cover
