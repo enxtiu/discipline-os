@@ -104,7 +104,13 @@ async def test_areas_crud_order_and_counts(authed: httpx.AsyncClient, owner) -> 
 
 async def test_projects_status_progress_and_delete(authed: httpx.AsyncClient) -> None:
     yesterday = (today() - timedelta(days=1)).isoformat()
-    project = await _post(authed, "/projects", {"name": "Ремонт", "outcome": "кухня готова", "deadline": yesterday})
+    project_id = uid()
+    project = await _post(
+        authed, "/projects", {"id": project_id, "name": "Ремонт", "outcome": "кухня готова", "deadline": yesterday}
+    )
+    replayed = await _post(authed, "/projects", {"id": project_id, "name": "Ремонт"})
+    assert replayed["id"] == project_id and replayed["created_at"] == project["created_at"]
+    assert len((await authed.get(f"{API}/projects")).json()["items"]) == 1
     assert (project["status"], project["overdue"], project["progress"], project["counts"]) == (
         "active",
         True,
@@ -185,6 +191,8 @@ async def test_resources_and_tags(authed: httpx.AsyncClient) -> None:
         },
     )
     assert resource["tags"] == ["Чтение", "книги"] and resource["area"]["id"] == area_id
+    replayed = await _post(authed, "/resources", {"id": resource["id"], "name": "Книги"})
+    assert replayed["id"] == resource["id"] and replayed["created_at"] == resource["created_at"]
     newer = await _post(authed, "/resources", {"name": "Подкасты"})
     listed = (await authed.get(f"{API}/resources")).json()["items"]
     assert [item["id"] for item in listed] == [newer["id"], resource["id"]]
