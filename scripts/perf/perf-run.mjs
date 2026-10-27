@@ -25,6 +25,10 @@
  *         over the network).
  * Each (mode, screen) is loaded --runs times (default 3); the summary shows medians.
  *
+ * --tabs adds a tab-switching run per mode: open /today, then tap Food, Plan, Today,
+ * Food, Plan, Stats, Today in the tab bar (each once the previous screen is ready and
+ * the network idle) and count the API requests and the time to "ready" of every switch.
+ *
  * Usage:
  *   DEVICE_TOKEN=… | PAIRING_CODE=XXXX-XXXX \
  *   WEB_URL=http://127.0.0.1:4236 node scripts/perf/perf-run.mjs \
@@ -64,6 +68,8 @@ const SCREENS = {
   stats: { path: '/stats', ready: 'main h1' },
 }
 const SELECTED = option('--screens', Object.keys(SCREENS).join(',')).split(',')
+const TABS = args.includes('--tabs')
+const TAB_SEQUENCE = ['food', 'plan', 'today', 'food', 'plan', 'stats', 'today']
 
 const iPhone = devices['iPhone 13']
 const browser = await chromium.launch()
@@ -278,6 +284,65 @@ async function measure(mode, name) {
 }
 
 // --------------------------------------------------------------------------- //
+// Tab switching: API requests and time to ready per tap, after a cold open
+// --------------------------------------------------------------------------- //
+async function tabs(mode) {
+  const context = await newContext(mode)
+  const selectors = { shell: 'nav.tabbar', ready: SCREENS.today.ready }
+  await context.addInitScript(probe, { token: TOKEN, selectors })
+  const page = await context.newPage()
+  if (mode === 'warm') await installServiceWorker(page, SCREENS.today)
+  const cdp = await throttle(page)
+  const inflight = new Set()
+  let calls = []
+  let lastActivity = Date.now()
+  cdp.on('Network.requestWillBeSent', (event) => {
+    inflight.add(event.requestId)
+    lastActivity = Date.now()
+    const url = new URL(event.request.url)
+    if (url.pathname.startsWith('/api/')) calls.push(`${event.request.method} ${url.pathname}${url.search}`)
+  })
+  const done = (event) => {
+    inflight.delete(event.requestId)
+    lastActivity = Date.now()
+  }
+  cdp.on('Network.loadingFinished', done)
+  cdp.on('Network.loadingFailed', done)
+  const settle = async (selector, started = Date.now()) => {
+    let readyAt = null
+    for (;;) {
+      await page.waitForTimeout(50)
+      if (readyAt === null) {
+        const ready = await page
+          .evaluate((sel) => {
+            const main = document.querySelector('main')
+            return !!main && !!document.querySelector(sel) && !main.querySelector('.skeleton')
+          }, selector)
+          .catch(() => false)
+        if (ready) readyAt = Date.now()
+      }
+      if (readyAt !== null && inflight.size === 0 && Date.now() - lastActivity >= QUIET_MS) break
+      if (Date.now() - started > TIMEOUT_MS) break
+    }
+    return readyAt === null ? null : readyAt - started
+  }
+  await page.goto(`${WEB_URL}/today`, { waitUntil: 'commit' })
+  await settle(SCREENS.today.ready)
+  const switches = []
+  for (const name of TAB_SEQUENCE) {
+    calls = []
+    const started = Date.now()
+    // the Stats button sits under the raised quick-add button: dispatch the tap on it directly
+    if (name === 'stats') await page.locator('nav.tabbar button.tab').first().dispatchEvent('click')
+    else await page.locator(`nav.tabbar a[href="${SCREENS[name].path}"]`).click()
+    const readyMs = await settle(SCREENS[name].ready, started) // from the tap
+    switches.push({ screen: name, readyMs, apiCalls: calls })
+  }
+  await context.close()
+  return switches
+}
+
+// --------------------------------------------------------------------------- //
 const results = []
 for (const mode of MODES) {
   for (const name of SELECTED) {
@@ -288,6 +353,19 @@ for (const mode of MODES) {
         `${mode.padEnd(4)} ${name.padEnd(5)} #${run}  shell ${result.shell} ms · ready ${result.ready} ms` +
           `${result.ring ? ` · ring ${result.ring} ms` : ''} · idle ${result.idle} ms · ${result.requests} req` +
           ` · js ${(result.jsBytes / 1000).toFixed(1)} kB${result.errors.length ? ` · ERRORS ${result.errors.length}` : ''}`,
+      )
+    }
+  }
+}
+const tabRuns = []
+if (TABS) {
+  for (const mode of MODES) {
+    for (let run = 1; run <= RUNS; run += 1) {
+      const switches = await tabs(mode)
+      tabRuns.push({ mode, run, switches })
+      console.log(
+        `${mode.padEnd(4)} tabs  #${run}  ` +
+          switches.map((item) => `${item.screen} ${item.apiCalls.length} req/${item.readyMs} ms`).join(' · '),
       )
     }
   }
@@ -348,10 +426,24 @@ for (const row of summary.filter((item) => item.mode === MODES[0])) {
   console.log(`\n${row.screen}: ${row.apiCalls.length} API calls — ${row.apiCalls.join(', ')}`)
   console.log(`  scripts: ${row.scripts.join(', ')}`)
 }
+const tabSummary = []
+for (const mode of TABS ? MODES : []) {
+  const runs = tabRuns.filter((item) => item.mode === mode)
+  const steps = TAB_SEQUENCE.map((screen, index) => ({
+    screen,
+    apiRequests: median(runs.map((item) => item.switches[index].apiCalls.length)),
+    readyMs: median(runs.map((item) => item.switches[index].readyMs)),
+    apiCalls: runs[0]?.switches[index].apiCalls ?? [],
+  }))
+  const total = median(runs.map((item) => item.switches.reduce((sum, step) => sum + step.apiCalls.length, 0)))
+  tabSummary.push({ mode, steps, totalApiRequests: total })
+  console.log(`\ntab switches (${mode}, medians): ${steps.map((step) => `${step.screen} ${step.apiRequests} req / ${step.readyMs} ms`).join(' → ')}; ${total} API requests in all`)
+  for (const step of steps) console.log(`  → ${step.screen}: ${step.apiCalls.join(', ') || '(none)'}`)
+}
 const errors = summary.flatMap((row) => row.errors.map((error) => `${row.mode} ${row.screen}: ${error}`))
 if (errors.length) console.log(`\nerrors (${errors.length}):\n  ${[...new Set(errors)].slice(0, 20).join('\n  ')}`)
 
 if (JSON_OUT) {
-  writeFileSync(JSON_OUT, JSON.stringify({ label: LABEL, runs: RUNS, network: NETWORK, cpu: CPU_RATE, summary, results }, null, 2))
+  writeFileSync(JSON_OUT, JSON.stringify({ label: LABEL, runs: RUNS, network: NETWORK, cpu: CPU_RATE, summary, results, tabSummary, tabRuns }, null, 2))
   console.log(`\njson → ${JSON_OUT}`)
 }
