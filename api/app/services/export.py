@@ -39,12 +39,19 @@ How it leaves
   schema version = the database's alembic revision, user id, created_at, row counts,
   sha256 and size per file); ``python -m app.cli restore-backup`` reads it back
   (``app.services.restore``).
+* **Signed.** The manifest carries an HMAC-SHA256 over everything else in it (so over
+  the data checksum, the user id, the schema version and the creation time) with a key
+  derived by HKDF from ``BACKUP_SIGNING_KEY`` — or from ``SECRET_KEY`` while that is
+  not set; the key itself never appears, only an id naming it. Checksums say a file is
+  intact, the signature says this server made it: only a signed backup restores as it
+  is (see ``app.services.restore``).
 """
 
 from __future__ import annotations
 
 import csv
 import hashlib
+import hmac
 import io
 import uuid
 import zipfile
@@ -62,6 +69,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.providers import public_error
 from app.core.config import get_settings
+from app.core.security import hkdf_sha256
 from app.core.tz import get_zone
 from app.models import (
     Achievement,
@@ -115,6 +123,8 @@ BACKUP_FORMAT = "disciplineos-backup"
 FORMAT_VERSION = 1
 DATA_FILE = "data.json"
 MANIFEST_FILE = "manifest.json"
+SIGNATURE_ALG = "HMAC-SHA256"
+_SIGNING_SALT = b"disciplineos backup manifest"
 BATCH = 1000  # rows per server-side cursor fetch
 FLUSH_BYTES = 256 * 1024  # hand a chunk to the client about every 256 KiB
 CSV_BOM = "﻿"
@@ -179,6 +189,9 @@ class Section:
     in_empty_account: bool = False
     natural_keys: tuple[NaturalKey, ...] = ()
     sanitise: tuple[tuple[str, Callable[[Any], Any]], ...] = ()
+    # computed by the gamification engine from the records: taken from a signed backup
+    # only (checked), rebuilt by the engine after restoring one that is not
+    derived: bool = False
 
     @property
     def columns(self) -> list[sa.Column]:
@@ -285,20 +298,34 @@ SECTIONS: tuple[Section, ...] = (
     Section("journal_entries", JournalEntry.__table__, natural_keys=(NaturalKey(("entry_date",)), CLIENT_UUID)),
     Section("reminders", Reminder.__table__, natural_keys=(NaturalKey(("dedupe_key",)),)),
     # ---- gamification (derived from the data above; an "empty" account may have them) --
-    Section("xp_events", XpEvent.__table__, in_empty_account=True, natural_keys=(NaturalKey(("dedupe_key",)),)),
+    Section(
+        "xp_events",
+        XpEvent.__table__,
+        in_empty_account=True,
+        natural_keys=(NaturalKey(("dedupe_key",)),),
+        derived=True,
+    ),
     Section(
         "user_achievements",
         UserAchievement.__table__,
         in_empty_account=True,
         natural_keys=(NaturalKey(("achievement_id",)),),
+        derived=True,
     ),
-    Section("streaks", Streak.__table__, in_empty_account=True, natural_keys=(NaturalKey(("kind",)),)),
-    Section("daily_scores", DailyScore.__table__, in_empty_account=True, natural_keys=(NaturalKey(("local_day",)),)),
+    Section("streaks", Streak.__table__, in_empty_account=True, natural_keys=(NaturalKey(("kind",)),), derived=True),
+    Section(
+        "daily_scores",
+        DailyScore.__table__,
+        in_empty_account=True,
+        natural_keys=(NaturalKey(("local_day",)),),
+        derived=True,
+    ),
     Section(
         "user_quests",
         UserQuest.__table__,
         in_empty_account=True,
         natural_keys=(NaturalKey(("quest_id", "period_start")),),
+        derived=True,
     ),
     # ---- account records (exported for you; bound to this server, never restored) ------
     Section(
@@ -760,8 +787,36 @@ async def stream_csv(job: ExportJob) -> AsyncIterator[bytes]:
 # --------------------------------------------------------------------------- #
 # Backup zip
 # --------------------------------------------------------------------------- #
+def _signing_secret() -> bytes:
+    settings = get_settings()
+    return (settings.backup_signing_key or settings.secret_key).encode("utf-8")
+
+
+def signing_key() -> bytes:
+    """The manifest's HMAC key: HKDF-SHA256 of ``BACKUP_SIGNING_KEY`` (else ``SECRET_KEY``)."""
+    return hkdf_sha256(_signing_secret(), salt=_SIGNING_SALT, info=b"manifest signature v1")
+
+
+def signing_key_id() -> str:
+    """Names the signing key without revealing anything of it (16 hex digits)."""
+    return hkdf_sha256(_signing_secret(), salt=_SIGNING_SALT, info=b"key id v1", length=8).hex()
+
+
+def manifest_signature(manifest: dict[str, Any]) -> str:
+    """HMAC-SHA256 over the manifest without its ``signature`` — canonical JSON (sorted
+    keys), so the manifest as written and as read back give the same bytes."""
+    body = {key: value for key, value in manifest.items() if key != "signature"}
+    canonical = orjson.dumps(orjson.loads(dumps(body)), option=orjson.OPT_SORT_KEYS)
+    return hmac.new(signing_key(), canonical, hashlib.sha256).hexdigest()
+
+
+def sign_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
+    signature = {"alg": SIGNATURE_ALG, "key_id": signing_key_id(), "value": manifest_signature(manifest)}
+    return {**{key: value for key, value in manifest.items() if key != "signature"}, "signature": signature}
+
+
 async def backup_chunks(db: AsyncSession, job: ExportJob) -> AsyncIterator[bytes]:
-    """``data.json`` (the JSON export, hashed while it streams) then ``manifest.json``."""
+    """``data.json`` (the JSON export, hashed while it streams) then the signed ``manifest.json``."""
     zs = ZipStream(job.local_now)
     digest = hashlib.sha256()
     size = 0
@@ -784,6 +839,7 @@ async def backup_chunks(db: AsyncSession, job: ExportJob) -> AsyncIterator[bytes
         "counts": job.counts,
         "files": {DATA_FILE: {"sha256": digest.hexdigest(), "bytes": size}},
     }
+    manifest = sign_manifest(manifest)
     zs.open(MANIFEST_FILE)
     yield zs.write(orjson.dumps(manifest, option=orjson.OPT_INDENT_2) + b"\n") + zs.close_entry() + zs.finish()
 

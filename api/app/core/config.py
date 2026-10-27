@@ -140,6 +140,11 @@ class Settings(BaseSettings):
     # `restore-backup` refuses a data.json that would unpack to more than this
     # (checked before anything is inflated: a zip bomb never reaches memory)
     backup_max_data_bytes: int = 512 * 1024 * 1024
+    # The backup manifest is signed (HMAC-SHA256) with a key derived (HKDF) from this
+    # value, or from SECRET_KEY while it is empty. Only a backup signed with the same
+    # key restores in full; set it to keep backups valid across a SECRET_KEY rotation
+    # and give a new server the same value to move to it with the whole history.
+    backup_signing_key: str = ""
 
     @field_validator("secret_key")
     @classmethod

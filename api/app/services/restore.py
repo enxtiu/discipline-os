@@ -5,12 +5,26 @@
   its zip CRC), both documents must be known formats of the same account and schema,
   the row counts must match the data, and the backup's schema version must be this
   database's alembic revision.
-* **The same account, or an empty one.** By default the rows go back to the account
-  they came from. ``--user-id`` restores into another account only while it holds
-  none of the user's own records — what a new account starts with (settings, the
-  default areas and tags, streak rows, today's score and quests) is fine: the
-  backup's rows take their place; rows of this very backup are fine too (the same
-  restore run again changes nothing).
+* **Signed by this server, or into an empty account.** Checksums only say a file is
+  intact; the manifest's HMAC signature (``app.services.export``) says this server — or
+  one sharing its ``BACKUP_SIGNING_KEY`` — made it, unchanged. A **signed** backup goes
+  back to the account it came from, or with ``--user-id`` into an empty one. A backup
+  **not signed** here (edited, made by another server, or before the signing key
+  changed) goes only into an account named with ``--user-id`` that is empty — the
+  manifest's ``user_id`` never chooses an account — and its derived gamification rows
+  (XP, daily scores, streaks, achievements, quests) are not taken: the engine rebuilds
+  them from the restored records on its next run (bounds cannot tell a plausible
+  forgery from real history; the records can). "Empty" means holding none of the
+  user's own records — what a new account starts with (settings, the default areas
+  and tags, streak rows, today's score and quests) is fine: the backup's rows take
+  their place; rows of this very backup are fine too (the same restore run again
+  changes nothing).
+* **Values are checked, never trusted** (signed or not). Every value must have its
+  column's type; JSON columns their shape; settings the API's bounds and its safety
+  rule — a safe floor below the default, or a calorie target below the floor, without
+  ``safe_floor_confirmed_at`` is put back to the floor (and reported), never stored
+  as it came; derived rows of a signed backup must be non-negative and within what the
+  engine can award (e.g. at most 1 000 XP per event).
 * **Idempotent upserts by primary key in one transaction.** A missing row is inserted,
   a changed one updated, an identical one left alone — restoring twice changes
   nothing. A row whose id belongs to another account aborts the restore before
@@ -44,6 +58,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import os
 import uuid
 import zipfile
@@ -53,6 +68,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, time
 from decimal import Decimal, InvalidOperation
+from types import SimpleNamespace
 from typing import Any
 
 import orjson
@@ -63,6 +79,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.models import Achievement, Exercise, Food, Quest, User
+from app.schemas.gamification import validate_xp_weights
 from app.services import export, media
 from app.services.export import (
     BACKUP_FORMAT,
@@ -76,6 +93,8 @@ from app.services.export import (
     Section,
 )
 from app.services.planner.common import advisory_lock
+from app.services.settings_service import default_floor_for
+from app.services.targets import ABSOLUTE_FLOOR_KCAL
 
 MAX_BIND_PARAMS = 30_000  # PostgreSQL allows 65 535 per statement
 MAX_BATCH = 500
@@ -94,10 +113,36 @@ class RestoreError(Exception):
 # --------------------------------------------------------------------------- #
 # Reading and verifying the archive
 # --------------------------------------------------------------------------- #
+@dataclass(slots=True, frozen=True)
+class Signature:
+    """Whether this server made the backup: ``problem`` says why it does not count."""
+
+    valid: bool
+    problem: str | None = None
+
+
+def check_signature(manifest: dict[str, Any]) -> Signature:
+    raw = manifest.get("signature")
+    if raw is None:
+        return Signature(False, "it carries no signature")
+    if not isinstance(raw, dict) or raw.get("alg") != export.SIGNATURE_ALG or not isinstance(raw.get("value"), str):
+        return Signature(False, "its signature is not one this server knows")
+    if raw.get("key_id") != export.signing_key_id():
+        return Signature(False, "it was signed by another server, or before the signing key changed")
+    if not hmac.compare_digest(raw["value"], export.manifest_signature(manifest)):
+        return Signature(False, "its signature does not match: it was changed after it was made")
+    return Signature(True)
+
+
 @dataclass(slots=True)
 class Backup:
     manifest: dict[str, Any]
     data: dict[str, Any]
+    signature: Signature = field(default_factory=lambda: Signature(False, "it was not checked"))
+
+    @property
+    def signed(self) -> bool:
+        return self.signature.valid
 
     @property
     def user_id(self) -> uuid.UUID:
@@ -205,7 +250,7 @@ def read_backup(path: str | os.PathLike[str]) -> Backup:
     except (zlib.error, EOFError, NotImplementedError, RuntimeError) as exc:  # corrupt, cut, unsupported, encrypted
         raise RestoreError(f"the archive cannot be read: {exc}") from None
     _check_data(manifest, data)
-    return Backup(manifest=manifest, data=data)
+    return Backup(manifest=manifest, data=data, signature=check_signature(manifest))
 
 
 def _check_data(manifest: dict[str, Any], data: dict[str, Any]) -> None:
@@ -248,6 +293,7 @@ class TableReport:
     unchanged: int = 0
     merged: int = 0  # matched an existing row of the account by its natural key
     skipped: int = 0  # refer to a library row this server does not have
+    rebuilt: int = 0  # derived rows of a backup not signed here: left for the engine to rebuild
 
     @property
     def changed(self) -> int:
@@ -270,8 +316,11 @@ class RestoreReport:
     schema_version: str | None
     created_at: str | None
     dry_run: bool = False
+    signed: bool = False
+    signature_problem: str | None = None
     tables: dict[str, TableReport] = field(default_factory=dict)
     library: dict[str, LibraryReport] = field(default_factory=dict)
+    notes: list[str] = field(default_factory=list)  # values put back to what the app allows
 
     @property
     def inserted(self) -> int:
@@ -288,6 +337,10 @@ class RestoreReport:
     @property
     def skipped(self) -> int:
         return sum(item.skipped for item in self.tables.values())
+
+    @property
+    def rebuilt(self) -> int:
+        return sum(item.rebuilt for item in self.tables.values())
 
 
 # --------------------------------------------------------------------------- #
@@ -368,6 +421,104 @@ def _decoder(column: sa.Column) -> Callable[[Any], Any]:
 
 
 # --------------------------------------------------------------------------- #
+# Values: the app's rules, re-applied (never trusted from a file)
+# --------------------------------------------------------------------------- #
+MAX_EVENT_POINTS = 1_000  # the largest award: the 365-day streak milestone (500) at the top multiplier (2)
+MAX_DAY_XP = 100_000
+MAX_COUNT = 100_000  # days (or weeks) a streak or a score can count
+MAX_FREEZE_TOKENS = 2
+BOUNDS: dict[str, dict[str, tuple[float, float]]] = {
+    # the API's bounds (SettingsUpdateIn, TargetsIn), widened where the target engine or a
+    # weigh-in may store more (auto targets of a heavy, very active body; weigh-ins 20–400 kg)
+    "settings": {
+        "week_start": (0, 6),
+        "goal_rate_pct": (0, 30),
+        "height_cm": (100, 250),
+        "weight_kg": (20, 400),
+        "body_fat_pct": (2, 70),
+        "goal_weight_kg": (30, 300),
+        "goal_protein_g_per_kg": (1, 3.5),
+        "goal_fat_min_g_per_kg": (0.4, 2),
+        "goal_water_ml_per_kg": (25, 45),
+        "target_kcal": (ABSOLUTE_FLOOR_KCAL, 20_000),
+        "target_protein_g": (0, 2_000),
+        "target_fat_g": (0, 2_000),
+        "target_carbs_g": (0, 5_000),
+        "target_fiber_g": (0, 500),
+        "target_water_ml": (0, 20_000),
+        "target_steps": (0, 60_000),
+        "safe_floor_kcal": (ABSOLUTE_FLOOR_KCAL, 3_500),
+    },
+    # derived rows (signed backups only): never negative, never more than the engine awards
+    "xp_events": {"points": (0, MAX_EVENT_POINTS)},
+    "daily_scores": {"score": (0, 100), "xp_earned": (0, MAX_DAY_XP), "streak_days": (0, MAX_COUNT)},
+    "streaks": {
+        "current_count": (0, MAX_COUNT),
+        "longest_count": (0, MAX_COUNT),
+        "total_events": (0, MAX_COUNT),
+        "freeze_tokens": (0, MAX_FREEZE_TOKENS),
+    },
+    "user_achievements": {"progress": (0, 10**9)},
+    "user_quests": {"progress": (0, 10**9)},
+}
+
+
+def _settings_rules(row: dict[str, Any], notes: list[str]) -> None:
+    """The settings API's rules. A safe floor below the default for the user's sex, or a
+    calorie target below the floor, is stored only behind an explicit confirmation
+    (``safe_floor_confirmed_at``): without one it is put back to the floor — the safe
+    side, reported — never stored as it came."""
+    if row.get("units") != "metric":
+        raise RestoreError(f"settings.units: {row.get('units')!r} — the app is metric only")
+    try:
+        if not isinstance(row.get("xp_weights"), dict):
+            raise ValueError("an object is required")
+        validate_xp_weights(row["xp_weights"])
+    except ValueError as exc:
+        raise RestoreError(f"settings.xp_weights: {exc}") from None
+    confirmed = row.get("safe_floor_confirmed_at") is not None
+    default = default_floor_for(SimpleNamespace(safe_floor_kcal=None, sex=row.get("sex")))  # type: ignore[arg-type]
+    floor = row.get("safe_floor_kcal")
+    if floor is not None and floor < default and not confirmed:
+        notes.append(
+            f"settings: a safe floor of {floor} kcal, below the default {default} kcal, was never confirmed — "
+            "the default applies"
+        )
+        row["safe_floor_kcal"] = floor = None
+    floor = floor or default
+    target = row.get("target_kcal")
+    if target is not None and target < floor and not confirmed:
+        notes.append(
+            f"settings: a calorie target of {target} kcal, below the safe floor {floor} kcal, was never confirmed — "
+            f"set to {floor} kcal"
+        )
+        row["target_kcal"] = floor
+
+
+def _quest_period(row: dict[str, Any], notes: list[str]) -> None:
+    if row["period_end"] < row["period_start"]:
+        raise RestoreError(f"user_quests: period {row['period_start']}..{row['period_end']} ends before it starts")
+
+
+ROW_RULES: dict[str, Callable[[dict[str, Any], list[str]], None]] = {
+    "settings": _settings_rules,
+    "user_quests": _quest_period,
+}
+
+
+def _check_values(section: Section, row: dict[str, Any], plan: _Plan) -> None:
+    for column, (low, high) in BOUNDS.get(section.name, {}).items():
+        value = row.get(column)
+        if value is not None and not low <= value <= high:
+            raise RestoreError(
+                f"{section.name}.{column}: {value} is outside {low:g}..{high:g} — not a value this app stores"
+            )
+    rule = ROW_RULES.get(section.name)
+    if rule is not None:
+        rule(row, plan.notes)
+
+
+# --------------------------------------------------------------------------- #
 # The restore
 # --------------------------------------------------------------------------- #
 @dataclass(slots=True)
@@ -376,6 +527,7 @@ class _Plan:
     ids: dict[str, dict[uuid.UUID, uuid.UUID]] = field(default_factory=lambda: defaultdict(dict))
     dropped: dict[str, set[uuid.UUID]] = field(default_factory=lambda: defaultdict(set))
     copies: dict[str, list[dict[str, Any]]] = field(default_factory=lambda: defaultdict(list))
+    notes: list[str] = field(default_factory=list)
 
 
 async def restore(
@@ -390,18 +542,28 @@ async def restore(
             "restore it with the app version that made it"
         )
     source = backup.user_id
+    if not backup.signed and user_id is None:  # the manifest's user_id never chooses an account
+        raise RestoreError(
+            f"this server did not sign the backup ({backup.signature.problem}): such a backup goes only into an "
+            "empty account named with --user-id, and its XP, scores, streaks, achievements and quests are rebuilt "
+            "from the restored records"
+        )
     target = user_id or source
     if await db.scalar(select(User.id).where(User.id == target)) is None:
         owners = (await db.scalars(select(User.id).where(User.is_owner.is_(True)))).all()
         hint = f" (the owner here is {owners[0]})" if owners else " (create one with create-owner)"
         raise RestoreError(f"account {target} does not exist here: pass --user-id <account>{hint}")
     await advisory_lock(db, target, LOCK_SCOPE)
-    if target != source:
+    if target != source or not backup.signed:
         held = await _records_held(db, target, backup)
         if held:
             raise RestoreError(
                 f"account {target} is not empty ({', '.join(held[:5])}{'…' if len(held) > 5 else ''}): "
-                "a backup goes back into its own account or into an empty one"
+                + (
+                    "a backup goes back into its own account or into an empty one"
+                    if backup.signed
+                    else f"a backup this server did not sign ({backup.signature.problem}) goes only into an empty one"
+                )
             )
     from app.seeds.gamification import ensure_seeded
 
@@ -412,13 +574,25 @@ async def restore(
         schema_version=backup.schema_version,
         created_at=backup.created_at,
         dry_run=dry_run,
+        signed=backup.signed,
+        signature_problem=backup.signature.problem,
     )
     plan = _Plan(target=target)
     await _resolve_library(db, backup, plan, report)
     for section in SECTIONS:
-        if section.restore:
-            rows = backup.rows(section.name) + plan.copies.get(section.name, [])
-            report.tables[section.name] = await _restore_section(db, section, rows, plan)
+        if not section.restore:
+            continue
+        rows = backup.rows(section.name) + plan.copies.get(section.name, [])
+        if section.derived and not backup.signed:  # untrusted: the engine derives them from the records
+            report.tables[section.name] = TableReport(rows=len(rows), rebuilt=len(rows))
+            continue
+        report.tables[section.name] = await _restore_section(db, section, rows, plan)
+    report.notes = plan.notes
+    if not backup.signed:
+        report.notes.append(
+            "XP, daily scores, streaks, achievements and quests were not taken from this unsigned backup: "
+            "the gamification engine rebuilds them from the restored records on its next run"
+        )
     await db.flush()
     return report
 
@@ -642,6 +816,7 @@ async def _restore_section(
     rows: list[dict[str, Any]] = []
     for raw in raw_rows:
         row = _decode(section, raw, decoders)
+        _check_values(section, row, plan)
         row[section.owner] = plan.target
         if any(row.get(column) in plan.dropped.get(ref, ()) for column, ref in foreign.items()):
             report.skipped += 1

@@ -438,11 +438,19 @@ def restore_backup_cmd(
     path: Annotated[str, typer.Argument(help="Backup zip from GET /api/v1/export/backup")],
     user_id: Annotated[
         str | None,
-        typer.Option("--user-id", help="Restore into this account (default: the backup's own); it must be empty"),
+        typer.Option(
+            "--user-id",
+            help="Restore into this account (default: the backup's own); it must be empty. "
+            "Required for a backup this server did not sign (edited, or made by another server)",
+        ),
     ] = None,
     dry_run: Annotated[bool, typer.Option("--dry-run", help="Report what would change and write nothing")] = False,
 ) -> None:
-    """Restore a backup (idempotent: restoring twice changes nothing)."""
+    """Restore a backup (idempotent: restoring twice changes nothing).
+
+    Only a backup signed by this server (or by one sharing BACKUP_SIGNING_KEY) restores
+    as it is; any other goes only into an empty account named with --user-id, and its
+    XP, scores, streaks, achievements and quests are rebuilt from the restored records."""
     from app.services.restore import RestoreError, read_backup, restore
 
     try:
@@ -473,9 +481,17 @@ def restore_backup_cmd(
 
     same = report.source_user_id == report.target_user_id
     typer.echo(f"backup of {report.created_at} · schema {report.schema_version}")
+    if report.signed:
+        typer.echo("signature: valid — made by this server")
+    else:
+        typer.secho(
+            f"signature: not valid here — {report.signature_problem}; restored as an unsigned backup",
+            fg=typer.colors.YELLOW,
+        )
+    own = same and report.signed
     typer.echo(
         f"account {report.target_user_id}"
-        + (" (the backup's own)" if same else f" (empty; the backup is of {report.source_user_id})")
+        + (" (the backup's own)" if own else f" (empty; the backup is of {report.source_user_id})")
     )
     if report.dry_run:
         typer.secho("DRY RUN — nothing was written; a real run would do exactly this:", fg=typer.colors.YELLOW)
@@ -486,7 +502,7 @@ def restore_backup_cmd(
         if item.rows:
             typer.echo(
                 f"{name:24} {item.rows:>7} {item.inserted:>9} {item.updated:>8} {item.unchanged:>10} "
-                f"{item.merged:>7} {item.skipped:>8}"
+                f"{item.merged:>7} {item.skipped:>8}" + ("   rebuilt by the engine" if item.rebuilt else "")
             )
     for name, lib in report.library.items():
         if lib.referenced:
@@ -494,10 +510,13 @@ def restore_backup_cmd(
                 f"library {name}: {lib.referenced} referenced · {lib.same_id} same id · {lib.matched} matched · "
                 f"{lib.copied} recreated as your own · {lib.missing} unknown here (rows skipped)"
             )
+    for note in report.notes:
+        typer.secho(f"• {note}", fg=typer.colors.YELLOW)
     verb = "would restore" if report.dry_run else "restored"
     typer.secho(
         f"\n✓ {verb}: {report.inserted} inserted, {report.updated} updated, "
-        f"{report.unchanged} unchanged, {report.skipped} skipped",
+        f"{report.unchanged} unchanged, {report.skipped} skipped"
+        + (f", {report.rebuilt} left to the engine" if report.rebuilt else ""),
         fg=typer.colors.GREEN,
     )
 

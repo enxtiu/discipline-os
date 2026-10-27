@@ -151,7 +151,9 @@ async def _owned_row(db, table: sa.Table, user_id: uuid.UUID) -> Any:
 
 async def test_no_foreign_key_of_a_backup_row_reaches_into_another_account(owner, db, tmp_path) -> None:
     """Every foreign key column of every restored table, one at a time: B's own backup
-    with one row pointing at A's row is refused, and nothing of A or B changes."""
+    with one row pointing at A's row is refused, and nothing of A or B changes. The
+    backups are signed again (as if this server had made them so): an edited one is
+    refused earlier, by its signature, and would never show that this check holds."""
     await configure(db, owner.id)
     await populate(db, owner.id)  # A: a row in every table
     async with other_user() as b_client:
@@ -175,7 +177,7 @@ async def test_no_foreign_key_of_a_backup_row_reaches_into_another_account(owner
             def point(document: dict[str, Any], manifest: dict[str, Any], name=section.name, column=column, to=victim):
                 document["tables"][name][0][column] = str(to)
 
-            crafted = rewrite_backup(original, tmp_path / f"{section.name}-{column}.zip", point)
+            crafted = rewrite_backup(original, tmp_path / f"{section.name}-{column}.zip", point, sign=True)
             with pytest.raises(
                 RestoreError, match=rf"{section.name}\.{column}: {referenced} {victim} belongs to another"
             ):
@@ -187,7 +189,9 @@ async def test_no_foreign_key_of_a_backup_row_reaches_into_another_account(owner
 
 
 async def test_probe_x1_an_injected_item_never_shows_in_another_accounts_meal(authed, owner, db, tmp_path) -> None:
-    """Probe X1: B's backup with a meal item inside A's meal and a child of A's task."""
+    """Probe X1: B's backup with a meal item inside A's meal and a child of A's task —
+    refused as an edited backup (M3); signed, refused by its foreign keys (M2); and
+    unsigned into an empty account (the way an edited backup may go in), refused too."""
     a_meal = MealLog(user_id=owner.id, logged_at=local(DAY, 8), local_day=DAY, kcal=Decimal(500), item_count=1)
     db.add(a_meal)
     await db.commit()
@@ -216,8 +220,20 @@ async def test_probe_x1_an_injected_item_never_shows_in_another_accounts_meal(au
         for name in ("meal_items", "tasks"):
             manifest["counts"][name] += 1
 
-    with pytest.raises(RestoreError, match=r"meal_items\.meal_log_id: meal_logs .* belongs to another account"):
-        await restore_file(rewrite_backup(original, tmp_path / "crafted.zip", inject))
+    crafted = rewrite_backup(original, tmp_path / "crafted.zip", inject)
+    with pytest.raises(RestoreError, match="this server did not sign the backup"):
+        await restore_file(crafted)
+    foreign_key = r"meal_items\.meal_log_id: meal_logs .* belongs to another account"
+    with pytest.raises(RestoreError, match=foreign_key):
+        await restore_file(rewrite_backup(original, tmp_path / "signed.zip", inject, sign=True))
+    await db.execute(sa.delete(User).where(User.id == b_id))  # B gone (another server): C, empty, takes it
+    await db.commit()
+    async with other_user():
+        c_id = await _b_id(db)
+        fresh = await counts(db, c_id)
+        with pytest.raises(RestoreError, match=foreign_key):
+            await restore_file(crafted, user_id=c_id)
+        assert await counts(db, c_id) == fresh
     day = (await authed.get("/api/v1/nutrition/day", params={"date": DAY.isoformat()})).json()
     assert [item["name"] for meal_row in day["meals"] for item in meal_row["items"]] == ["A's own buckwheat"]
     db.expire_all()
@@ -245,8 +261,9 @@ async def _meal_with_photo(db, user_id: uuid.UUID, picture: bytes | None) -> uui
 async def test_probe_x1b_a_photo_path_never_reads_or_deletes_another_accounts_file(
     authed, owner, db, tmp_path, media_dir
 ) -> None:
-    """Probe X1b: B's meal restored with A's thumbnail path — B gets no photo, and
-    deleting B's meal leaves A's file alone."""
+    """Probe X1b: B's meal restored with A's thumbnail path. Edited, the backup is refused
+    (M3); signed, it restores without the path — B gets no photo, and deleting B's meal
+    leaves A's file alone (M2)."""
     a_meal = await _meal_with_photo(db, owner.id, b"\xff\xd8\xff A's private photo")
     a_path = media.meal_thumb_relpath(owner.id, a_meal)
     async with other_user() as b_client:
@@ -259,7 +276,9 @@ async def test_probe_x1b_a_photo_path_never_reads_or_deletes_another_accounts_fi
                 if row["id"] == str(b_meal):
                     row["photo_thumb_path"] = a_path
 
-        report = await restore_file(rewrite_backup(original, tmp_path / "photo.zip", point))
+        with pytest.raises(RestoreError, match="this server did not sign the backup"):
+            await restore_file(rewrite_backup(original, tmp_path / "photo.zip", point))
+        report = await restore_file(rewrite_backup(original, tmp_path / "signed.zip", point, sign=True))
         assert report.tables["meal_logs"].unchanged == 1  # the path never made it in: the row is as it was
         assert (await b_client.get(f"/api/v1/nutrition/meals/{b_meal}/photo")).status_code == 404
         day = (await b_client.get("/api/v1/nutrition/day", params={"date": DAY.isoformat()})).json()
