@@ -11,6 +11,7 @@
  * turns the badge animation and the sheet's slide off.
  */
 import { useEffect, useState } from 'react'
+import clsx from 'clsx'
 import { useTranslation } from 'react-i18next'
 import { motion, MotionConfig } from 'framer-motion'
 
@@ -40,6 +41,20 @@ function usePrefersReducedMotion(): boolean {
     return () => media.removeEventListener?.('change', update)
   }, [])
   return reduced
+}
+
+/** The halo behind the hero badge takes the rarity's colour (literal classes: Tailwind purges built ones). */
+const HALO: Record<Achievement['rarity'], string> = {
+  common: 'bg-[radial-gradient(closest-side,rgb(var(--text-muted)/0.35)_55%,transparent)]',
+  rare: 'bg-[radial-gradient(closest-side,rgb(var(--accent)/0.4)_55%,transparent)]',
+  epic: 'bg-[radial-gradient(closest-side,rgb(var(--accent-2)/0.5)_55%,transparent)]',
+  legendary: 'bg-[radial-gradient(closest-side,rgb(var(--warn)/0.45)_55%,transparent)]',
+}
+const RING: Record<Achievement['rarity'], string> = {
+  common: 'border-[rgb(var(--text-muted))]/40',
+  rare: 'border-[rgb(var(--accent))]/50',
+  epic: 'border-[rgb(var(--accent-2))]/50',
+  legendary: 'border-[rgb(var(--warn))]/50',
 }
 
 /** Ids offered automatically in this app session (a reload offers the unseen ones again). */
@@ -110,13 +125,10 @@ export function CelebrationSheet({ items, onClose }: { items: Achievement[] | nu
               data-code={lead.code}
             >
               <div className="relative flex h-36 w-36 items-center justify-center">
-                <span
-                  className="absolute inset-0 rounded-full bg-[radial-gradient(closest-side,rgb(var(--accent-2)/0.5)_55%,transparent)]"
-                  aria-hidden="true"
-                />
+                <span className={clsx('absolute inset-0 rounded-full', HALO[lead.rarity])} aria-hidden="true" />
                 {!reduced && (
                   <motion.span
-                    className="absolute inset-3 rounded-full border-2 border-[rgb(var(--accent-2))]/50"
+                    className={clsx('absolute inset-3 rounded-full border-2', RING[lead.rarity])}
                     initial={{ scale: 0.8, opacity: 0.8 }}
                     animate={{ scale: 1.35, opacity: 0 }}
                     transition={{ duration: 1.4, repeat: 2, ease: 'easeOut', delay: 0.3 }}
@@ -127,7 +139,10 @@ export function CelebrationSheet({ items, onClose }: { items: Achievement[] | nu
                   animate={{ scale: 1, rotate: 0, opacity: 1 }}
                   transition={{ type: 'spring', stiffness: 260, damping: 13, delay: 0.12 }}
                 >
-                  <AchievementBadge item={lead} size={96} glow />
+                  {/* an opaque base: the badge's tinted fill must not take the halo's colour */}
+                  <span className="block rounded-full bg-[rgb(var(--bg-elevated))]">
+                    <AchievementBadge item={lead} size={96} glow />
+                  </span>
                 </motion.div>
               </div>
               <RarityPill rarity={lead.rarity} />
