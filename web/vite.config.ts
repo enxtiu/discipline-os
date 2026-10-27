@@ -40,6 +40,9 @@ export default defineConfig({
         ],
       },
       workbox: {
+        // stage 7: web push handlers (public/sw-push.js) — the built dist/sw.js starts
+        // with importScripts("sw-push.js"), so push / notificationclick live in the same SW
+        importScripts: ['sw-push.js'],
         globPatterns: ['**/*.{js,css,html,svg,png,woff2,webmanifest}'],
         navigateFallback: '/index.html',
         // never cache API traffic — the app has its own offline queue

@@ -18,12 +18,14 @@ import { useAuth } from '@/features/auth/AuthProvider'
 import { IconButton } from '@/components/ui'
 import { AiCaptureProvider } from '@/features/ai/AiCapture'
 import { TaskSheetHost } from '@/features/plan/tasks/TaskSheetHost'
+import { useNotificationBridge } from '@/features/notifications/useNotificationBridge'
 
 export function AppShell() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const { session } = useAuth()
   const [quickAddOpen, setQuickAddOpen] = useState(false)
+  useNotificationBridge() // stage 7: ?task=<id> deep links, service-worker navigation
 
   const greeting = greetingKey()
   const name = session?.user.display_name ?? ''

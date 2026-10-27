@@ -84,7 +84,12 @@
     "tdee": "Total daily expenditure",
     "target_kcal": "Calorie target",
     "complete": "Save and continue",
-    "completed": "All set! Your data is saved."
+    "completed": "All set! Your data is saved.",
+    "push_title": "Push notifications",
+    "push_intro": "Reminders for tasks, meals, water, workouts and the daily review arrive as push notifications — only when they are needed.",
+    "push_ios_first": "On iPhone notifications only work for the app on the Home Screen. Install it first:",
+    "push_later": "You can also do this later: Settings → Notifications.",
+    "push_on": "Notifications are on. Try a test in Settings → Notifications."
   },
   "sex": {
     "male": "Male",
@@ -559,16 +564,105 @@
     "export_hint": "Full export arrives in stage 8. Nightly encrypted backups are already configured on the server (age + private repo).",
     "about_version": "Version",
     "about_env": "Environment",
-    "install_app": "Install on iPhone",
     "install_steps": [
       "Open the site in Safari",
       "Tap Share at the bottom of the screen",
       "Choose “Add to Home Screen”",
       "Launch the app from the icon — then enable notifications"
     ],
-    "standalone_detected": "Running from the Home Screen — notifications are available.",
-    "standalone_required": "Push on iPhone requires adding the site to the Home Screen first.",
-    "shortcut_hint": "Steps from Apple Health"
+    "shortcut_hint": "Steps from Apple Health",
+    "notify": {
+      "what_title": "What to send",
+      "what_hint": "Before sending, the app checks whether a reminder is still needed: if the thing is already done, there is no notification.",
+      "hints": {
+        "task_reminders": "At the times set on each task",
+        "meal_logging": "If nothing was logged since the previous reminder",
+        "water": "If you are behind on water for this time of day",
+        "workout": "If a workout is planned and not started yet",
+        "evening_review": "If today's review is not filled in yet",
+        "streak_at_risk": "Arrives together with streaks (stage 8)"
+      },
+      "time": "Time",
+      "add_time": "Add a time",
+      "remove_time": "Remove {{time}}",
+      "time_label": "{{category}}: time {{n}}",
+      "quiet_from": "From",
+      "quiet_to": "To",
+      "devices_title": "Devices with notifications",
+      "devices_empty": "No device receives notifications yet.",
+      "device_this": "This device",
+      "device_unknown": "Device",
+      "device_inactive": "Off",
+      "device_revoked": "Device disconnected",
+      "device_last_ok": "Delivered {{when}}",
+      "device_never": "Nothing delivered yet",
+      "device_failures": "Failures in a row: {{count}}",
+      "device_remove": "Remove “{{name}}”",
+      "device_removed": "This device no longer receives notifications",
+      "history_title": "Recent notifications",
+      "history_empty": "Sent, deferred and skipped notifications will show up here.",
+      "quiet_badge": "quiet hours",
+      "status": {
+        "sent": "Delivered",
+        "deferred": "Deferred",
+        "retrying": "Retrying",
+        "failed": "Failed",
+        "suppressed": "Not sent",
+        "cancelled": "Cancelled",
+        "pending": "Pending"
+      },
+      "reason": {
+        "stale": "More than an hour late",
+        "quiet_hours": "Quiet hours",
+        "no_subscription": "No device has notifications on",
+        "push_disabled": "Push is not configured on the server",
+        "delivery_failed": "The push service refused the message",
+        "retrying": "The push service is unavailable — will retry"
+      }
+    },
+    "push": {
+      "title": "Push notifications",
+      "status": {
+        "on": "On",
+        "off": "Off",
+        "denied": "Blocked",
+        "unsupported": "Unavailable",
+        "needs_install": "Install first",
+        "server_off": "Not set up",
+        "checking": "Checking…"
+      },
+      "on_hint": "All set on this device: reminders arrive even when the app is closed.",
+      "off_hint": "Notifications are off on this device. Allow them and reminders will arrive even when the app is closed.",
+      "install_intro": "On iPhone only an app added to the Home Screen gets notifications (iOS 16.4 or newer). A regular Safari tab cannot.",
+      "denied_intro": "Notifications are blocked. To turn them back on:",
+      "denied_ios": [
+        "Open the iPhone Settings app → Notifications",
+        "Find DisciplineOS in the list",
+        "Turn on “Allow Notifications”",
+        "Come back to the app — the status updates by itself"
+      ],
+      "denied_desktop": "In the browser: the icon left of the site address → Notifications → Allow, then reload the page.",
+      "unsupported_hint": "Open the app from the Home Screen on iPhone, or in Chrome, Edge or Firefox on a computer.",
+      "server_off_hint": "For the admin: set VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY (python -m app.cli vapid-keys) and restart the API. See README, “Web push on iPhone”.",
+      "enable": "Turn on notifications",
+      "disable": "Turn off on this device",
+      "test": "Send a test",
+      "test_sent": "Test notification sent ({{count}})",
+      "test_none": "No device has notifications on",
+      "test_failed": "Not delivered: {{count}}. Check the device list below.",
+      "enabled": "Notifications are on",
+      "disabled": "Notifications are off on this device"
+    },
+    "push_errors": {
+      "denied": "Notifications are blocked — allow them in the settings",
+      "dismissed": "The prompt was closed. Tap again and choose Allow.",
+      "sw_unavailable": "The app is not ready for notifications yet. Reload the page and try again.",
+      "subscribe_failed": "The browser could not subscribe to notifications. Try again later.",
+      "unsupported": "This browser does not support push notifications",
+      "needs_install": "Add the app to the Home Screen first",
+      "push_disabled": "Push notifications are not configured on the server",
+      "subscription_conflict": "This device was subscribed under another account. Please try again."
+    }
   },
   "common": {
     "g": "g",
