@@ -328,6 +328,32 @@ export async function run(ctx) {
         created.tasks.push(extra.body.id)
         await apiFetch(`/v1/planner/tasks/${extra.body.id}/complete`, { method: 'POST', body: '{}' })
       },
+      daily_tasks_3: async (quest) => doneTasks(quest.target - quest.progress),
+      weekly_tasks_15: async (quest) => doneTasks(quest.target - quest.progress),
+      // protein counts only on a day at or above the safe floor: one meal covers both
+      daily_protein: async (quest) => {
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          const now = await game()
+          if (now.quests.find((item) => item.id === quest.id)?.status !== 'active') return
+          const parts = Object.fromEntries(now.score.components.map((c) => [c.key, c.detail]))
+          const protein = Math.max(0, (parts.protein.target ?? 0) - (parts.protein.amount ?? 0))
+          const kcal = Math.max(0, (parts.kcal.floor ?? 0) - (parts.kcal.amount ?? 0))
+          const grams = Math.ceil(Math.max(protein / 0.3, kcal / 1.65, 50) + 40)
+          const big = await apiFetch('/v1/nutrition/meals', {
+            method: 'POST',
+            body: JSON.stringify({ meal_type: 'dinner', items: [{ name: 'Куриная грудка (ui-check)', grams, kcal_per_100g: 165, protein_per_100g: 30, fat_per_100g: 3.6, carbs_per_100g: 0 }] }),
+          })
+          if (big.status === 201) created.meals.push(big.body.id)
+        }
+      },
+    }
+    async function doneTasks(count) {
+      for (let index = 0; index < Math.ceil(count); index += 1) {
+        const extra = await apiFetch('/v1/planner/tasks', { method: 'POST', body: JSON.stringify({ title: `Задача ${index + 1} (ui-check)`, priority: 4 }) })
+        if (extra.status !== 201) return
+        created.tasks.push(extra.body.id)
+        await apiFetch(`/v1/planner/tasks/${extra.body.id}/complete`, { method: 'POST', body: '{}' })
+      }
     }
     let snapshot = await game()
     let quest = snapshot.quests.find((item) => item.status === 'completed')
