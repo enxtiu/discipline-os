@@ -32,7 +32,10 @@
  * Usage:
  *   DEVICE_TOKEN=… | PAIRING_CODE=XXXX-XXXX \
  *   WEB_URL=http://127.0.0.1:4236 node scripts/perf/perf-run.mjs \
- *     [--runs 3] [--modes cold,warm] [--screens today,food,plan,stats] [--json out.json] [--label before]
+ *     [--runs 3] [--modes cold,warm] [--screens today,food,plan,stats] [--tabs] [--json out.json] [--label after]
+ *   Two builds side by side (e.g. `vite preview --outDir <old dist>` on a second port, both
+ *   proxying the same API): --targets before=http://127.0.0.1:5236,after=http://127.0.0.1:4236
+ *   — every run measures each target in turn, so a busy machine slows both alike.
  * PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs when playwright is not resolvable.
  */
 const { chromium, devices } = await import(process.env.PLAYWRIGHT_MODULE ?? 'playwright')
@@ -44,6 +47,15 @@ const option = (name, fallback) => {
   return index >= 0 && args[index + 1] ? args[index + 1] : fallback
 }
 const WEB_URL = (process.env.WEB_URL ?? 'http://127.0.0.1:4236').replace(/\/$/, '')
+/** [{ label, url }]: --targets label=url,label=url, else this one build (WEB_URL). */
+const TARGETS = option('--targets', '')
+  ? option('--targets', '')
+      .split(',')
+      .map((pair) => {
+        const [label, url] = pair.split('=')
+        return { label, url: url.replace(/\/$/, '') }
+      })
+  : [{ label: option('--label', '') || 'run', url: WEB_URL }]
 const RUNS = Number(option('--runs', '3'))
 const MODES = option('--modes', 'cold,warm').split(',')
 const LABEL = option('--label', '')
@@ -85,7 +97,7 @@ if (!TOKEN) {
     console.error('DEVICE_TOKEN or PAIRING_CODE is required (python -m app.cli pairing-code --uses 20 --ttl 1440)')
     process.exit(2)
   }
-  const response = await fetch(`${WEB_URL}/api/v1/auth/pair`, {
+  const response = await fetch(`${TARGETS[0].url}/api/v1/auth/pair`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -168,8 +180,8 @@ async function throttle(page) {
 }
 
 /** Warm mode: a first visit installs the service worker and lets it precache the build. */
-async function installServiceWorker(page, screen) {
-  await page.goto(`${WEB_URL}${screen.path}`, { waitUntil: 'networkidle' })
+async function installServiceWorker(page, screen, base) {
+  await page.goto(`${base}${screen.path}`, { waitUntil: 'networkidle' })
   const ok = await page.evaluate(async () => {
     if (!('serviceWorker' in navigator)) return false
     const registration = await Promise.race([
@@ -182,7 +194,7 @@ async function installServiceWorker(page, screen) {
   await page.waitForTimeout(1500) // precache finished (install precedes activate) and the page settled
 }
 
-async function measure(mode, name) {
+async function measure(mode, name, base) {
   const screen = SCREENS[name]
   const context = await newContext(mode)
   const selectors = { shell: 'nav.tabbar', ready: screen.ready, ...(screen.marks ?? {}) }
@@ -192,7 +204,7 @@ async function measure(mode, name) {
   page.on('pageerror', (error) => errors.push(String(error)))
   page.on('console', (message) => message.type() === 'error' && errors.push(message.text()))
 
-  if (mode === 'warm') await installServiceWorker(page, screen)
+  if (mode === 'warm') await installServiceWorker(page, screen, base)
 
   const cdp = await throttle(page)
   const requests = new Map() // requestId → { url, type, start, end, bytes, fromSW }
@@ -224,7 +236,7 @@ async function measure(mode, name) {
   cdp.on('Network.loadingFailed', (event) => finish(event, true))
 
   const startedAt = Date.now()
-  await page.goto(`${WEB_URL}${screen.path}`, { waitUntil: 'commit', timeout: TIMEOUT_MS })
+  await page.goto(`${base}${screen.path}`, { waitUntil: 'commit', timeout: TIMEOUT_MS })
   // idle: nothing in flight and no activity for QUIET_MS (after the ready mark, so slow
   // CPU work between requests is not mistaken for idleness)
   for (;;) {
@@ -292,12 +304,12 @@ async function measure(mode, name) {
 // --------------------------------------------------------------------------- //
 // Tab switching: API requests and time to ready per tap, after a cold open
 // --------------------------------------------------------------------------- //
-async function tabs(mode) {
+async function tabs(mode, base) {
   const context = await newContext(mode)
   const selectors = { shell: 'nav.tabbar', ready: SCREENS.today.ready }
   await context.addInitScript(probe, { token: TOKEN, selectors })
   const page = await context.newPage()
-  if (mode === 'warm') await installServiceWorker(page, SCREENS.today)
+  if (mode === 'warm') await installServiceWorker(page, SCREENS.today, base)
   const cdp = await throttle(page)
   const inflight = new Set()
   let calls = []
@@ -332,7 +344,7 @@ async function tabs(mode) {
     }
     return readyAt === null ? null : readyAt - started
   }
-  await page.goto(`${WEB_URL}/today`, { waitUntil: 'commit' })
+  await page.goto(`${base}/today`, { waitUntil: 'commit' })
   await settle(SCREENS.today.ready)
   const switches = []
   for (const name of TAB_SEQUENCE) {
@@ -349,39 +361,39 @@ async function tabs(mode) {
 }
 
 // --------------------------------------------------------------------------- //
+// Runs: run by run, every target in turn (a load spike hits both builds alike)
+// --------------------------------------------------------------------------- //
 const results = []
-for (const mode of MODES) {
-  for (const name of SELECTED) {
-    for (let run = 1; run <= RUNS; run += 1) {
-      const result = await measure(mode, name)
-      results.push({ ...result, run })
-      if (WATERFALL) {
-        const marks = `shell ${result.shell} · ring ${result.ring ?? '—'} · ready ${result.ready}`
-        console.log(`  waterfall (${marks}):`)
-        for (const item of result.timeline) {
-          console.log(`    ${String(item.start).padStart(5)} → ${String(item.end).padStart(5)}  ${(item.bytes / 1000).toFixed(1).padStart(6)} kB  ${item.url}`)
-        }
-        console.log(`    long tasks: ${result.longTaskList.map(([start, duration]) => `${start}+${duration}`).join(', ')}`)
-        console.log(`    marks: ${Object.entries(result.marks).map(([key, value]) => `${key} ${Math.round(value)}`).join(', ')}`)
-      }
-      console.log(
-        `${mode.padEnd(4)} ${name.padEnd(5)} #${run}  shell ${result.shell} ms · ready ${result.ready} ms` +
-          `${result.ring ? ` · ring ${result.ring} ms` : ''} · idle ${result.idle} ms · ${result.requests} req` +
-          ` · js ${(result.jsBytes / 1000).toFixed(1)} kB${result.errors.length ? ` · ERRORS ${result.errors.length}` : ''}`,
-      )
-    }
-  }
-}
 const tabRuns = []
-if (TABS) {
-  for (const mode of MODES) {
-    for (let run = 1; run <= RUNS; run += 1) {
-      const switches = await tabs(mode)
-      tabRuns.push({ mode, run, switches })
-      console.log(
-        `${mode.padEnd(4)} tabs  #${run}  ` +
-          switches.map((item) => `${item.screen} ${item.apiCalls.length} req/${item.readyMs} ms`).join(' · '),
-      )
+for (let run = 1; run <= RUNS; run += 1) {
+  for (const target of TARGETS) {
+    for (const mode of MODES) {
+      for (const name of SELECTED) {
+        const result = await measure(mode, name, target.url)
+        results.push({ ...result, target: target.label, run })
+        if (WATERFALL) {
+          const marks = `shell ${result.shell} · ring ${result.ring ?? '—'} · ready ${result.ready}`
+          console.log(`  waterfall (${marks}):`)
+          for (const item of result.timeline) {
+            console.log(`    ${String(item.start).padStart(5)} → ${String(item.end).padStart(5)}  ${(item.bytes / 1000).toFixed(1).padStart(6)} kB  ${item.url}`)
+          }
+          console.log(`    long tasks: ${result.longTaskList.map(([start, duration]) => `${start}+${duration}`).join(', ')}`)
+          console.log(`    marks: ${Object.entries(result.marks).map(([key, value]) => `${key} ${Math.round(value)}`).join(', ')}`)
+        }
+        console.log(
+          `${target.label} ${mode.padEnd(4)} ${name.padEnd(5)} #${run}  shell ${result.shell} ms · ready ${result.ready} ms` +
+            `${result.ring ? ` · ring ${result.ring} ms` : ''} · idle ${result.idle} ms · ${result.requests} req` +
+            ` · js ${(result.jsBytes / 1000).toFixed(1)} kB${result.errors.length ? ` · ERRORS ${result.errors.length}` : ''}`,
+        )
+      }
+      if (TABS) {
+        const switches = await tabs(mode, target.url)
+        tabRuns.push({ target: target.label, mode, run, switches })
+        console.log(
+          `${target.label} ${mode.padEnd(4)} tabs  #${run}  ` +
+            switches.map((item) => `${item.screen} ${item.apiCalls.length} req/${item.readyMs} ms`).join(' · '),
+        )
+      }
     }
   }
 }
@@ -398,25 +410,28 @@ const median = (values) => {
 }
 const FIELDS = ['fcp', 'shell', 'ring', 'ready', 'lcp', 'idle', 'requests', 'jsRequests', 'jsBytes', 'cssBytes', 'apiRequests', 'apiBytes', 'longTasks', 'longTaskMs', 'blockingMs']
 const summary = []
-for (const mode of MODES) {
-  for (const name of SELECTED) {
-    const runs = results.filter((result) => result.mode === mode && result.screen === name)
-    const row = { mode, screen: name, runs: runs.length }
-    for (const field of FIELDS) row[field] = median(runs.map((result) => result[field]))
-    row.apiCalls = runs[0]?.apiCalls ?? []
-    row.scripts = runs[0]?.scripts ?? []
-    row.errors = runs.flatMap((result) => result.errors)
-    summary.push(row)
+for (const target of TARGETS) {
+  for (const mode of MODES) {
+    for (const name of SELECTED) {
+      const runs = results.filter((result) => result.target === target.label && result.mode === mode && result.screen === name)
+      const row = { target: target.label, mode, screen: name, runs: runs.length }
+      for (const field of FIELDS) row[field] = median(runs.map((result) => result[field]))
+      row.apiCalls = runs[0]?.apiCalls ?? []
+      row.scripts = runs[0]?.scripts ?? []
+      row.errors = runs.flatMap((result) => result.errors)
+      summary.push(row)
+    }
   }
 }
 
 const kb = (bytes) => (bytes == null ? '—' : (bytes / 1000).toFixed(1))
 const v = (value) => (value == null ? '—' : String(value))
 console.log(`\nmedians of ${RUNS} runs${LABEL ? ` (${LABEL})` : ''} — CPU ×${CPU_RATE}, Fast 4G; times in ms from navigation start, bytes in kB as transferred`)
-console.log('mode screen   fcp  shell   ring  ready    lcp   idle  req  js-req  js-kB  css-kB  api-req  api-kB  long  long-ms  block-ms')
+console.log('target   mode screen   fcp  shell   ring  ready    lcp   idle  req  js-req  js-kB  css-kB  api-req  api-kB  long  long-ms  block-ms')
 for (const row of summary) {
   console.log(
     [
+      row.target.padEnd(8),
       row.mode.padEnd(4),
       row.screen.padEnd(6),
       v(row.fcp).padStart(5),
@@ -437,28 +452,49 @@ for (const row of summary) {
     ].join(' '),
   )
 }
+// two targets: the change of the key numbers, second vs first
+if (TARGETS.length === 2) {
+  const [a, b] = TARGETS.map((target) => target.label)
+  const pct = (from, to) => (from && to != null ? `${to - from > 0 ? '+' : ''}${Math.round(((to - from) / from) * 100)} %` : '—')
+  console.log(`\n${b} vs ${a} (medians)`)
+  for (const mode of MODES) {
+    for (const name of SELECTED) {
+      const x = summary.find((row) => row.target === a && row.mode === mode && row.screen === name)
+      const y = summary.find((row) => row.target === b && row.mode === mode && row.screen === name)
+      const parts = ['shell', 'ring', 'ready', 'lcp', 'jsBytes', 'apiRequests', 'blockingMs']
+        .filter((field) => x[field] != null)
+        .map((field) => `${field} ${x[field]} → ${y[field]} (${pct(x[field], y[field])})`)
+      console.log(`  ${mode.padEnd(4)} ${name.padEnd(5)} ${parts.join(' · ')}`)
+    }
+  }
+}
 for (const row of summary.filter((item) => item.mode === MODES[0])) {
-  console.log(`\n${row.screen}: ${row.apiCalls.length} API calls — ${row.apiCalls.join(', ')}`)
+  console.log(`\n${row.target} ${row.screen}: ${row.apiCalls.length} API calls — ${row.apiCalls.join(', ')}`)
   console.log(`  scripts: ${row.scripts.join(', ')}`)
 }
 const tabSummary = []
-for (const mode of TABS ? MODES : []) {
-  const runs = tabRuns.filter((item) => item.mode === mode)
-  const steps = TAB_SEQUENCE.map((screen, index) => ({
-    screen,
-    apiRequests: median(runs.map((item) => item.switches[index].apiCalls.length)),
-    readyMs: median(runs.map((item) => item.switches[index].readyMs)),
-    apiCalls: runs[0]?.switches[index].apiCalls ?? [],
-  }))
-  const total = median(runs.map((item) => item.switches.reduce((sum, step) => sum + step.apiCalls.length, 0)))
-  tabSummary.push({ mode, steps, totalApiRequests: total })
-  console.log(`\ntab switches (${mode}, medians): ${steps.map((step) => `${step.screen} ${step.apiRequests} req / ${step.readyMs} ms`).join(' → ')}; ${total} API requests in all`)
-  for (const step of steps) console.log(`  → ${step.screen}: ${step.apiCalls.join(', ') || '(none)'}`)
+for (const target of TABS ? TARGETS : []) {
+  for (const mode of MODES) {
+    const runs = tabRuns.filter((item) => item.target === target.label && item.mode === mode)
+    const steps = TAB_SEQUENCE.map((screen, index) => ({
+      screen,
+      apiRequests: median(runs.map((item) => item.switches[index].apiCalls.length)),
+      readyMs: median(runs.map((item) => item.switches[index].readyMs)),
+      apiCalls: runs[0]?.switches[index].apiCalls ?? [],
+    }))
+    const total = median(runs.map((item) => item.switches.reduce((sum, step) => sum + step.apiCalls.length, 0)))
+    tabSummary.push({ target: target.label, mode, steps, totalApiRequests: total })
+    console.log(
+      `\ntab switches (${target.label}, ${mode}, medians): ` +
+        `${steps.map((step) => `${step.screen} ${step.apiRequests} req / ${step.readyMs} ms`).join(' → ')}; ${total} API requests in all`,
+    )
+    for (const step of steps) console.log(`  → ${step.screen}: ${step.apiCalls.join(', ') || '(none)'}`)
+  }
 }
-const errors = summary.flatMap((row) => row.errors.map((error) => `${row.mode} ${row.screen}: ${error}`))
+const errors = summary.flatMap((row) => row.errors.map((error) => `${row.target} ${row.mode} ${row.screen}: ${error}`))
 if (errors.length) console.log(`\nerrors (${errors.length}):\n  ${[...new Set(errors)].slice(0, 20).join('\n  ')}`)
 
 if (JSON_OUT) {
-  writeFileSync(JSON_OUT, JSON.stringify({ label: LABEL, runs: RUNS, network: NETWORK, cpu: CPU_RATE, summary, results, tabSummary, tabRuns }, null, 2))
+  writeFileSync(JSON_OUT, JSON.stringify({ label: LABEL, targets: TARGETS, runs: RUNS, network: NETWORK, cpu: CPU_RATE, summary, results, tabSummary, tabRuns }, null, 2))
   console.log(`\njson → ${JSON_OUT}`)
 }
