@@ -17,12 +17,15 @@ Notes: the streak reminder slot avoids quiet hours; the engine GETs are rate lim
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
 
 import httpx
 import pytest
 
+from app.models import DailyScore
 from app.services.day_metrics import week_start_for
+from app.services.gamification import score
 from app.services.planner.containers import week_start_for as planner_week_start_for
 from tests.stage8_helpers import (
     NOON,
@@ -72,3 +75,62 @@ async def test_saturday_weeks_for_quests_streaks_and_stats(authed: httpx.AsyncCl
     state = next(state for state in snapshot.streaks if state.kind.value == "workout")
     assert (state.period_done, state.period_required, state.today_met) == (3, 3, True)
     assert set(snapshot.plans) >= {date(2026, 7, 4), date(2026, 7, 11)}  # Saturday weeks
+
+
+# --------------------------------------------------------------------------- #
+# L2 — stored JSON degrades, never a 500
+# --------------------------------------------------------------------------- #
+async def test_a_malformed_frozen_breakdown_degrades_instead_of_a_500(authed: httpx.AsyncClient, db) -> None:
+    """Adapted from probe x4: whatever a frozen ``daily_scores`` row holds (a restored or
+    damaged backup), /gamification/scores and /stats/progress answer 200."""
+    user_id = await owner_id(db)
+    day = date(2026, 7, 10)
+    junk = [
+        {"key": "kcal", "value": "n/a", "weight": "25", "excluded": "no", "detail": {"amount": "x", "state": 7}},
+        {"key": "water", "value": 7, "weight": -3, "detail": ["not", "a", "dict"]},
+        {"key": "protein", "value": True, "weight": None},
+        "garbage",
+        {"key": "bogus", "value": 1},
+        {"value": 1},
+    ]
+    db.add(
+        DailyScore(
+            user_id=user_id,
+            local_day=day,
+            score=Decimal("61.5"),
+            components={"final": True, "credit": "true", "provisional": 1, "items": junk},
+            weights={"kcal": "x", "water": 10, "sleep": float("1e300")},
+            computed_at=datetime(2026, 7, 12, 0, 0, tzinfo=UTC),
+        )
+    )
+    db.add(
+        DailyScore(
+            user_id=user_id,
+            local_day=day - timedelta(days=1),
+            score=Decimal("40"),
+            components=["not", "an", "object"],
+            weights=[],
+            computed_at=datetime(2026, 7, 11, 0, 0, tzinfo=UTC),
+        )
+    )
+    await db.commit()
+
+    response = await authed.get("/api/v1/gamification/scores", params={"from": "2026-07-08", "to": "2026-07-10"})
+    assert response.status_code == 200, response.text
+    items = {item["date"]: item for item in response.json()["items"]}
+    stored = items["2026-07-10"]
+    assert stored["score"] == 61.5 and stored["provisional"] is False
+    parts = {item["key"]: item for item in stored["components"]}
+    assert set(parts) == {"kcal", "water", "protein"}
+    assert (parts["kcal"]["value"], parts["kcal"]["weight"], parts["kcal"]["excluded"]) == (0.0, 0.0, False)
+    assert parts["kcal"]["detail"]["amount"] is None and parts["kcal"]["detail"]["state"] == "ok"
+    assert (parts["water"]["value"], parts["water"]["weight"]) == (1.0, 0.0)  # clamped
+    assert (parts["protein"]["value"], parts["protein"]["weight"]) == (0.0, 0.0)  # a bool is no number
+    assert items["2026-07-09"]["score"] == 40.0 and items["2026-07-09"]["components"] == []
+
+    rows = await score.load_rows(db, user_id, day, day)
+    parsed = score.from_row(rows[day])
+    assert parsed.credit is False and parsed.weights == {"water": 10.0, "sleep": 1e300}
+    assert not score.counts_for_overall(rows[day])  # the string "true" is no credit
+    progress = await authed.get("/api/v1/stats/progress", params={"period": "week", "date": "2026-07-10"})
+    assert progress.status_code == 200, progress.text

@@ -27,6 +27,7 @@ whatever the user's weights are.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import date, datetime
@@ -258,8 +259,18 @@ def to_json(score: DayScore) -> dict[str, Any]:
     }
 
 
+def finite_number(value: Any) -> float | None:
+    """A finite JSON number (never a bool), else ``None``: stored JSON (a frozen day, a
+    restored backup) degrades instead of raising — never a 500 from stored data."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    number = float(value)
+    return number if math.isfinite(number) else None
+
+
 def from_row(row: DailyScore) -> DayScore:
-    """A stored score (frozen days). Malformed JSON degrades to an empty breakdown."""
+    """A stored score (frozen days). Malformed JSON degrades — unknown items are skipped,
+    non-numeric or out-of-range values count as 0 — never an exception."""
     payload = row.components if isinstance(row.components, dict) else {}
     items = payload.get("items") if isinstance(payload.get("items"), list) else []
     components = []
@@ -267,31 +278,42 @@ def from_row(row: DailyScore) -> DayScore:
         if not isinstance(raw, dict) or raw.get("key") not in SCORE_KEYS:
             continue
         detail = raw.get("detail") if isinstance(raw.get("detail"), dict) else {}
+        value = finite_number(raw.get("value"))
+        weight = finite_number(raw.get("weight"))
         components.append(
             Component(
                 key=str(raw["key"]),
-                value=float(raw.get("value") or 0.0),
-                excluded=bool(raw.get("excluded")),
+                value=_clamp(value) if value is not None else 0.0,
+                excluded=raw.get("excluded") is True,
                 detail=dict(detail),
-                weight=float(raw.get("weight") or 0.0),
+                weight=max(0.0, min(100.0, weight)) if weight is not None else 0.0,
             )
         )
+    weights = row.weights if isinstance(row.weights, dict) else {}
     return DayScore(
         day=row.local_day,
-        value=float(row.score or 0),
-        provisional=bool(payload.get("provisional")),
-        credit=bool(payload.get("credit")),
+        value=_clamp_score(row.score),
+        provisional=payload.get("provisional") is True,
+        credit=payload.get("credit") is True,
         components=components,
-        weights=dict(row.weights) if isinstance(row.weights, dict) else {},
+        weights={str(key): number for key, raw in weights.items() if (number := finite_number(raw)) is not None},
         computed_at=row.computed_at,
     )
+
+
+def _clamp_score(value: Any) -> float:
+    try:
+        number = float(value or 0)
+    except (TypeError, ValueError):
+        return 0.0
+    return max(0.0, min(100.0, number)) if math.isfinite(number) else 0.0
 
 
 def counts_for_overall(row: DailyScore) -> bool:
     """Did this stored day count for the overall streak? (score ≥ 60 *and* credit:
     at least one meal logged and intake at or above the safe floor)."""
     payload = row.components if isinstance(row.components, dict) else {}
-    return bool(payload.get("credit")) and float(row.score or 0) >= OVERALL_THRESHOLD
+    return payload.get("credit") is True and _clamp_score(row.score) >= OVERALL_THRESHOLD
 
 
 @dataclass(slots=True, frozen=True)
