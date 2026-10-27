@@ -62,3 +62,38 @@ register_job(
         tags=("stage3", "ai"),
     )
 )
+
+
+# --------------------------------------------------------------------------- #
+# stage 7: notifications
+# --------------------------------------------------------------------------- #
+async def _dispatch_notifications() -> None:
+    from app.services.notifications import dispatch_job
+
+    await dispatch_job()
+
+
+async def _plan_daily_reminders() -> None:
+    from app.services.notifications import planner_job
+
+    await planner_job()
+
+
+register_job(
+    ScheduledJobSpec(
+        id="dispatch_notifications",
+        func=_dispatch_notifications,
+        minutes=1,
+        description="Deliver due reminders by web push (quiet hours, prefs, conditions at send time)",
+        tags=("stage7", "push"),
+    )
+)
+register_job(
+    ScheduledJobSpec(
+        id="plan_daily_reminders",
+        func=_plan_daily_reminders,
+        minutes=15,
+        description="Create today's smart reminders (meal, water, workout, evening review) per user",
+        tags=("stage7", "push"),
+    )
+)

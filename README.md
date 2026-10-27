@@ -5,12 +5,13 @@ training, steps, PARA tasks and planner, time tracking, gamification. Built as a
 mobile-first PWA for iPhone (iOS 17+, Safari → Add to Home Screen), dark by
 default, one-handed, every frequent action within two taps.
 
-> **Status: stages 1–6 of 10 are complete** — foundation, nutrition core,
+> **Status: stages 1–7 of 10 are complete** — foundation, nutrition core,
 > nutrition backfill, AI logging (photo/text → review → save, camera barcode
 > scanner), training (templates, weekly plan, live logger, records, burned
 > calories kept out of the food budget), health ingest (iOS Shortcut, steps,
-> weight, sleep) and the planner (PARA, tasks with repeats and reminders,
-> calendar with drag, natural-language quick add, timer, journal). The foundation is live: repository,
+> weight, sleep), the planner (PARA, tasks with repeats and reminders,
+> calendar with drag, natural-language quick add, timer, journal) and web push
+> notifications (reminders, daily nudges, quiet hours). The foundation is live: repository,
 > infrastructure, the full database schema for every entity of the whole
 > product, device-token auth with pairing, settings with target calculation, the
 > design system and app shell with bottom navigation, i18n (ru/en), PWA basics
@@ -36,6 +37,7 @@ default, one-handed, every frequent action within two taps.
 - [Deployment](#deployment)
 - [Backups and restore](#backups-and-restore)
 - [iPhone setup: install the PWA](#iphone-setup-install-the-pwa)
+- [Web push on iPhone](#web-push-on-iphone)
 - [iOS Shortcut recipe (steps and active energy)](#ios-shortcut-recipe-steps-and-active-energy)
 - [Troubleshooting](#troubleshooting)
 - [Security notes](#security-notes)
@@ -69,7 +71,8 @@ default, one-handed, every frequent action within two taps.
 | Training: exercise library (ru/en search, your own exercises), templates, weekly plan, live workout logger with rest timer (sets work offline), personal records, quick cardio, burned calories on their own card/chart — never food budget | ✅ stage 4 |
 | Health: iOS Shortcut ingest (scoped token, idempotent per day, lenient numbers, 62-day backfill), steps on Today with a manual fallback, weight (profile + targets follow) and sleep entries, a /health page with 14-day steps, 90-day weight and a sleep timeline | ✅ stage 5 |
 | Planner: PARA (inbox, projects, areas, resources, archive), tasks P1–P4 with tags, subtasks, due dates, time blocks, estimates, RRULE repeats, reminders and Markdown notes; Today / Inbox / Upcoming / Calendar (day, week, month with drag) and project, area, tag and search pages; natural-language quick add (ru/en) with a live preview; a timer that survives reloads and device switches, a time log; a daily journal with the server's day summary — all offline-queued | ✅ stage 6 |
-| Push notifications, gamification and charts, hardening, redesign | stages 7–10 |
+| Web push: VAPID subscriptions per device, task reminders and smart daily reminders (meal logging, water, planned workout, evening review) re-checked at send time, quiet hours (task reminders wait, daily nudges are dropped), per-category times, test notification, history; iPhone «На экран Домой» guidance in onboarding and Settings | ✅ stage 7 |
+| Gamification and charts, hardening, redesign | stages 8–10 |
 
 ---
 
@@ -107,28 +110,28 @@ discipline-os/
 ├── api/                     FastAPI service
 │   ├── app/
 │   │   ├── ai/              provider adapters, strict schema, runner, prompts/*.vN.md (stage 3)
-│   │   ├── api/             routers (v1: auth, devices, tokens, settings, meta, foods, nutrition, ai, training, health, planner)
+│   │   ├── api/             routers (v1: auth, devices, tokens, settings, meta, foods, nutrition, ai, training, health, planner, push, notifications)
 │   │   ├── core/            config, logging, errors, security, rate limit, tz, ids
 │   │   ├── models/          SQLAlchemy 2 models — every entity, every stage
 │   │   ├── schemas/         pydantic v2 request/response models
-│   │   ├── services/        pairing, tokens, targets, settings, scheduler, recurrence, planner/, task_parser
+│   │   ├── services/        pairing, tokens, targets, settings, scheduler, recurrence, planner/, task_parser, push, notifications
 │   │   ├── seeds/           seed framework + exercise library
 │   │   └── cli.py           server-side admin commands
 │   ├── alembic/versions/    migrations (0001 = the whole schema, 0002 = planner indexes)
 │   ├── importers/           seed (320 foods RU/EN), Open Food Facts, USDA FDC (+ RU names)
-│   └── tests/               pytest suite (920+ tests)
+│   └── tests/               pytest suite (990+ tests)
 ├── web/                     React 18 + TS + Vite PWA
 │   ├── src/api/             fetch client, types, generated OpenAPI types
 │   ├── src/components/      design system (ui/) + shell (layout/)
-│   ├── src/features/        auth, today, food (2), ai (3), train (4), health (5), plan (6), settings, placeholders
+│   ├── src/features/        auth, today, food (2), ai (3), train (4), health (5), plan (6), notifications (7), settings, placeholders
 │   ├── src/i18n/            ru.json / en.json (all strings live here)
 │   ├── src/lib/             device, offline queue, formatting, errors, targets
-│   └── public/              icons, offline.html, sw-push.js (stage 7)
+│   └── public/              icons, offline.html, sw-push.js (imported into the generated service worker)
 ├── docker/                  api.Dockerfile, caddy.Dockerfile, Caddyfile
 ├── deploy/                  install.sh, update.sh, healthcheck.sh, backup/
 ├── scripts/                 dev-api.sh, smoke.sh, check-i18n.mjs, ui-check.mjs
 ├── .github/workflows/       ci.yml, deploy.yml, backup.yml
-├── docs/                    roadmap.md, stage-1 … stage-6.md, screenshots/
+├── docs/                    roadmap.md, stage-1 … stage-7.md, screenshots/
 ├── docker-compose.yml       postgres + api + caddy (production)
 ├── docker-compose.dev.yml   overlay: published postgres, api with reload
 └── Makefile                 every developer shortcut
@@ -221,7 +224,11 @@ All of them live in `.env` (copy from `.env.example`; never commit the real one)
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `SCHEDULER_ENABLED` | `true` | APScheduler inside the API container |
-| `HOUSEKEEPING_INTERVAL_MINUTES` | `15` | Expired pairing codes, ephemeral rows (stage 7 adds notifications) |
+| `HOUSEKEEPING_INTERVAL_MINUTES` | `15` | Expired pairing codes, ephemeral rows |
+
+Stage 7 adds two jobs (no settings): `dispatch_notifications` every minute and
+`plan_daily_reminders` every 15 minutes (see [Web push on iPhone](#web-push-on-iphone)).
+With `SCHEDULER_ENABLED=false` nothing is delivered — `POST /api/v1/push/test` still works.
 
 ### AI (stage 3) and push (stage 7)
 
@@ -236,8 +243,36 @@ deterministic, no key, for dev/CI), `AI_API_KEY`, `AI_BASE_URL`,
 `OFF_LIVE_LOOKUP`, `OFF_BASE_URL`, `OFF_TIMEOUT_SECONDS`, `OFF_USER_AGENT`,
 `OFF_LOOKUPS_PER_MINUTE`, `OFF_MISS_TTL_HOURS` (stage 2b: a barcode missing locally
 is looked up once on Open Food Facts and cached);
-`VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` (generate with
-`python -m app.cli vapid-keys`), `VAPID_SUBJECT`.
+`VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` — see the next table.
+
+### Web push (stage 7)
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `VAPID_PUBLIC_KEY` | empty | base64url P-256 public key; the browser subscribes with it (`GET /api/v1/push/config`) |
+| `VAPID_PRIVATE_KEY` | empty | The matching private key as one-line PEM (`\n` escaped) — signs every push (RFC 8292). Secret |
+| `VAPID_SUBJECT` | `mailto:admin@example.com` | Your contact for the push services: `mailto:you@domain` or `https://…` |
+| `PUSH_EXTRA_HOSTS` | empty | More push-service hosts to allow (comma-separated, `*.example.com` for subdomains) — see below |
+
+**Where the API sends pushes.** A browser registers the URL of its push service and the
+server POSTs every notification there, so with `ENV=production` or `staging` only the
+browsers' real push services are accepted — `https://`, port 443, host
+`fcm.googleapis.com` (Chrome, Android, Samsung Internet, Opera), `*.push.apple.com`
+(Safari on iPhone/iPad/Mac), `*.push.services.mozilla.com` (Firefox) or
+`*.notify.windows.com` (Edge on Windows) — plus `PUSH_EXTRA_HOSTS`. Any other endpoint is
+refused when it is registered (422 `push_service_not_allowed`; the app says the server
+does not send to that browser's push service), a stored one is switched off before the
+next send (`last_error=endpoint_not_allowed`), and redirects are never followed. `ENV=development` also accepts plain `http://127.0.0.1` / `localhost` / `[::1]`
+— the local receiver the smoke test and the browser checks use. Endpoints are ASCII, at
+most 2048 bytes.
+
+Generate the pair once and keep it: `docker compose exec api python -m app.cli vapid-keys`
+prints both lines ready for `.env`; restart the API. Push is **on** only when both keys
+are set (`features.push_notifications` in `/api/v1/meta/app-config`); without them the
+app says so in Settings → Уведомления instead of offering a button that cannot work.
+Changing the keys later orphans every browser subscription — each device has to tap
+«Включить уведомления» again (the API logs `vapid_key_mismatch` if the two keys do not
+belong together).
 
 ### Backups
 
@@ -355,13 +390,14 @@ place. New library rows are **unverified** until the owner taps *Подтвер�
 ## Testing
 
 ```bash
-# backend: 920+ tests — calorie math, food search & ranking (incl. the 150 ms
+# backend: 990+ tests — calorie math, food search & ranking (incl. the 150 ms
 # budget on a 50k-row library), importers (seed/USDA/OFF), live barcode fallback
 # (mocked), meal logging, recipes, day boundaries, recurrence, tokens/devices,
 # AI logging (fake provider + every adapter behind httpx.MockTransport), training
 # (search, templates, plan, idempotent sets, records, burned kcal, bounds), health
 # ingest, the planner (tasks, repeats across DST, reminders, views, PARA, timer
-# races, journal) and 670 quick-add parser cases (ru + en)
+# races, journal), 670 quick-add parser cases (ru + en) and web push (a real
+# aes128gcm round-trip, VAPID, the dispatcher's quiet hours and races, SSRF guards)
 cd api
 TEST_DATABASE_URL=postgresql+psycopg://postgres:postgres@127.0.0.1:5432/dsos_test \
   SECRET_KEY=test-secret-key-please-change-0123456789 .venv/bin/pytest -q
@@ -370,10 +406,13 @@ TEST_DATABASE_URL=postgresql+psycopg://postgres:postgres@127.0.0.1:5432/dsos_tes
 # frontend: types + production build (also verifies the PWA generation)
 cd web && npm run typecheck && npm run build
 
-# end-to-end against a running API (22 checks: pairing, scopes, targets, search
+# end-to-end against a running API (23 checks: pairing, scopes, targets, search
 # budget, barcode, recipes, AI parse without auto-save, 413 upload guard, a workout
 # end to end with food totals untouched, the Shortcut ingest, the planner — quick
-# add, a repeat's next instance, timer, journal, calendar — and revoke)
+# add, a repeat's next instance, timer, journal, calendar — web push: step 16
+# starts a local receiver, sends POST /push/test to it and decrypts the push with
+# http_ece from api/.venv — the API needs VAPID keys and ENV=development for that
+# step, it is skipped otherwise — and revoke)
 API_BASE=http://127.0.0.1:8000/api ./scripts/smoke.sh <PAIRING-CODE>
 
 # i18n gate (also runs in the CI web job): every key the UI uses exists in both
@@ -386,9 +425,12 @@ node scripts/check-i18n.mjs
 # food logging, recipes, AI text/photo review → save, offline AI message, the
 # camera barcode scanner, and training (template, plan, live sets incl. offline,
 # finish, records, cardio, burned kcal apart from food), and health (Shortcut token + ingest,
-# manual steps incl. offline, weight → profile, sleep, /health), and the planner
+# manual steps incl. offline, weight → profile, sleep, /health), the planner
 # (views, editor, quick add, PARA, calendar drag, timer, time log, journal, offline;
-# scripts/ui-checks/stage6-*.mjs); every module cleans up after itself
+# scripts/ui-checks/stage6-*.mjs) and notifications (iPhone install steps,
+# prefs/quiet hours kept after reload, blocked/off/on states, a test push to a local
+# receiver decrypted in Node, history, onboarding on iPhone, ?task= deep links);
+# every module cleans up after itself
 # (FAKE_CAMERA plays an EAN-13 video:
 # python3 scripts/make-barcode-y4m.py 460700123456 /tmp/barcode.y4m).
 # Needs a running api (AI_PROVIDER=fake) + web and a fresh single-use code:
@@ -402,7 +444,12 @@ token revocation, scope enforcement (`ingest:health` cannot read `/v1/settings`)
 Mifflin/Katch BMR, activity factors, deficit presets, the safe floor, macro
 split, water/fiber/steps, warning codes, the manual-target override and
 recompute, Russian/English full-text search with trigram typo tolerance,
-barcode lookup, RRULE expansion across DST, and seed idempotency.
+barcode lookup, RRULE expansion across DST, and seed idempotency. Stage 7 adds
+push subscriptions (upsert, scoping, validation), every push-service answer, a real
+encryption round-trip through `pywebpush` decrypted with `http_ece`, the dispatcher
+(due/not due, category off, stale, quiet hours across midnight and DST, retries,
+410, dedupe, two overlapping runs sending once), the daily planner and every
+send-time condition.
 
 ---
 
@@ -526,11 +573,74 @@ pictures to survive a server loss (the meals themselves are in the database).
 4. Pair the device with the code from `make owner` / `make pair`.
 5. Finish the onboarding wizard (body params → goal → targets preview).
 
-Web push (stage 7) **only** works for a PWA launched from the home screen — iOS
-does not deliver notifications to a Safari tab. The app detects standalone mode
-and tells you when that is the missing piece. Voice input for meal notes uses the
-iOS keyboard microphone inside the ordinary text field; there is no in-app
-recorder.
+Web push **only** works for a PWA launched from the home screen — iOS does not
+deliver notifications to a Safari tab (see [Web push on iPhone](#web-push-on-iphone)).
+Voice input for meal notes uses the iOS keyboard microphone inside the ordinary text
+field; there is no in-app recorder.
+
+---
+
+## Web push on iPhone
+
+Reminders arrive as Web Push notifications (VAPID, `aes128gcm`), also when the app
+is closed. On iPhone that needs **iOS 16.4+ and the app on the Home Screen**.
+
+1. **Install:** Safari → Share → **На экран «Домой»** → open the app from the icon.
+   (The onboarding wizard and Settings show these steps on an iPhone Safari tab.)
+2. **Enable:** Settings → **Уведомления** → **Включить уведомления** → Allow. The
+   prompt only appears after a tap, and only once: if you chose «Не разрешать»,
+   iOS Settings → Уведомления → DisciplineOS → «Допуск уведомлений» (the app shows
+   these steps when notifications are blocked).
+3. **Check:** **Отправить тестовое** — a notification arrives within seconds; the
+   history on the same screen shows it.
+4. **Turn off on one device:** «Выключить на этом устройстве». A lost phone can be
+   removed from «Устройства с уведомлениями» on another one; revoking a device in
+   Settings → Устройства also stops its notifications at once.
+
+**What each category does** (Settings → Уведомления; times are your local time):
+
+| Category | When | Sent only if (checked at send time) | Opens |
+| --- | --- | --- | --- |
+| Напоминания о задачах | the reminders set on a task (stage 6: «за 15 мин», a date and time) | the task still exists and is not done/cancelled | the task (`/plan?task=<id>`) |
+| Записать еду | `13:00`, `19:30` (up to 6 times) | nothing was logged today (first time) / since the previous time | food search |
+| Вода | `12:00`, `16:00`, `20:00` (up to 8) | today's water is behind the pro-rata share of the target (target × elapsed part of 08:00–22:00); the text says how many ml are left | Today |
+| Тренировка по плану | `18:00` | a workout (not a rest day) is planned today and none was started | Train |
+| Вечерний обзор | `21:30` | today's journal entry is still empty | the journal |
+| Серия под угрозой | — | arrives with streaks in stage 8 | — |
+
+Meal reminders are about *logging* only: no message ever suggests eating less or
+skipping a meal (the message catalogue is checked by a test).
+
+**Quiet hours** (default 23:00–07:00, your timezone, may cross midnight): a task
+reminder that falls inside them is delivered when they end (history marks it
+«тихие часы»); a daily nudge (food, water, workout, review) is not delivered
+afterwards, and none is even planned inside them. **Late reminders** (server down
+for more than an hour) are dropped rather than sent stale.
+
+**A phone that was offline** gets a reminder later only while it is still useful: the
+push service keeps it at most an hour after its time (half an hour for a daily nudge)
+and never into your next quiet hours; the app drops one that arrives later anyway (a
+test notification is always shown). On iPhone, WebKit cancels a subscription after
+three pushes that show nothing — if that ever happens, the device list shows it as off
+and «Включить уведомления» brings it back.
+
+How it works: `plan_daily_reminders` (every 15 min) creates today's smart reminders
+for users with push on, DST-safe and idempotent; `dispatch_notifications` (every
+minute) claims due reminders with `FOR UPDATE SKIP LOCKED`, applies prefs, quiet
+hours and the condition, and sends to every active subscription of an active
+device (at most 10 per account: registering an 11th switches off the least recently
+registered one). Users are served side by side, nothing is locked while a push service
+answers, and every send gives up after 15 s, so one slow push service never delays
+anyone else. A push service answering 404/410 deactivates that subscription; 401/403
+three times in a row (the VAPID keys changed since that browser subscribed) switches it
+off as `vapid_rejected`, so Settings asks to turn notifications on again on that device;
+429/5xx, a network error or the 15 s limit are retried (3 attempts). Endpoints:
+`GET /api/v1/push/config`,
+`POST|GET /api/v1/push/subscriptions`, `DELETE /api/v1/push/subscriptions/{id}`,
+`POST /api/v1/push/unsubscribe`, `POST /api/v1/push/test`,
+`GET|PUT /api/v1/notifications/prefs`, `GET /api/v1/notifications` (history).
+On the lock screen a task reminder shows the task title — keep that in mind for
+sensitive tasks.
 
 ---
 
@@ -629,6 +739,30 @@ pairing screen and you can pair again with a fresh code.
 `DATABASE_URL=postgresql+psycopg://…@127.0.0.1:55432/dsos` (see the Makefile for
 the migrate/test equivalents).
 
+**No notifications arrive.** Go down this list:
+1. Settings → Уведомления says «Не настроены» → the server has no VAPID keys
+   (`VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY`, see [Web push](#web-push-stage-7)).
+2. «Нужна установка» → on iPhone open the app from the Home Screen icon, not Safari.
+3. «Запрещены» → iOS Settings → Уведомления → DisciplineOS → «Допуск уведомлений»;
+   also check Focus / Do Not Disturb.
+4. «Выключены» → tap «Включить уведомления». «Включены» → «Отправить тестовое»: if
+   the test arrives but reminders do not, look at the history on the same screen —
+   each reminder says why it was not sent (тихие часы, опоздало больше чем на час,
+   нет устройств, the condition was already met: food logged, water on track…).
+5. Nothing at all in the history → is the scheduler running? `/api/v1/meta/health`
+   must list `dispatch_notifications` with a `next_run_time`; the category must be
+   on and its time in the future and outside quiet hours.
+6. The device list shows failures in a row → the push service refuses the message:
+   401/403 usually means the two VAPID keys do not belong together or were changed
+   (look for `vapid_key_mismatch` in the API log) — turn notifications off and on
+   again on the device. After three refusals in a row the subscription is switched off
+   by itself (`vapid_rejected`; not while the server's own two keys do not match), and
+   so is one the push service has dropped (404/410); enable it again on that device.
+7. «Сервер не отправляет уведомления в push-службу этого браузера» right after allowing
+   notifications (`ENV=production`/`staging`) → that browser's push service is not on the
+   list in [Web push](#web-push-stage-7); the API log names it (`push_service_not_allowed`,
+   `host=…`). Add the host to `PUSH_EXTRA_HOSTS` and restart the API.
+
 **Type errors after pulling a schema change.** Regenerate:
 `make gen-api` (needs the API running) and commit the updated file.
 
@@ -681,5 +815,6 @@ dashboard) is delivered — see `docs/stage-2.md` — and stage 2b closed its ga
 budget) — see `docs/stage-2b.md`. Stage 3 (AI photo/text logging, barcode
 scanning, `docs/stage-3.md`), stage 4 (training, `docs/stage-4.md`) and stage 5
 (health ingest: the iOS Shortcut, steps, weight, sleep — `docs/stage-5.md`) and
-stage 6 (the planner — `docs/stage-6.md`) are delivered; stage 7 (web push
-notifications) is next.
+stage 6 (the planner — `docs/stage-6.md`) and stage 7 (web push notifications
+— `docs/stage-7.md`) are delivered; stage 8 (gamification, charts, data export)
+is next.

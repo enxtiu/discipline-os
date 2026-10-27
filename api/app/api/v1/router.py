@@ -26,6 +26,8 @@ from app.api.v1 import (
     tokens,
     training,
 )
+from app.api.v1 import notifications as notifications_api
+from app.api.v1 import push as push_api
 
 api_router = APIRouter()
 
@@ -54,5 +56,9 @@ api_router.include_router(ingest.router)
 api_router.include_router(planner.router)
 api_router.include_router(planner_org.router)
 api_router.include_router(planner_time.router)
+
+# --- stage 7: notifications ------------------------------------------------------
+api_router.include_router(push_api.router)
+api_router.include_router(notifications_api.router)
 
 __all__ = ["api_router"]

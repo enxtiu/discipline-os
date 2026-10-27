@@ -224,7 +224,8 @@ async def onboarding(payload: OnboardingIn, principal: CurrentPrincipal, db: DbS
     row.quiet_hours_start = payload.quiet_hours_start
     row.quiet_hours_end = payload.quiet_hours_end
     if payload.notifications:
-        merged = dict(DEFAULT_NOTIFICATION_PREFS)
+        # keep what is already stored (stage 7: reminder times), the wizard only sends on/off
+        merged = {**DEFAULT_NOTIFICATION_PREFS, **(row.notification_prefs or {})}
         merged.update(payload.notifications)
         row.notification_prefs = merged
     if payload.weight_kg is not None:

@@ -386,10 +386,16 @@ def vapid_keys_cmd() -> None:
         typer.secho("✗ py-vapid is not installed", fg=typer.colors.RED)
         raise typer.Exit(1) from None
 
+    from cryptography.hazmat.primitives import serialization
+    from py_vapid.utils import b64urlencode
+
     vapid = Vapid02()
     vapid.generate_keys()
     private_pem = vapid.private_pem().decode()
-    public_key = vapid.public_key_urlsafe_base64()
+    # the browser's applicationServerKey: the uncompressed P-256 point, base64url
+    public_key = b64urlencode(
+        vapid.public_key.public_bytes(serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint)
+    )
     typer.echo("Add these to .env and restart the api container:\n")
     typer.secho(f"VAPID_PUBLIC_KEY={public_key}", fg=typer.colors.GREEN)
     typer.echo("VAPID_PRIVATE_KEY=" + private_pem.replace("\n", "\\n"))

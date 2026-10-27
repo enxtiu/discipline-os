@@ -19,6 +19,7 @@ import { useToast } from '@/components/ui/Toast'
 import { errorMessage } from '@/lib/errors'
 import { number, toApiTime } from '@/lib/format'
 import { detectedTimezone } from '@/lib/device'
+import { PushStatusCard } from '@/features/notifications/PushStatusCard'
 import { useQueryClient } from '@tanstack/react-query'
 import { queryKeys } from '@/lib/queryClient'
 
@@ -322,13 +323,8 @@ export function OnboardingWizard({ onDone }: { onDone: () => void }) {
                   </div>
                 </Field>
 
-                <Callout tone="info" title={t('settings.install_app')}>
-                  <ol className="list-inside list-decimal space-y-1 text-xs">
-                    {(t('settings.install_steps', { returnObjects: true }) as string[]).map((line) => (
-                      <li key={line}>{line}</li>
-                    ))}
-                  </ol>
-                </Callout>
+                {/* stage 7: on iPhone push needs «На экран Домой» first; enable right here when installed */}
+                <PushStatusCard variant="onboarding" />
               </>
             )}
           </motion.div>
