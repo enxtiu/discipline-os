@@ -42,6 +42,7 @@ async def _stream(
     produce: Callable[[export.ExportJob], AsyncIterator[bytes]],
     media_type: str,
     extension: str,
+    kind: str = "",
 ) -> StreamingResponse:
     ctx = context_for(principal.settings_row, principal.user_id)
     language = getattr(principal.settings_row, "language", None)
@@ -51,7 +52,9 @@ async def _stream(
     # the export reads in a snapshot of its own: end the request's transaction (and the
     # device row it touched) now instead of holding it open while the file streams
     await db.commit()
-    return StreamingResponse(produce(job), media_type=media_type, headers=attachment_headers(job.filename(extension)))
+    return StreamingResponse(
+        produce(job), media_type=media_type, headers=attachment_headers(job.filename(extension, kind))
+    )
 
 
 @router.get(
@@ -69,11 +72,11 @@ async def export_json(principal: CurrentPrincipal, db: DbSession) -> StreamingRe
     "/csv",
     response_class=StreamingResponse,
     summary="One CSV per table in a zip (UTF-8 with BOM, comma separated, ISO dates)",
-    responses=_binary("application/zip", "disciplineos-YYYY-MM-DD.zip"),
+    responses=_binary("application/zip", "disciplineos-YYYY-MM-DD-csv.zip"),
     dependencies=[Depends(_limit)],
 )
 async def export_csv(principal: CurrentPrincipal, db: DbSession) -> StreamingResponse:
-    return await _stream(principal, db, export.stream_csv, "application/zip", "zip")
+    return await _stream(principal, db, export.stream_csv, "application/zip", "zip", "csv")
 
 
 @router.get(
@@ -81,9 +84,9 @@ async def export_csv(principal: CurrentPrincipal, db: DbSession) -> StreamingRes
     response_class=StreamingResponse,
     summary="Restorable backup: manifest.json (versions, counts, sha256) + data.json",
     responses=_binary(
-        "application/zip", "disciplineos-YYYY-MM-DD.zip — restore with `python -m app.cli restore-backup`"
+        "application/zip", "disciplineos-YYYY-MM-DD-backup.zip — restore with `python -m app.cli restore-backup`"
     ),
     dependencies=[Depends(_limit)],
 )
 async def export_backup(principal: CurrentPrincipal, db: DbSession) -> StreamingResponse:
-    return await _stream(principal, db, export.stream_backup, "application/zip", "zip")
+    return await _stream(principal, db, export.stream_backup, "application/zip", "zip", "backup")

@@ -462,8 +462,10 @@ class ExportJob:
     def local_now(self) -> datetime:
         return self.now.astimezone(get_zone(self.tz))
 
-    def filename(self, extension: str) -> str:
-        return f"disciplineos-{self.local_now.date().isoformat()}.{extension}"
+    def filename(self, extension: str, kind: str = "") -> str:
+        """``disciplineos-YYYY-MM-DD.json``, ``…-csv.zip``, ``…-backup.zip`` (the user's local day):
+        the two zips never share a name, so the CSV one is not handed to ``restore-backup``."""
+        return f"disciplineos-{self.local_now.date().isoformat()}{f'-{kind}' if kind else ''}.{extension}"
 
 
 async def schema_version(db: AsyncSession) -> str | None:
@@ -639,6 +641,9 @@ Exported {exported_at} (UTC) for account {user_id}, timezone {timezone}.
 * Dates are YYYY-MM-DD; timestamps are ISO-8601 in UTC (e.g. 2026-10-01T09:00:00+00:00);
   `local_day`, `entry_date`, `measured_on` … are days in your timezone.
 * Numbers use a dot as the decimal separator; true/false for yes/no; empty = no value.
+  In a spreadsheet with a comma-decimal locale (e.g. Russian) set the import locale (or the
+  spreadsheet's locale) to English (United States) first — otherwise 12.5 may turn into a
+  date (12 May) and 80.4 into text.
 * Columns holding structured data (aliases, scopes, settings, components …) contain JSON.
 * A text cell that would start with = + - @ is written with a leading ' so a spreadsheet
   shows it as text instead of running it as a formula.
@@ -664,6 +669,9 @@ README_RU = """DisciplineOS — выгрузка данных (CSV)
 * Даты — ГГГГ-ММ-ДД; моменты времени — ISO-8601 в UTC (например, 2026-10-01T09:00:00+00:00);
   `local_day`, `entry_date`, `measured_on` … — дни в вашем часовом поясе.
 * Десятичный разделитель — точка; да/нет — true/false; пустая ячейка — нет значения.
+  В таблице с русской локалью (Excel, Google Таблицы, LibreOffice) перед импортом выберите
+  локаль импорта (или локаль таблицы) «Английский (США)» — иначе 12.5 станет датой (12 мая),
+  а 80.4 — текстом.
 * Столбцы со структурированными данными (aliases, scopes, настройки, components …) — JSON.
 * Текст, который начинается с = + - @, записан с ведущим ', чтобы таблица показала его
   как текст, а не выполнила как формулу.

@@ -12569,7 +12569,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description disciplineos-YYYY-MM-DD.zip */
+            /** @description disciplineos-YYYY-MM-DD-csv.zip */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -12589,7 +12589,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description disciplineos-YYYY-MM-DD.zip — restore with `python -m app.cli restore-backup` */
+            /** @description disciplineos-YYYY-MM-DD-backup.zip — restore with `python -m app.cli restore-backup` */
             200: {
                 headers: {
                     [name: string]: unknown;

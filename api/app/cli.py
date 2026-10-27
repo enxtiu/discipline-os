@@ -9,7 +9,7 @@
     python -m app.cli run-job housekeeping
     python -m app.cli vapid-keys
     python -m app.cli stats
-    python -m app.cli restore-backup disciplineos-2026-10-01.zip [--user-id <uuid>] [--dry-run]
+    python -m app.cli restore-backup disciplineos-2026-10-01-backup.zip [--user-id <uuid>] [--dry-run]
 
 Run it inside the container:  docker compose exec api python -m app.cli create-owner
 """

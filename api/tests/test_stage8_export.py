@@ -543,7 +543,7 @@ async def test_csv_zip_one_file_per_table_with_bom_headers_and_safe_cells(accoun
     client, secrets = account["client"], account["secrets"]
     response = await download(client, "csv")
     assert response.headers["content-type"] == "application/zip"
-    assert response.headers["content-disposition"] == f'attachment; filename="disciplineos-{local_today()}.zip"'
+    assert response.headers["content-disposition"] == f'attachment; filename="disciplineos-{local_today()}-csv.zip"'
     archive = zip_of(response)
     expected = [f"{section.name}.csv" for section in SECTIONS] + [f"library_{item.name}.csv" for item in LIBRARY]
     assert archive.namelist() == [*expected, "README.txt"]
@@ -584,9 +584,11 @@ async def test_csv_zip_one_file_per_table_with_bom_headers_and_safe_cells(accoun
     readme = archive.read("README.txt").decode()
     assert "UTF-8" in readme and "tasks.csv" in readme and str(account["user_id"]) in readme
     assert readme.startswith("DisciplineOS — выгрузка данных (CSV)")  # the app's language: ru by default
+    assert "«Английский (США)»" in readme  # a dot decimal: how to import it in a Russian-locale spreadsheet
     assert (await client.patch("/api/v1/settings", json={"language": "en"})).status_code == 200
     english = zip_of(await download(client, "csv")).read("README.txt").decode()
     assert english.startswith("DisciplineOS — data export (CSV)") and "Files and rows:" in english
+    assert "English (United States)" in english
 
 
 # --------------------------------------------------------------------------- #
@@ -597,7 +599,7 @@ async def test_backup_zip_manifest_counts_and_checksums(account) -> None:
     before = datetime.now(UTC)
     response = await download(client, "backup")
     assert response.headers["content-type"] == "application/zip"
-    assert response.headers["content-disposition"] == f'attachment; filename="disciplineos-{local_today()}.zip"'
+    assert response.headers["content-disposition"] == f'attachment; filename="disciplineos-{local_today()}-backup.zip"'
     archive = zip_of(response)
     assert archive.namelist() == ["data.json", "manifest.json"]
     manifest = orjson.loads(archive.read("manifest.json"))
@@ -992,7 +994,7 @@ def cli(*args: str) -> subprocess.CompletedProcess[str]:
 
 async def test_cli_restore_backup(account, db, tmp_path) -> None:
     client, user_id = account["client"], account["user_id"]
-    path = await save_backup(client, tmp_path / "disciplineos-2026-10-01.zip")
+    path = await save_backup(client, tmp_path / "disciplineos-2026-10-01-backup.zip")
     expected = await counts(db, user_id)
     total = sum(expected.values())
     await wipe(db, user_id)
