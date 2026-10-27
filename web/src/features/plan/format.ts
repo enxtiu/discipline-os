@@ -59,15 +59,20 @@ export function blockLabel(block: { start: string; end: string; ends_next_day?: 
  * runtime) and only palette colours the design system already uses.
  */
 export const PRIORITY_STYLES: Record<Priority, { text: string; ring: string; dot: string }> = {
-  1: { text: 'text-rose-400', ring: 'border-rose-400', dot: 'bg-rose-400' },
+  // rings (the task checkbox) keep ≥ 3:1 against the card in both themes
+  1: { text: 'text-rose-400', ring: 'border-rose-400 [[data-theme=light]_&]:border-rose-500', dot: 'bg-rose-400' },
   // amber/violet text is unreadable on white: the light theme takes the darker tokens
-  2: { text: 'text-[rgb(var(--warn))]', ring: 'border-amber-400', dot: 'bg-amber-400' },
+  2: {
+    text: 'text-[rgb(var(--warn))]',
+    ring: 'border-amber-400 [[data-theme=light]_&]:border-[rgb(var(--warn))]',
+    dot: 'bg-amber-400',
+  },
   3: {
     text: 'text-violet-300 [[data-theme=light]_&]:text-[rgb(var(--accent-2))]',
-    ring: 'border-violet-300',
+    ring: 'border-violet-300 [[data-theme=light]_&]:border-[rgb(var(--accent-2))]',
     dot: 'bg-violet-300',
   },
-  4: { text: 'text-[rgb(var(--text-muted))]', ring: 'border-[rgb(var(--border))]', dot: 'bg-[rgb(var(--border))]' },
+  4: { text: 'text-[rgb(var(--text-muted))]', ring: 'border-[rgb(var(--text-muted))]/70', dot: 'bg-[rgb(var(--border))]' },
 }
 
 /** "P1" … "P4". */

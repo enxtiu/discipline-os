@@ -12,9 +12,8 @@ import clsx from 'clsx'
 import { Button, Input } from '@/components/ui'
 import { IconClock } from '@/components/ui/icons'
 import { addDays } from '@/lib/format'
-import { blockLabel, dueLabel, formatMinutes, priorityLabel } from '../format'
+import { blockLabel, dueLabel, formatMinutes, PRIORITY_STYLES, priorityLabel } from '../format'
 import type { BlockIn, Priority, TaskStatusIn } from '../types'
-import { PRIORITY_TEXT } from './priority'
 import { Chip } from './ui'
 
 export function FieldSection({
@@ -88,7 +87,7 @@ export function PriorityPicker({ value, onChange }: { value: Priority; onChange:
           onClick={() => onChange(priority)}
           className={clsx(
             'chip min-h-tap justify-center font-semibold',
-            PRIORITY_TEXT[priority],
+            PRIORITY_STYLES[priority].text,
             value === priority && PRIORITY_ACTIVE[priority],
             value === priority && priority === 4 && 'text-[rgb(var(--text))]',
           )}
