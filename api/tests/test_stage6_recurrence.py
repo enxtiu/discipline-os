@@ -62,7 +62,9 @@ async def _age(task_id: str, hours: int = 1) -> None:
         await session.execute(
             update(Task)
             .where(Task.id == uuid.UUID(task_id))
-            .values(created_at=Task.created_at - timedelta(hours=hours), updated_at=Task.updated_at - timedelta(hours=hours))
+            .values(
+                created_at=Task.created_at - timedelta(hours=hours), updated_at=Task.updated_at - timedelta(hours=hours)
+            )
         )
         await session.commit()
 
@@ -145,7 +147,12 @@ async def test_completion_creates_exactly_one_next_instance(authed: httpx.AsyncC
     nxt = done["next_instance"]
     assert done["task"]["status"] == "done" and nxt is not None
     assert (nxt["due_date"], nxt["due_time"]) == ((now + timedelta(days=1)).isoformat(), "07:00")
-    assert (nxt["series_id"], nxt["series_index"], nxt["source"], nxt["status"]) == (root["id"], 1, "recurrence", "open")
+    assert (nxt["series_id"], nxt["series_index"], nxt["source"], nxt["status"]) == (
+        root["id"],
+        1,
+        "recurrence",
+        "open",
+    )
     assert (nxt["title"], nxt["notes_md"], nxt["priority"], nxt["context"], nxt["energy"], nxt["estimate_minutes"]) == (
         "зарядка",
         "10 минут",
@@ -190,7 +197,9 @@ async def test_rule_shapes(authed: httpx.AsyncClient) -> None:
     base = today() + timedelta(days=14)
     friday = next_weekday(base, 4)
     weekdays = await make_task(authed, "будни", due_date=friday.isoformat(), recurrence_rule="weekdays")
-    assert (await complete(authed, weekdays["id"]))["next_instance"]["due_date"] == (friday + timedelta(days=3)).isoformat()
+    assert (await complete(authed, weekdays["id"]))["next_instance"]["due_date"] == (
+        friday + timedelta(days=3)
+    ).isoformat()
 
     monday = next_weekday(base, 0)
     mo_th = await make_task(authed, "пн и чт", due_date=monday.isoformat(), recurrence_rule="FREQ=WEEKLY;BYDAY=MO,TH")
@@ -199,7 +208,9 @@ async def test_rule_shapes(authed: httpx.AsyncClient) -> None:
     assert (await complete(authed, nxt["id"]))["next_instance"]["due_date"] == (monday + timedelta(days=7)).isoformat()
 
     biweekly = await make_task(authed, "раз в две недели", due_date=base.isoformat(), recurrence_rule="biweekly")
-    assert (await complete(authed, biweekly["id"]))["next_instance"]["due_date"] == (base + timedelta(days=14)).isoformat()
+    assert (await complete(authed, biweekly["id"]))["next_instance"]["due_date"] == (
+        base + timedelta(days=14)
+    ).isoformat()
 
     jan31 = date(today().year + 1, 1, 31)
     monthly = await make_task(authed, "31-е", due_date=jan31.isoformat(), recurrence_rule="FREQ=MONTHLY;BYMONTHDAY=31")
@@ -216,7 +227,9 @@ async def test_rule_shapes(authed: httpx.AsyncClient) -> None:
 
 async def test_overdue_until_count_and_cancel(authed: httpx.AsyncClient) -> None:
     now = today()
-    overdue = await make_task(authed, "просрочено", due_date=(now - timedelta(days=5)).isoformat(), recurrence_rule="daily")
+    overdue = await make_task(
+        authed, "просрочено", due_date=(now - timedelta(days=5)).isoformat(), recurrence_rule="daily"
+    )
     assert overdue["overdue"] is True
     nxt = (await complete(authed, overdue["id"]))["next_instance"]
     assert nxt["due_date"] == (now + timedelta(days=1)).isoformat()  # skips to after today
@@ -298,7 +311,9 @@ async def test_subtree_reminders_and_times_are_copied(authed: httpx.AsyncClient)
     reminders = sorted(nxt["reminders"], key=lambda item: item["remind_at"])
     assert (reminders[0]["date"], reminders[0]["time"]) == ((week - timedelta(days=1)).isoformat(), "20:00")
     assert reminders[1]["lead_minutes"] == 30
-    assert datetime.fromisoformat(reminders[1]["remind_at"]) == datetime(week.year, week.month, week.day, 10, 30, tzinfo=UTC)
+    assert datetime.fromisoformat(reminders[1]["remind_at"]) == datetime(
+        week.year, week.month, week.day, 10, 30, tzinfo=UTC
+    )
     detail = await get_task(authed, nxt["id"])
     assert [(sub["title"], sub["status"]) for sub in detail["subtasks"]] == [("кухня", "open"), ("ванная", "open")]
     assert detail["subtasks"][0]["subtasks"][0]["title"] == "плита"

@@ -218,7 +218,12 @@ async def test_subtasks_depth_inheritance_cascade(authed: httpx.AsyncClient) -> 
 
     entry = await authed.post(
         f"{API}/time-entries",
-        json={"task_id": grand["id"], "date": (today() - timedelta(days=1)).isoformat(), "start": "10:00", "end": "10:30"},
+        json={
+            "task_id": grand["id"],
+            "date": (today() - timedelta(days=1)).isoformat(),
+            "start": "10:00",
+            "end": "10:30",
+        },
     )
     assert entry.status_code == 201, entry.text
     done = await complete(authed, root["id"])
@@ -275,7 +280,12 @@ async def test_reminders_store_recompute_and_cancel(authed: httpx.AsyncClient) -
         reminders=[{"lead_minutes": 15}, {"lead_minutes": 15}, {"date": day.isoformat(), "time": "08:00"}],
     )
     relative, absolute = sorted(task["reminders"], key=lambda item: item["lead_minutes"] is None)
-    assert (relative["lead_minutes"], relative["date"], relative["time"], relative["status"]) == (15, None, None, "pending")
+    assert (relative["lead_minutes"], relative["date"], relative["time"], relative["status"]) == (
+        15,
+        None,
+        None,
+        "pending",
+    )
     # date only: the anchor is 09:00 of the due day (Bangkok) → 08:45 local = 01:45 UTC
     expected = datetime(day.year, day.month, day.day, 1, 45, tzinfo=UTC)
     assert datetime.fromisoformat(relative["remind_at"]) == expected
@@ -307,7 +317,10 @@ async def test_reminders_store_recompute_and_cancel(authed: httpx.AsyncClient) -
     assert await _reminders(task["id"]) == []
 
     block_only = await make_task(
-        authed, "тренировка", block={"date": day.isoformat(), "start": "19:00", "end": "20:00"}, reminders=[{"lead_minutes": 30}]
+        authed,
+        "тренировка",
+        block={"date": day.isoformat(), "start": "19:00", "end": "20:00"},
+        reminders=[{"lead_minutes": 30}],
     )
     remind_at = datetime.fromisoformat(block_only["reminders"][0]["remind_at"])
     assert remind_at == datetime(day.year, day.month, day.day, 11, 30, tzinfo=UTC)  # 18:30 Bangkok
