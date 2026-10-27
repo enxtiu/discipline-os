@@ -128,6 +128,11 @@ HEX32 = re.compile(r"[0-9a-fA-F]{32}")
 NOTION_HOSTS = ("notion.so", "notion.site", "notion.com")
 
 
+def now_fn() -> datetime:
+    """The run's clock (tests pin it; "today" of the days kind follows it)."""
+    return utcnow()
+
+
 # --------------------------------------------------------------------------- #
 # Input checks (local, before any request)
 # --------------------------------------------------------------------------- #
@@ -907,7 +912,7 @@ class Engine:
         entity_type = ENTITY_OF[kind]
         async with SessionLocal() as db:
             settings_row = await db.scalar(select(UserSettings).where(UserSettings.user_id == self.user_id))
-            ctx = context_for(settings_row, self.user_id, utcnow())
+            ctx = context_for(settings_row, self.user_id, now_fn())
             built = await mapping.rows_for(kind, db, ctx, self.schema.lang_for(kind))
             await db.rollback()  # read only; nothing stays open while Notion is called
         links = await self._links(entity_type)
