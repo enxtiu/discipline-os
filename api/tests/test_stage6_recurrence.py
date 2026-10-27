@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import time as timer
 import uuid
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -13,6 +15,9 @@ from sqlalchemy import func, select, update
 
 from app.db import SessionLocal
 from app.models import Task
+from app.schemas.planner import LATEST_DATE
+from app.services.planner import recur
+from app.services.recurrence import parse_rule
 from tests.stage6_helpers import (
     API,
     BANGKOK,
@@ -23,6 +28,7 @@ from tests.stage6_helpers import (
     patch_task,
     set_timezone,
     today,
+    uid,
 )
 
 pytestmark = pytest.mark.anyio
@@ -69,6 +75,21 @@ async def _age(task_id: str, hours: int = 1) -> None:
         await session.commit()
 
 
+async def _age_tree(task_id: str, hours: int = 1) -> None:
+    """``_age`` for a next instance and the subtree copied with it (they keep one creation time)."""
+    root = uuid.UUID(task_id)
+    children = select(Task.id).where(Task.parent_id == root)
+    async with SessionLocal() as session:
+        await session.execute(
+            update(Task)
+            .where((Task.id == root) | Task.parent_id.in_([root]) | Task.parent_id.in_(children))
+            .values(
+                created_at=Task.created_at - timedelta(hours=hours), updated_at=Task.updated_at - timedelta(hours=hours)
+            )
+        )
+        await session.commit()
+
+
 async def test_rules_presets_and_validation(authed: httpx.AsyncClient) -> None:
     day = (today() + timedelta(days=1)).isoformat()
     expectations = {
@@ -105,6 +126,27 @@ async def test_rules_presets_and_validation(authed: httpx.AsyncClient) -> None:
         assert response.status_code == 422 and code(response) == "invalid_rrule", bad
 
 
+async def test_non_ascii_digits_are_an_invalid_rule(authed: httpx.AsyncClient) -> None:
+    """Unicode digits pass ``str.isdigit`` / ``\\d`` but are not RRULE digits (² and ① even crash ``int``)."""
+    day = (today() + timedelta(days=1)).isoformat()
+    plain = await make_task(authed, "без повтора", due_date=day)
+    for bad in (
+        "FREQ=DAILY;COUNT=²",
+        "FREQ=DAILY;COUNT=①",
+        "FREQ=DAILY;COUNT=٣",
+        "FREQ=WEEKLY;INTERVAL=٢",
+        "FREQ=MONTHLY;BYMONTHDAY=١٥",
+        "FREQ=MONTHLY;BYDAY=٢MO",
+        "FREQ=YEARLY;BYMONTH=٣",
+        "FREQ=DAILY;UNTIL=٢٠٢٧١٢٣١",
+    ):
+        created = await authed.post(f"{API}/tasks", json={"title": "x", "due_date": day, "recurrence_rule": bad})
+        assert created.status_code == 422 and code(created) == "invalid_rrule", (bad, created.text)
+        patched = await authed.patch(f"{API}/tasks/{plain['id']}", json={"recurrence_rule": bad})
+        assert patched.status_code == 422 and code(patched) == "invalid_rrule", (bad, patched.text)
+    assert (await get_task(authed, plain["id"]))["is_recurring"] is False
+
+
 async def test_first_occurrence_without_a_date(authed: httpx.AsyncClient) -> None:
     now = today()
     daily = await make_task(authed, "каждый день", recurrence_rule="daily")
@@ -124,6 +166,48 @@ async def test_until_in_the_past_has_no_first_occurrence(authed: httpx.AsyncClie
         json={"title": "x", "recurrence_rule": "daily", "recurrence_until": (today() - timedelta(days=1)).isoformat()},
     )
     assert response.status_code == 422 and code(response) == "invalid_rrule"
+
+
+async def test_series_never_leaves_the_supported_dates(authed: httpx.AsyncClient) -> None:
+    """Server-derived dates stay within 2000–2100 (what the API accepts back): past it the series ends."""
+    leap = "FREQ=YEARLY;INTERVAL=999;BYMONTH=2;BYMONTHDAY=29"  # first occurrence from today: 4024-02-29
+    far = await authed.post(f"{API}/tasks", json={"title": "високосный", "recurrence_rule": leap})
+    assert far.status_code == 422 and code(far) == "invalid_rrule", far.text
+    plain = await make_task(authed, "без даты")
+    made = await authed.patch(f"{API}/tasks/{plain['id']}", json={"recurrence_rule": leap})
+    assert made.status_code == 422 and code(made) == "invalid_rrule", made.text
+
+    await set_timezone(authed, "America/Los_Angeles")
+    rare = await make_task(
+        authed,
+        "раз в 991 год",
+        due_date="2071-12-31",
+        due_time="23:30",
+        recurrence_rule="FREQ=YEARLY;INTERVAL=991;BYMONTH=12;BYMONTHDAY=31",
+    )
+    assert (await complete(authed, rare["id"]))["next_instance"] is None  # 3062: the series ends
+
+    last = await make_task(
+        authed,
+        "последние дни",
+        due_date="2100-12-30",
+        due_time="23:30",
+        recurrence_rule="daily",
+        reminders=[{"lead_minutes": 30}, {"date": "2100-12-31", "time": "08:00"}],
+    )
+    await make_task(authed, "шаг позже срока", parent_id=last["id"], due_date="2100-12-31")
+    nxt = (await complete(authed, last["id"]))["next_instance"]
+    assert (nxt["due_date"], nxt["due_time"]) == ("2100-12-31", "23:30")
+    assert [item["lead_minutes"] for item in nxt["reminders"]] == [30]  # 2101-01-01 08:00 is not copied
+    detail = await get_task(authed, nxt["id"])
+    assert [(sub["title"], sub["due_date"]) for sub in detail["subtasks"]] == [("шаг позже срока", None)]
+    echo = await authed.patch(f"{API}/tasks/{nxt['id']}", json={"title": "эхо", "due_date": nxt["due_date"]})
+    assert echo.status_code == 200, echo.text  # every server-derived date can be sent back
+    assert (await complete(authed, nxt["id"]))["next_instance"] is None
+    block = await make_task(
+        authed, "блок", block={"date": "2100-12-31", "start": "23:00", "end": "01:00"}, recurrence_rule="daily"
+    )
+    assert (await complete(authed, block["id"]))["next_instance"] is None
 
 
 async def test_completion_creates_exactly_one_next_instance(authed: httpx.AsyncClient) -> None:
@@ -283,6 +367,79 @@ async def test_reopen_removes_only_an_untouched_next_instance(authed: httpx.Asyn
     assert redone["next_instance"]["id"] == again["id"] and await _series_count(task["id"]) == 2
 
 
+async def _prepared_series(authed: httpx.AsyncClient, title: str) -> tuple[dict, dict]:
+    """A weekly series with one step, completed: (the done task, its next instance, aged as if made earlier)."""
+    task = await make_task(authed, title, due_date=today().isoformat(), recurrence_rule="weekly")
+    await make_task(authed, f"{title}: шаг", parent_id=task["id"])
+    nxt = (await complete(authed, task["id"]))["next_instance"]
+    await _age_tree(nxt["id"])
+    return task, nxt
+
+
+async def test_reopen_keeps_a_next_instance_the_user_prepared(authed: httpx.AsyncClient) -> None:
+    """A subtask, a tag, a reminder, tracked time, a removed or a moved-in step all count as touching the
+    next instance: reopening the completed one used to delete it with the user's additions."""
+
+    async def reopen_keeps(task: dict, nxt: dict) -> None:
+        reopened = await authed.post(f"{API}/tasks/{task['id']}/reopen")
+        assert reopened.status_code == 200 and reopened.json()["removed_next_instance_id"] is None
+        assert (await authed.get(f"{API}/tasks/{nxt['id']}")).status_code == 200
+
+    task, nxt = await _prepared_series(authed, "подзадача")
+    step = await make_task(authed, "подготовить слайды", parent_id=nxt["id"])
+    await reopen_keeps(task, nxt)
+    assert (await get_task(authed, step["id"]))["parent_id"] == nxt["id"]
+
+    task, nxt = await _prepared_series(authed, "тег")
+    await patch_task(authed, nxt["id"], tags=["работа"])
+    await reopen_keeps(task, nxt)
+
+    task, nxt = await _prepared_series(authed, "напоминание")
+    await patch_task(authed, nxt["id"], reminders=[{"lead_minutes": 30}])
+    await reopen_keeps(task, nxt)
+
+    task, nxt = await _prepared_series(authed, "время")
+    copied_step = (await get_task(authed, nxt["id"]))["subtasks"][0]
+    entry = {"task_id": copied_step["id"], "date": (today() - timedelta(days=1)).isoformat()}
+    logged = await authed.post(f"{API}/time-entries", json={**entry, "start": "10:00", "end": "10:30"})
+    assert logged.status_code == 201, logged.text
+    await reopen_keeps(task, nxt)
+
+    task, nxt = await _prepared_series(authed, "удалённый шаг")
+    copied_step = (await get_task(authed, nxt["id"]))["subtasks"][0]
+    assert (await authed.delete(f"{API}/tasks/{copied_step['id']}")).status_code == 204
+    await reopen_keeps(task, nxt)
+
+    task, nxt = await _prepared_series(authed, "перенесённая")
+    loose = await make_task(authed, "отдельная задача")
+    await patch_task(authed, loose["id"], parent_id=nxt["id"])
+    await reopen_keeps(task, nxt)
+
+    task, nxt = await _prepared_series(authed, "без изменений")  # the edit form saved what was there
+    await patch_task(authed, nxt["id"], tags=[], reminders=[], title=nxt["title"])
+    reopened = (await authed.post(f"{API}/tasks/{task['id']}/reopen")).json()
+    assert reopened["removed_next_instance_id"] == nxt["id"]
+
+
+async def test_reopen_racing_a_new_subtask_never_loses_it(authed: httpx.AsyncClient) -> None:
+    """A subtask added to the next instance while the completed one is reopened: kept, or refused with 404."""
+    for _ in range(8):
+        task = await make_task(authed, "серия", due_date=today().isoformat(), recurrence_rule="daily")
+        nxt = (await complete(authed, task["id"]))["next_instance"]
+        step_id = uid()
+        created, reopened = await asyncio.gather(
+            authed.post(f"{API}/tasks", json={"id": step_id, "title": "шаг", "parent_id": nxt["id"]}),
+            authed.post(f"{API}/tasks/{task['id']}/reopen"),
+        )
+        assert reopened.status_code == 200, reopened.text
+        if created.status_code == 201:
+            assert reopened.json()["removed_next_instance_id"] is None
+            assert (await authed.get(f"{API}/tasks/{step_id}")).status_code == 200
+        else:
+            assert created.status_code == 404, created.text
+            assert reopened.json()["removed_next_instance_id"] == nxt["id"]
+
+
 async def test_subtree_reminders_and_times_are_copied(authed: httpx.AsyncClient) -> None:
     day = today() + timedelta(days=2)
     root = await make_task(
@@ -356,7 +513,8 @@ async def test_block_only_series_and_dst(authed: httpx.AsyncClient) -> None:
 
 async def test_completed_at_and_instance_of_instance(authed: httpx.AsyncClient) -> None:
     task = await make_task(authed, "отчёт", due_date=today().isoformat(), recurrence_rule="weekly")
-    late = datetime.now(BANGKOK).replace(hour=0, minute=30, second=0, microsecond=0)
+    # just after the local midnight (the UTC day is still yesterday) and never in the future
+    late = datetime.now(BANGKOK).replace(hour=0, minute=1, second=0, microsecond=0)
     done = await complete(authed, task["id"], completed_at=late.isoformat())
     assert done["task"]["completed_day"] == today().isoformat()
     assert datetime.fromisoformat(done["task"]["completed_at"]) == late.astimezone(UTC)
@@ -367,3 +525,150 @@ async def test_completed_at_and_instance_of_instance(authed: httpx.AsyncClient) 
     assert future.status_code == 422
     nan = await authed.post(f"{API}/tasks/{task['id']}/complete", json={"completed_at": "9999-12-31T23:59:59Z"})
     assert nan.status_code == 422
+
+
+# --------------------------------------------------------------------------- #
+# expansion cost (dateutil walks every period from dtstart)
+# --------------------------------------------------------------------------- #
+SHAPES = (
+    "FREQ=DAILY",
+    "FREQ=DAILY;INTERVAL=3",
+    "FREQ=DAILY;INTERVAL=17",
+    "FREQ=DAILY;BYDAY=MO,WE,FR",
+    "FREQ=DAILY;BYMONTH=2;BYMONTHDAY=29",
+    "FREQ=WEEKLY",
+    "FREQ=WEEKLY;INTERVAL=2",
+    "FREQ=WEEKLY;INTERVAL=3;BYDAY=MO,SU",
+    "FREQ=WEEKLY;INTERVAL=2;BYDAY=TU,SA;WKST=SU",
+    "weekdays",
+    "FREQ=MONTHLY",
+    "FREQ=MONTHLY;INTERVAL=5",
+    "FREQ=MONTHLY;BYMONTHDAY=31",
+    "FREQ=MONTHLY;BYMONTHDAY=-1",
+    "FREQ=MONTHLY;BYDAY=-1FR",
+    "FREQ=MONTHLY;INTERVAL=2;BYDAY=2TU",
+    "FREQ=MONTHLY;BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1",
+    "FREQ=MONTHLY;BYMONTH=1,7",
+    "FREQ=YEARLY",
+    "FREQ=YEARLY;INTERVAL=4",
+    "FREQ=YEARLY;BYMONTH=3",
+    "FREQ=YEARLY;BYMONTH=3;BYDAY=2SU",
+    "FREQ=YEARLY;BYDAY=20MO",
+    "FREQ=YEARLY;BYMONTHDAY=15",
+    "FREQ=YEARLY;INTERVAL=3;BYMONTH=2;BYMONTHDAY=29",
+)
+
+
+def naive_between(rule, anchor, *, first, last, after, until=None, remaining=None):
+    """The plain expansion: dateutil from the series' own anchor through every period."""
+    lo = after + timedelta(days=1)
+    hi = min(last, until or LATEST_DATE, LATEST_DATE)
+    if hi < lo or hi < first or (remaining is not None and remaining <= 0):
+        return []
+    bound = datetime.combine(hi, time.max)
+    expansion = parse_rule(f"{rule.expansion_text};UNTIL={bound:%Y%m%dT%H%M%S}", anchor)
+    dates = []
+    for occurrence in expansion.between(max(anchor, datetime.combine(lo, time.min)), bound, inc=True):
+        if occurrence.date() < lo or occurrence <= anchor:
+            continue
+        if remaining is not None:
+            if remaining <= 0:
+                break
+            remaining -= 1
+        if occurrence.date() >= first:
+            dates.append(occurrence.date())
+    return dates
+
+
+async def test_expansion_matches_the_plain_expansion() -> None:
+    """Starting the expansion near the window yields exactly the occurrences of the series' own anchor."""
+    anchors = (datetime(2004, 1, 31, 7, 30), datetime(2008, 2, 29), datetime(2011, 6, 18, 23, 45))
+    for raw in SHAPES:
+        rule = recur.validate_rule(raw)
+        for anchor in anchors:
+            for gap, span in ((40, 20), (400, 62), (1500, 62), (3000, 31)):
+                after = anchor.date() + timedelta(days=gap)
+                for first, remaining in ((after - timedelta(days=9), None), (after + timedelta(days=200), None),
+                                         (after, 3), (after + timedelta(days=100), 40)):  # fmt: skip
+                    last = first + timedelta(days=span)
+                    window = {"first": first, "last": last, "after": after, "remaining": remaining}
+                    assert recur.occurrences_between(rule, anchor, **window) == naive_between(rule, anchor, **window), (
+                        raw,
+                        anchor,
+                        window,
+                    )
+                today = anchor.date() + timedelta(days=gap)
+                expected = parse_rule(
+                    f"{rule.expansion_text};UNTIL={datetime.combine(LATEST_DATE, time.max):%Y%m%dT%H%M%S}", anchor
+                ).after(datetime.combine(today, time.max))
+                assert recur.next_after(rule, anchor, today) == expected, (raw, anchor, today)
+
+
+def _busy() -> bool:
+    try:
+        return os.getloadavg()[0] > (os.cpu_count() or 1)
+    except OSError:  # pragma: no cover - no load average on this platform
+        return False
+
+
+async def test_expansion_cost_does_not_grow_with_the_anchor_age() -> None:
+    """A series anchored in 2000 viewed in 2100 used to cost one dateutil iteration per day since 2000."""
+    anchor = datetime(2000, 1, 1, 7, 0)
+    window = {"first": date(2100, 11, 1), "last": date(2100, 12, 31), "after": date(2026, 10, 27)}
+    slow: list[tuple[str, float]] = []
+    for raw in SHAPES:
+        rule = recur.validate_rule(raw)
+        best = float("inf")
+        for _ in range(2):  # the better of two runs: a shared box has hiccups
+            started = timer.perf_counter()
+            dates = recur.occurrences_between(rule, anchor, **window)
+            recur.next_after(rule, anchor, date(2100, 11, 1))
+            best = min(best, timer.perf_counter() - started)
+        assert all(window["first"] <= day <= window["last"] for day in dates), raw
+        if best > 0.05:
+            slow.append((raw, round(best * 1000)))
+    if slow and _busy():
+        pytest.skip(f"the box is busy, timings not meaningful: {slow}")
+    assert not slow, f"expansions slower than 50 ms (ms): {slow}"
+    daily = recur.occurrences_between(recur.validate_rule("daily"), anchor, **window)
+    assert daily == [date(2100, 11, 1) + timedelta(days=n) for n in range(61)]
+
+
+async def test_calendar_of_an_old_series_far_ahead(authed: httpx.AsyncClient) -> None:
+    """The virtual occurrences of a series overdue since 2000 are right in a calendar of 2100."""
+    daily = await make_task(authed, "с 2000 года", due_date="2000-01-01", due_time="07:00", recurrence_rule="daily")
+    monthly = await make_task(authed, "последний день", due_date="2000-01-31", recurrence_rule="FREQ=MONTHLY")
+    view = await authed.get(f"{API}/views/calendar", params={"from": "2100-11-01", "to": "2100-12-31"})
+    assert view.status_code == 200, view.text
+
+    def virtual(task_id: str) -> list[str]:
+        return [day["date"] for day in view.json()["days"] for item in day["occurrences"] if item["task_id"] == task_id]
+
+    assert virtual(daily["id"]) == [(date(2100, 11, 1) + timedelta(days=n)).isoformat() for n in range(61)]
+    assert virtual(monthly["id"]) == ["2100-12-31"]  # November has no 31st
+
+
+async def test_expansion_starts_near_the_window(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Load-independent: dateutil is started close to the window, not at a series anchor from 2000."""
+    starts: list[datetime] = []
+    original = recur.parse_rule
+
+    def spy(text: str, dtstart: datetime):
+        starts.append(dtstart)
+        return original(text, dtstart)
+
+    monkeypatch.setattr(recur, "parse_rule", spy)
+    anchor = datetime(2000, 1, 1, 7, 0)
+    for raw in SHAPES:
+        rule = recur.validate_rule(raw)
+        starts.clear()
+        recur.occurrences_between(
+            rule, anchor, first=date(2100, 11, 1), last=date(2100, 12, 31), after=date(2026, 10, 27)
+        )
+        recur.next_after(rule, anchor, date(2100, 11, 1))
+        assert starts and min(starts) >= datetime(2095, 1, 1), (raw, starts)  # within INTERVAL periods of it
+        starts.clear()
+        recur.occurrences_between(  # COUNT counts from the day after today: start near today, not in 2000
+            rule, anchor, first=date(2100, 11, 1), last=date(2100, 12, 31), after=date(2026, 10, 27), remaining=5
+        )
+        assert starts and min(starts) >= datetime(2021, 1, 1), (raw, starts)

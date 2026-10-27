@@ -21,6 +21,10 @@ are cheap to exhaust:
   BYMONTH);
 * ordinal weekdays never combine with ``BYMONTHDAY``; a BYMONTH × BYMONTHDAY
   pair must exist on some calendar (Feb 29 counts); no time-of-day parts.
+
+Every expansion ends at the series' ``until`` and never later than the last day
+the API accepts (``LATEST_DATE``, 2100-12-31): a date the server derives can
+always be sent back, and an occurrence past that day is the end of the series.
 """
 
 from __future__ import annotations
@@ -30,6 +34,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 
 from app.core.errors import Unprocessable
+from app.schemas.planner import LATEST_DATE
 from app.services.recurrence import RECURRENCE_PRESETS, parse_rule
 
 __all__ = [
@@ -40,6 +45,7 @@ __all__ = [
     "occurrences_between",
     "parse_stored",
     "preset_of",
+    "series_end",
     "validate_rule",
 ]
 
@@ -48,9 +54,11 @@ _ORDER = ("FREQ", "INTERVAL", "BYMONTH", "BYMONTHDAY", "BYDAY", "BYSETPOS", "COU
 _ALLOWED = {*_ORDER, "UNTIL"}
 _FREQS = ("DAILY", "WEEKLY", "MONTHLY", "YEARLY")
 _DAYS = ("MO", "TU", "WE", "TH", "FR", "SA", "SU")
-_BYDAY_ITEM = re.compile(r"([+-]?\d{1,2})?(MO|TU|WE|TH|FR|SA|SU)")
-_UNTIL = re.compile(r"(\d{8})(T\d{6}Z?)?")
-_INT = re.compile(r"[+-]?\d{1,4}")
+# ASCII digits only: ``\d`` and ``str.isdigit`` also accept "٣", "²" or "①" (and ``int`` chokes on the last two)
+_BYDAY_ITEM = re.compile(r"([+-]?[0-9]{1,2})?(MO|TU|WE|TH|FR|SA|SU)")
+_UNTIL = re.compile(r"([0-9]{8})(T[0-9]{6}Z?)?")
+_INT = re.compile(r"[+-]?[0-9]{1,4}")
+_COUNT = re.compile(r"[0-9]{1,4}")
 _MONTH_DAYS = (31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31)
 
 
@@ -127,7 +135,7 @@ def _canonical(raw: str) -> tuple[tuple[tuple[str, str], ...], date | None]:
         if interval < 1:
             raise _invalid("INTERVAL must be one number 1..999", raw)
     count = found.get("COUNT")
-    if count is not None and (not count.isdigit() or not 1 <= int(count) <= 1000):
+    if count is not None and (not _COUNT.fullmatch(count) or not 1 <= int(count) <= 1000):
         raise _invalid("COUNT must be 1..1000", raw)
     until: date | None = None
     if "UNTIL" in found:
@@ -224,7 +232,10 @@ def validate_rule(raw: str) -> Rule:
     """RRULE text or a preset key → :class:`Rule` (422 ``invalid_rrule`` otherwise)."""
     key = (raw or "").strip().lower()
     source = RECURRENCE_PRESETS[key] if key in CONTRACT_PRESETS else raw
-    parts, until = _canonical(source)
+    try:
+        parts, until = _canonical(source)
+    except ValueError as exc:  # a conversion the checks above missed is still a bad rule, never a 500
+        raise _invalid(f"Unparsable recurrence rule: {exc}", raw) from None
     rule = Rule(text=";".join(f"{k}={v}" for k, v in parts), parts=parts, until=until)
     try:  # final word: dateutil must accept it
         parse_rule(rule.expansion_text, datetime(2026, 1, 1))
@@ -238,29 +249,86 @@ def parse_stored(text: str) -> Rule:
     return Rule(text=text, parts=parts, until=until)
 
 
-def _rrule(rule: Rule, dtstart: datetime, bound: datetime | None = None):
+def series_end(until: date | None) -> date:
+    """The last day a series can reach: its ``until``, never past the last supported day."""
+    return LATEST_DATE if until is None else min(until, LATEST_DATE)
+
+
+def _rrule(text: str, dtstart: datetime, bound: datetime):
+    """``text`` expanded from ``dtstart`` and cut at ``bound`` (dateutil stops iterating there)."""
+    return parse_rule(f"{text};UNTIL={bound:%Y%m%dT%H%M%S}", dtstart)
+
+
+def _fast_forward(rule: Rule, anchor: datetime, target: datetime) -> tuple[str, datetime]:
+    """An expansion text and dtstart giving exactly the occurrences of ``rule`` anchored at
+    ``anchor`` from ``target`` on, but starting near ``target``.
+
+    dateutil walks every period from dtstart, so a series anchored long ago costs one
+    iteration per day (week, month) since then — a daily series from 2000 shown in 2100
+    is 36 500 iterations on the event loop. dtstart moves forward by whole multiples of
+    INTERVAL periods (the phase is kept) to the start of the period holding ``target`` —
+    one period earlier for weekly rules, whose first week skips the days before dtstart —
+    and the parts dateutil takes from dtstart when absent (the weekday, the day of the
+    month, the month) are spelled out, so nothing else changes.
+    """
     text = rule.expansion_text
-    if bound is not None:
-        text = f"{text};UNTIL={bound:%Y%m%dT%H%M%S}"
-    return parse_rule(text, dtstart)
+    if target <= anchor:
+        return text, anchor
+    parts = dict(rule.parts)
+    freq = parts["FREQ"]
+    interval = int(parts.get("INTERVAL", "1"))
+    implied: list[str] = []
+    if freq == "DAILY":
+        periods = (target.date() - anchor.date()).days // interval
+        if periods <= 0:
+            return text, anchor
+        start = anchor + timedelta(days=periods * interval)
+    elif freq == "WEEKLY":
+        if "BYDAY" not in parts:
+            implied.append(f"BYDAY={_DAYS[anchor.weekday()]}")
+        periods = (target.date() - anchor.date()).days // (7 * interval) - 1
+        if periods <= 0:
+            return text, anchor
+        start = anchor + timedelta(weeks=periods * interval)
+    elif freq == "MONTHLY":
+        if "BYMONTHDAY" not in parts and "BYDAY" not in parts:
+            implied.append(f"BYMONTHDAY={anchor.day}")
+        periods = ((target.year - anchor.year) * 12 + target.month - anchor.month) // interval
+        if periods <= 0:
+            return text, anchor
+        month = anchor.year * 12 + anchor.month - 1 + periods * interval
+        start = anchor.replace(year=month // 12, month=month % 12 + 1, day=1)
+    else:  # YEARLY
+        if "BYMONTHDAY" not in parts and "BYDAY" not in parts:
+            implied.append(f"BYMONTHDAY={anchor.day}")
+            if "BYMONTH" not in parts:
+                implied.append(f"BYMONTH={anchor.month}")
+        periods = (target.year - anchor.year) // interval
+        if periods <= 0:
+            return text, anchor
+        start = anchor.replace(year=anchor.year + periods * interval, month=1, day=1)
+    return ";".join([text, *implied]), start
 
 
 def first_on_or_after(rule: Rule, day: date, until: date | None = None) -> date | None:
-    """First occurrence on/after ``day`` with the rule anchored at ``day`` 00:00."""
-    start = datetime.combine(day, time.min)
-    found = _rrule(rule, start).after(start, inc=True)
-    if found is None or (until is not None and found.date() > until):
+    """First occurrence on/after ``day`` with the rule anchored at ``day`` 00:00 (``None`` past the end)."""
+    end = series_end(until)
+    if day > end:
         return None
-    return found.date()
+    start = datetime.combine(day, time.min)
+    found = _rrule(rule.expansion_text, start, datetime.combine(end, time.max)).after(start, inc=True)
+    return found.date() if found is not None else None
 
 
 def next_after(rule: Rule, anchor: datetime, today: date, until: date | None = None) -> datetime | None:
-    """First occurrence strictly after ``anchor`` (naive local) on a local date after ``today``."""
+    """First occurrence strictly after ``anchor`` (naive local) on a local date after ``today``
+    (``None`` past the end of the series)."""
     cursor = max(anchor, datetime.combine(today, time.max))
-    found = _rrule(rule, anchor).after(cursor, inc=False)
-    if found is None or (until is not None and found.date() > until):
+    end = datetime.combine(series_end(until), time.max)
+    if cursor >= end:
         return None
-    return found
+    text, dtstart = _fast_forward(rule, anchor, cursor)
+    return _rrule(text, dtstart, end).after(cursor, inc=False)
 
 
 def occurrences_between(
@@ -277,23 +345,27 @@ def occurrences_between(
     """Dates of the occurrences in ``[first, last]`` that fall after ``after``.
 
     ``remaining`` (from COUNT) counts the occurrences after ``after`` in order,
-    including ones before ``first``.
+    including ones before ``first``. The cost follows the window (and ``remaining``),
+    not the age of the anchor: the expansion starts near the window and stops as soon
+    as the window, ``remaining`` or ``limit`` is exhausted.
     """
     lo = after + timedelta(days=1)
-    hi = min(last, until) if until is not None else last
+    hi = min(last, series_end(until))
     if hi < lo or hi < first or (remaining is not None and remaining <= 0):
         return []
     bound = datetime.combine(hi, time.max)
-    found = _rrule(rule, anchor, bound).between(max(anchor, datetime.combine(lo, time.min)), bound, inc=True)
+    # COUNT counts every occurrence from ``lo`` on; without it nothing before ``first`` matters
+    begin = max(anchor, datetime.combine(lo if remaining is not None else max(lo, first), time.min))
+    text, dtstart = _fast_forward(rule, anchor, begin)
     dates: list[date] = []
-    for occurrence in found:
-        day = occurrence.date()
-        if day < lo or occurrence <= anchor:
+    for occurrence in _rrule(text, dtstart, bound).xafter(begin, inc=True):
+        if occurrence <= anchor:
             continue
         if remaining is not None:
             if remaining <= 0:
                 break
             remaining -= 1
+        day = occurrence.date()
         if day >= first:
             dates.append(day)
             if len(dates) >= limit:
