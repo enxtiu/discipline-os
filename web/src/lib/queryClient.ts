@@ -90,5 +90,7 @@ export const queryKeys = {
   steps: (days: number) => ['health-data', 'steps', days] as const,
   weight: (days: number) => ['health-data', 'weight', days] as const,
   sleep: (days: number) => ['health-data', 'sleep', days] as const,
+  // stage 10: Сегодня's insight — under 'nutrition', so every food write refreshes it
+  insight: ['nutrition', 'insight'] as const,
   // later stages: tasks, stats…
 }

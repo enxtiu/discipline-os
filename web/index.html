@@ -17,7 +17,8 @@
           var day = now.getFullYear() + '-' + ('0' + (now.getMonth() + 1)).slice(-2) + '-' + ('0' + now.getDate()).slice(-2)
           var screens = {
             '/today': ['/v1/nutrition/day?date=' + day, '/v1/recipes', '/v1/training/today', '/v1/health/today',
-              '/v1/planner/views/today', '/v1/planner/timer', '/v1/gamification/today'],
+              '/v1/planner/views/today', '/v1/planner/timer', '/v1/gamification/today', '/v1/foods/recents',
+              '/v1/insights/today'],
             '/food': ['/v1/nutrition/day?date=' + day, '/v1/foods/recents', '/v1/foods/favorites', '/v1/recipes'],
             '/plan': ['/v1/planner/views/today', '/v1/planner/timer', '/v1/planner/counts'],
           }

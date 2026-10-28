@@ -48,6 +48,10 @@ import { CalorieSticker, MacroBars } from './parts'
 import { TodayStatus } from '@/features/game/TodayStatus'
 import { useOnceTrue } from '@/lib/lazy'
 
+// stage 10: «План дня», «Повторить» and the insight sit below everything else — not part of
+// the first paint, so they load as a chunk of their own as soon as Today renders
+const TodayMore = lazy(() => import('./TodayMore').then((module) => ({ default: module.TodayMore })))
+
 // stage 9: the recipe log sheet loads on first use (a pinned recipe). The health sheets
 // stay: mounted with Today, they read their series with it and open prefilled.
 const LogSheet = lazy(() => import('@/features/food/LogSheet').then((module) => ({ default: module.LogSheet })))
@@ -442,6 +446,10 @@ export function TodayPage() {
       </div>
 
       <DayScoreCard />
+
+      <Suspense fallback={null}>
+        <TodayMore />
+      </Suspense>
 
       <p className="pb-2 text-center text-xs muted">
         {today()} · {number(progressPercent)}%
