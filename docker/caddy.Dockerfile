@@ -19,6 +19,13 @@ RUN npm run build
 FROM caddy:2.8-alpine
 
 COPY --from=web-build /web/dist /srv/www
-COPY docker/Caddyfile /etc/caddy/Caddyfile
+COPY docker/Caddyfile docker/acme-email.caddy /etc/caddy/
+COPY docker/caddy-entrypoint.sh /usr/local/bin/caddy-entrypoint.sh
+RUN chmod 0755 /usr/local/bin/caddy-entrypoint.sh
 
 EXPOSE 80 443 443/udp
+
+# The base image's command, behind an entrypoint that only prepares the optional ACME e-mail
+# (ACME_EMAIL empty or unset must not break the Caddyfile; see docker/caddy-entrypoint.sh).
+ENTRYPOINT ["/usr/local/bin/caddy-entrypoint.sh"]
+CMD ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
