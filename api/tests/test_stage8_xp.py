@@ -116,7 +116,7 @@ async def test_nothing_rewards_intake_below_the_floor(uid, db) -> None:
     assert f"kcal_zone:{iso}" not in got
     assert f"protein:{iso}" not in got and f"fiber:{iso}" not in got  # intake-tied, below the floor
     assert sum(1 for key in got if key.startswith("meal:")) == 3  # logging is always rewarded
-    assert got[f"water:{iso}"] == 10
+    assert f"water:{iso}" not in got  # water is nutrition: no credit below the floor (review 8, H1)
     stored = await db.scalar(select(DailyScore).where(DailyScore.user_id == uid, DailyScore.local_day == YESTERDAY))
     kcal = next(item for item in stored.components["items"] if item["key"] == "kcal")
     assert (kcal["value"], kcal["detail"]["state"], stored.components["credit"]) == (0.0, "below_floor", False)

@@ -132,9 +132,30 @@ class Settings(BaseSettings):
     # added here: exact hosts or "*.example.com" (https on port 443 is still required).
     push_extra_hosts: CsvList = Field(default_factory=list)
 
+    # ----------------------------------------------------------- integrations
+    # Stage 9 (optional Notion sync). Provider secrets are encrypted at rest with a
+    # Fernet key derived (HKDF-SHA256, info "dsos-integrations-v1") from this value, or
+    # from SECRET_KEY when it is empty. Set it to keep stored secrets readable across a
+    # SECRET_KEY rotation (changing the key that is in use = reconnect Notion).
+    integrations_key: str = ""
+    # requests per sync run and user (a run cut by it continues on the next one) and
+    # the request pace — Notion allows an average of 3 requests/second per connection
+    notion_request_budget: int = Field(default=450, ge=10, le=10_000)
+    notion_max_rps: float = Field(default=3.0, gt=0, le=3.0)
+
     # --------------------------------------------------------------- frontend
     # Used only to build links inside notifications/backup mails.
     public_base_url: str = ""
+
+    # ------------------------------------------------- data backups (stage 8)
+    # `restore-backup` refuses a data.json that would unpack to more than this
+    # (checked before anything is inflated: a zip bomb never reaches memory)
+    backup_max_data_bytes: int = 512 * 1024 * 1024
+    # The backup manifest is signed (HMAC-SHA256) with a key derived (HKDF) from this
+    # value, or from SECRET_KEY while it is empty. Only a backup signed with the same
+    # key restores in full; set it to keep backups valid across a SECRET_KEY rotation
+    # and give a new server the same value to move to it with the whole history.
+    backup_signing_key: str = ""
 
     @field_validator("secret_key")
     @classmethod

@@ -4,8 +4,8 @@
 kind     a day (week) counts when                                         unit
 ======== ================================================================ ======
 overall  daily score ≥ 60 *and* credit (≥ 1 meal, intake ≥ the floor)     day
-meal_logging ≥ 1 meal logged                                              day
-water    water ≥ target                                                   day
+meal_logging ≥ 1 meal logged (whatever the amount)                        day
+water    water ≥ target *and* nutrition credit (≥ 1 meal, ≥ the floor)    day
 steps    steps ≥ target                                                   day
 tasks    ≥ 1 task completed                                               day
 review   journal entry with content                                       day
@@ -14,6 +14,12 @@ workout  completed workouts ≥ planned that week (no plan → 3)             we
 
 Rest is part of a plan: the only training streak is weekly and plan-aware, and a
 week planned entirely as rest is neutral (it neither counts nor breaks).
+
+Targets of their time: a finished day is judged against the targets it was finalised
+with (its stored score row, ``GameContext.rules_for``) and a finished week against the
+requirement frozen when it ended (``score.frozen_weeks``); the current targets apply to
+the open window (yesterday, today) and the current plan to the current week only — a
+weigh-in or a plan edit never re-judges the past.
 
 Freeze tokens: +1 every week (on the user's week start), at most 2; a missed past
 day/week uses one automatically (``freeze_used_dates``) instead of breaking the
@@ -190,13 +196,13 @@ def simulate_weekly(
 
 
 def daily_conditions(history: dict[date, DayMetrics], overall_days: set[date], ctx: GameContext) -> dict:
-    """Days that count, per daily kind (current targets apply to the whole history)."""
-    t = ctx.targets
+    """Days that count, per daily kind — each day judged by ``ctx.rules_for(day)``: the
+    targets it was finalised with once final, the current ones in the open window."""
     return {
         StreakKind.OVERALL: set(overall_days),
         StreakKind.MEAL_LOGGING: {day for day, m in history.items() if m.meals >= 1},
-        StreakKind.WATER: {day for day, m in history.items() if t.water_ml and m.water_ml >= t.water_ml},
-        StreakKind.STEPS: {day for day, m in history.items() if t.steps and m.steps is not None and m.steps >= t.steps},
+        StreakKind.WATER: {day for day, m in history.items() if ctx.rules_for(day).water_met(m)},
+        StreakKind.STEPS: {day for day, m in history.items() if ctx.rules_for(day).steps_met(m)},
         StreakKind.TASKS: {day for day, m in history.items() if m.tasks_done >= 1},
         StreakKind.REVIEW: {day for day, m in history.items() if m.journal},
     }

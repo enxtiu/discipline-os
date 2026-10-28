@@ -21,6 +21,9 @@ export const XP_RULES = {
   weight: 5,
 } as const
 
+/** A day counts for the overall streak at this daily score (`score.OVERALL_THRESHOLD`). */
+export const OVERALL_MIN_SCORE = 60
+
 /** Overall streak (daily score ≥ 60): days → XP, paid once per run. */
 export const STREAK_MILESTONES: readonly (readonly [number, number])[] = [
   [3, 25],

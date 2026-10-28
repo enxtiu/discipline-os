@@ -55,6 +55,7 @@ from app.models import (
     WorkoutLog,
     WorkoutStatus,
 )
+from app.services.planner.containers import week_start_for as planner_week_start_for
 
 __all__ = [
     "DEFAULT_WEEKLY_WORKOUTS",
@@ -84,6 +85,7 @@ __all__ = [
     "kcal_zone",
     "logged_meals",
     "nutrition_by_day",
+    "nutrition_credit",
     "personal_records",
     "plan_by_day",
     "required_workouts",
@@ -159,6 +161,16 @@ class KcalZone:
         return round(self.high) if self.high is not None else None
 
 
+def nutrition_credit(m: DayMetrics, floor: int) -> bool:
+    """The one nutrition-credit predicate of stage 8: at least one meal logged **and**
+    intake at or above the safe floor. Score credit (the overall streak, perfect days,
+    strong weeks) and every nutrition reward — the protein, fiber and water XP, the
+    water streak, the water/protein day counts of achievements and weekly quests, the
+    completion of the daily water quest — require it: neither not logging food nor
+    eating below the floor is ever rewarded (water alone is not nutrition credit)."""
+    return m.meals >= 1 and m.kcal >= floor
+
+
 def kcal_zone(target_kcal: int | float | None, floor: int) -> KcalZone:
     """Zone for a calorie target and a floor. Burned calories never enter here."""
     if not target_kcal or target_kcal <= 0:
@@ -190,10 +202,10 @@ def _local_date(column, tz: str | None):
 
 def week_start_for(day: date, week_start: int) -> date:
     """First day of the week containing ``day``; ``week_start`` follows the settings
-    (1 = Monday, 0 = Sunday — the same convention as stage 4)."""
-    if week_start == 0:
-        return day - timedelta(days=(day.weekday() + 1) % 7)
-    return day - timedelta(days=day.weekday())
+    (0 = Sunday, 1 = Monday … 6 = Saturday). One helper for the whole server: the
+    planner's, which ``/stats`` uses too — so the weekly streak, the freeze-token refills,
+    the weekly quests and the achievements run on exactly the weeks the stats show."""
+    return planner_week_start_for(day, week_start)
 
 
 def journal_has_content():

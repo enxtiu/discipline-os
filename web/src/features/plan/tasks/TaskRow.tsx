@@ -11,6 +11,7 @@ import clsx from 'clsx'
 
 import { IconCheck, IconClock } from '@/components/ui/icons'
 import { openTask } from '../events'
+import { usePendingTaskIds } from '../pending'
 import { blockLabel, dueLabel, formatMinutes, PRIORITY_STYLES, relativeDay } from '../format'
 import { IconBellSmall, IconCalendar, IconRepeat, IconSubtasks, IconTimer } from '../icons'
 import type { Occurrence, Priority, Ref, Task } from '../types'
@@ -114,8 +115,16 @@ export interface TaskRowProps {
 export function TaskRow({ task, today, day, showContainer = true, children }: TaskRowProps) {
   const { t } = useTranslation()
   const { toggle, busy } = useCompleteToggle(today)
+  const waiting = usePendingTaskIds().has(task.id)
   const closed = isClosed(task)
   const meta: ReactNode[] = []
+  if (waiting) {
+    meta.push(
+      <Meta key="waiting" className="text-violet-300">
+        <span data-testid="task-pending">{t('sync.pending_mark')}</span>
+      </Meta>,
+    )
+  }
 
   if (task.due_date) {
     const label = day && task.due_date === day ? (task.due_time ?? '') : dueLabel(task, today)
@@ -165,7 +174,7 @@ export function TaskRow({ task, today, day, showContainer = true, children }: Ta
   }
 
   return (
-    <div data-testid="task-row" data-task-id={task.id} data-status={task.status}>
+    <div data-testid="task-row" data-task-id={task.id} data-status={task.status} data-pending={waiting ? 'true' : 'false'}>
       <div className="flex items-start">
         <TaskCheck
           done={closed}

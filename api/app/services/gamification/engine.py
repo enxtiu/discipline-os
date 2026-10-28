@@ -5,17 +5,35 @@ Order, inside one transaction holding a per-user advisory lock (overlapping runs
 two jobs, a job and a request — simply take turns; every write is idempotent):
 
 1. **days** — daily scores and day XP for the open window (yesterday, today) and,
-   once each, for older days whose score was never computed after their grace day
-   ended (first run, downtime): those are then frozen for good. Score and XP of a
-   day are always finalised together.
+   once each, for older days without a *final* row (first run, downtime): those are
+   then frozen for good — the row says so (``components.final``), and a final day is
+   never recomputed, whatever the timezone does later (a day that is "yesterday"
+   again after a move west keeps its frozen row). Score and XP of a day are always
+   finalised together.
 2. **streaks** — recomputed from the history; rows upserted (longest never
-   decreases); overall-streak milestones paid once per run.
+   decreases); overall-streak milestones paid once per run. A finished day is judged
+   against the targets it was finalised with (its stored row), a finished week against
+   the requirement frozen with its last day's row the first time the engine saw the
+   week finished; the current targets apply to the open window only and the current
+   plan to the current week only — so a weigh-in or a plan edit never re-judges the
+   past (review 8, M1).
 3. **achievements** — metrics, unlocks, permanent XP (repeated while a level-up
    unlocks more).
 4. **quests** — expire past periods, rotate today/this week, refresh progress.
 
 ``persist=False`` computes the same snapshot without any write (the stage-7
 streak reminder uses it).
+
+**Bounded work per call** (review 8, L5): one call finalises at most
+``PENDING_PER_RUN`` pending days, oldest first — a request (or the stage-7 reminder
+check) never scores years of history while holding the per-user lock. The jobs and
+``python -m app.cli backfill-scores`` finish a backlog (the first run after the
+stage-8 deploy, a long downtime) with :func:`sync_fully`: chunks of
+``BACKFILL_CHUNK`` days, each in its own short transaction, then the requested stages
+once more on the complete history. Oldest first keeps the results identical to one
+big run: every finalised day sees all earlier days final, and while days are still
+pending the overall-streak milestones wait (a run may only look shorter then, never
+start elsewhere).
 """
 
 from __future__ import annotations
@@ -45,9 +63,12 @@ from app.services.planner.common import advisory_lock
 log = get_logger(__name__)
 
 STAGES: tuple[str, ...] = ("days", "streaks", "achievements", "quests")
-HISTORY_DAYS = 1100  # how far back history is read and, on a first run, scored once
+HISTORY_DAYS = 1100  # how far back history is read and scored once
 LOCK_SCOPE = "gamification"
 MAX_LEVEL_ROUNDS = 5
+PENDING_PER_RUN = 60  # pending days one call may finalise (requests, the reminder check)
+BACKFILL_CHUNK = 60  # days per transaction when the jobs / the CLI finish a backlog
+MAX_BACKFILL_ROUNDS = HISTORY_DAYS // BACKFILL_CHUNK + 3
 
 
 @dataclass(slots=True)
@@ -64,6 +85,8 @@ class GameSnapshot:
     metrics: dict[str, float] | None = None
     unlocked_now: list = field(default_factory=list)
     quests: list[QuestView] = field(default_factory=list)
+    finalised: int = 0  # pending days computed for the last time in this run
+    pending_left: int = 0  # pending days left for a later run (backlog beyond the bound)
 
     @property
     def today_score(self) -> DayScore:
@@ -76,19 +99,34 @@ class GameSnapshot:
 
 
 def _pending(
-    stored: dict[date, score.ScoreFlag], ctx: GameContext, first_data: date | None, oldest: date
+    stored_days: Iterable[date], final: set[date], ctx: GameContext, first_data: date | None, oldest: date
 ) -> list[date]:
-    """Days before yesterday that still need their final computation: never scored
-    (from the first data day on), or last scored before their grace day ended
-    (``computed_at`` < local start of day + 2) — then they are frozen for good."""
+    """Days before yesterday without a final row, oldest first: never scored (from the
+    first data day on) or scored only while they were in the open window. Each is
+    computed once more and then frozen for good."""
     last = ctx.today - timedelta(days=2)
     candidates = set(iter_days(max(first_data, oldest), last)) if first_data is not None else set()
-    candidates |= {day for day in stored if day <= last}
-    return sorted(
-        day
-        for day in candidates
-        if day not in stored or stored[day].computed_at < ctx.local_start(day + timedelta(days=2))
-    )
+    candidates |= {day for day in stored_days if day <= last}
+    return sorted(day for day in candidates if day not in final)
+
+
+def _spans(days: list[date], most: int = 3) -> list[tuple[date, date]]:
+    """Contiguous runs of the sorted ``days`` (the oldest pending days and the window are
+    two), or one range over all of them when they are scattered — the rows behind the
+    awards are read for those days, not for the years in between."""
+    spans: list[tuple[date, date]] = []
+    for day in days:
+        if spans and day == spans[-1][1] + timedelta(days=1):
+            spans[-1] = (spans[-1][0], day)
+        else:
+            spans.append((day, day))
+    return spans if len(spans) <= most else [(days[0], days[-1])]
+
+
+def _closed_week(ctx: GameContext, day: date) -> date | None:
+    """The start of the finished week ``day`` is the last day of, if any."""
+    week = week_start_for(day, ctx.week_start)
+    return week if day == week + timedelta(days=6) and week < ctx.week_start_day else None
 
 
 async def sync_user(
@@ -98,8 +136,11 @@ async def sync_user(
     *,
     stages: Iterable[str] = STAGES,
     persist: bool = True,
+    pending_limit: int | None = PENDING_PER_RUN,
 ) -> GameSnapshot | None:
-    """Run the requested stages for one active user; ``None`` for a missing/disabled one."""
+    """Run the requested stages for one active user; ``None`` for a missing/disabled one.
+    ``pending_limit``: at most that many pending days are finalised, oldest first
+    (``None``: all of them — only for tests and tools that compare)."""
     stages = set(stages)
     ctx = await build_context(db, user_id, now)
     if ctx is None:
@@ -120,36 +161,52 @@ async def sync_user(
     week_end = ctx.week_start_day + timedelta(days=6)
     plan = await day_metrics.plan_by_day(db, user_id, start, week_end)  # whole weeks, this one included
     history = await day_metrics.collect(db, user_id, start, today, ctx.tz, now=ctx.now, plan=plan)
-    plans = day_metrics.weeks_from_plan(plan, start, today, ctx.week_start)
     stored = await score.load_flags(db, user_id, start, today)
+    score.freeze(ctx, stored)  # final days: their own targets from now on
+    plans = day_metrics.weeks_from_plan(plan, start, today, ctx.week_start)  # the current plan …
+    plans.update({week: frozen for week, frozen in score.frozen_weeks(ctx, stored).items() if week in plans})
 
+    # a final row is never recomputed — even when a move west makes its day "yesterday"
+    final = {day for day, flag in stored.items() if flag.is_final(today)}
     # yesterday stays in the window while it has data or a stored row (a deleted meal
     # must lose its XP); a brand-new account gets no empty "yesterday"
     with_yesterday = (first_data is not None and first_data <= yesterday) or yesterday in stored
-    window = [yesterday, today] if with_yesterday else [today]
-    pending = _pending(stored, ctx, first_data, oldest)
+    window = [day for day in ([yesterday, today] if with_yesterday else [today]) if day not in final or day == today]
+    backlog = _pending(stored, final, ctx, first_data, oldest)
+    pending = backlog if pending_limit is None else backlog[: max(0, pending_limit)]
     computed = {day: score.compute_day_score(history[day], ctx, provisional=day == today) for day in pending + window}
+    writable = sorted(day for day in computed if day not in final)  # (today is final only after a ≥ 2-day jump west)
 
     flags: dict[date, DayFlag] = {day: DayFlag(flag.score, flag.credit) for day, flag in stored.items()}
-    flags.update({day: DayFlag(item.value, item.credit) for day, item in computed.items()})
+    flags.update({day: DayFlag(computed[day].value, computed[day].credit) for day in writable})
     overall_days = {day for day, flag in flags.items() if flag.credit and flag.score >= score.OVERALL_THRESHOLD}
     stored_streaks = await streaks.stored_rows(db, user_id)
     longest = {kind: int(row["longest_count"] or 0) for kind, row in stored_streaks.items()}
     states = streaks.compute(history, overall_days, plans, ctx, longest, track=set(computed))
     snapshot = GameSnapshot(ctx=ctx, history=history, computed=computed, flags=flags, plans=plans, streaks=states)
+    snapshot.finalised, snapshot.pending_left = len(pending), len(backlog) - len(pending)
 
     if persist and "days" in stages:
-        days = sorted(computed)
-        refs = await xp.load_refs(db, ctx, days[0], today)
+        # finished weeks whose last day is final but carries no requirement (rows from
+        # before review 8, weeks re-bucketed by a new week start): frozen now, once
+        unfrozen = {
+            day: plans[week] for day in final if (week := _closed_week(ctx, day)) in plans and stored[day].week is None
+        }
+        await score.annotate_weeks(db, ctx, unfrozen)
+    if persist and "days" in stages and writable:
+        refs: dict[date, xp.DayRefs] = {}
+        for first, last in _spans(writable):
+            refs.update(await xp.load_refs(db, ctx, first, last))
         awards = [
             award
-            for day in days
+            for day in writable
             for award in xp.day_awards(day, history[day], refs.get(day), ctx, finished=day < today)
         ]
-        await xp.sync_days(db, ctx, days, awards)
+        await xp.sync_days(db, ctx, writable, awards)
     if persist and "streaks" in stages:
         await streaks.persist(db, ctx, states, stored_streaks)
-        await streaks.award_milestones(db, ctx, states[0])
+        if not snapshot.pending_left:  # milestones from the complete history only (identical results)
+            await streaks.award_milestones(db, ctx, states[0])
 
     snapshot.xp_total = await xp.total(db, user_id)
     snapshot.level = level_for(snapshot.xp_total)
@@ -172,10 +229,11 @@ async def sync_user(
         await quests.expire(db, ctx)
         await quests.rotate(db, ctx, f)
         snapshot.quests = await quests.refresh(db, ctx, history, snapshot.week_required)  # no XP until claimed
-    if persist and "days" in stages:  # last, so xp_earned includes this run's permanent awards
-        days = sorted(computed)
-        xp_by_day = await xp.per_day(db, user_id, days[0], today)
-        await score.store(db, ctx, computed.values(), xp_by_day, states[0].count_on)
+    if persist and "days" in stages and writable:  # last, so xp_earned includes this run's permanent awards
+        xp_by_day = await xp.per_day(db, user_id, writable[0], today)
+        rows = [computed[day] for day in writable]
+        weeks = {day: plans[week] for day in writable if (week := _closed_week(ctx, day)) in plans}
+        await score.store(db, ctx, rows, xp_by_day, states[0].count_on, final=pending, weeks=weeks)
         snapshot.xp_today = xp_by_day.get(today, 0)
     else:
         snapshot.xp_today = (await xp.per_day(db, user_id, today, today)).get(today, 0)
@@ -183,10 +241,60 @@ async def sync_user(
 
 
 # --------------------------------------------------------------------------- #
+# Jobs and tools: the whole backlog, in chunks
+# --------------------------------------------------------------------------- #
+async def sync_fully(
+    user_id: uuid.UUID, now: datetime | None = None, *, stages: Iterable[str] = STAGES
+) -> tuple[GameSnapshot | None, int]:
+    """The requested stages for one user, finishing any backlog of pending days first:
+    chunks of ``BACKFILL_CHUNK`` days (oldest first), each in its own transaction — the
+    per-user lock is never held for long — then the stages once more on the complete
+    history. Steady state: one run. Returns the last snapshot (``None``: missing or
+    disabled account) and the number of days finalised."""
+    stages = tuple(stages)
+    now = now or utcnow()
+    async with session_scope() as db:
+        snapshot = await sync_user(db, user_id, now, stages=stages, pending_limit=BACKFILL_CHUNK)
+    if snapshot is None or "days" not in stages:
+        return snapshot, 0
+    finalised = snapshot.finalised
+    if not snapshot.pending_left:
+        return snapshot, finalised
+    for _ in range(MAX_BACKFILL_ROUNDS):
+        async with session_scope() as db:
+            chunk = await sync_user(db, user_id, now, stages=("days",), pending_limit=BACKFILL_CHUNK)
+        if chunk is None:
+            return None, finalised
+        finalised += chunk.finalised
+        if not chunk.pending_left or not chunk.finalised:
+            break
+    async with session_scope() as db:
+        snapshot = await sync_user(db, user_id, now, stages=stages, pending_limit=BACKFILL_CHUNK)
+    return snapshot, finalised + (snapshot.finalised if snapshot is not None else 0)
+
+
+async def backfill(user_ids: Iterable[uuid.UUID] | None = None, now: datetime | None = None) -> dict[uuid.UUID, int]:
+    """Score and freeze every pending day of these (default: all active) users, then
+    streaks, achievements and quests — ``python -m app.cli backfill-scores``. Idempotent
+    and safe next to the API and the jobs (per-user lock). Days finalised per user."""
+    now = now or utcnow()
+    if user_ids is None:
+        async with session_scope() as db:
+            user_ids = (await db.scalars(select(User.id).where(User.status == UserStatus.ACTIVE))).all()
+    out: dict[uuid.UUID, int] = {}
+    for user_id in user_ids:
+        snapshot, finalised = await sync_fully(user_id, now)
+        if snapshot is not None:
+            out[user_id] = finalised
+    return out
+
+
+# --------------------------------------------------------------------------- #
 # Scheduler entry points (registered in app/services/hooks.py)
 # --------------------------------------------------------------------------- #
 async def run_for_all_users(stages: Iterable[str], now: datetime | None = None) -> int:
-    """Every active user, each in their own transaction; one failure never stops a run."""
+    """Every active user (a backlog finished in chunks, see :func:`sync_fully`); one
+    failure never stops a run."""
     stages = tuple(stages)
     now = now or utcnow()
     async with session_scope() as db:
@@ -194,9 +302,13 @@ async def run_for_all_users(stages: Iterable[str], now: datetime | None = None) 
     done = 0
     for user_id in user_ids:
         try:
-            async with session_scope() as db:
-                if await sync_user(db, user_id, now, stages=stages) is not None:
-                    done += 1
+            if "days" in stages:
+                snapshot, _ = await sync_fully(user_id, now, stages=stages)
+            else:  # nothing to finalise in a quests-only run
+                async with session_scope() as db:
+                    snapshot = await sync_user(db, user_id, now, stages=stages, pending_limit=0)
+            if snapshot is not None:
+                done += 1
         except Exception as exc:  # pragma: no cover - defensive, logged
             log.exception("gamification_sync_failed", user_id=str(user_id), stages=stages, error=type(exc).__name__)
     return done

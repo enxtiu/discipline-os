@@ -7,9 +7,10 @@
     python -m app.cli revoke-device <uuid>
     python -m app.cli recompute-targets
     python -m app.cli run-job housekeeping
+    python -m app.cli backfill-scores [--user-id <uuid>]
     python -m app.cli vapid-keys
     python -m app.cli stats
-    python -m app.cli restore-backup disciplineos-2026-10-01.zip [--user-id <uuid>] [--dry-run]
+    python -m app.cli restore-backup disciplineos-2026-10-01-backup.zip [--user-id <uuid>] [--dry-run]
 
 Run it inside the container:  docker compose exec api python -m app.cli create-owner
 """
@@ -254,6 +255,32 @@ def run_job_cmd(
     _run(_inner())
 
 
+@cli.command("backfill-scores")
+def backfill_scores_cmd(
+    user_id: Annotated[str | None, typer.Option("--user-id", help="Only this account (default: all active)")] = None,
+) -> None:
+    """Score and freeze every pending day (after the stage-8 deploy or a long downtime) in
+    chunks of 60 days per transaction, then streaks, achievements and quests. The jobs do
+    the same every 15 minutes; requests finalise at most 60 days each. Idempotent."""
+    from app.services.gamification.engine import backfill
+
+    async def _inner() -> None:
+        try:
+            ids = [uuid.UUID(user_id)] if user_id else None
+        except ValueError:
+            typer.secho("✗ --user-id must be a UUID", fg=typer.colors.RED)
+            raise typer.Exit(1) from None
+        done = await backfill(ids)
+        if ids and not done:
+            typer.secho("✗ no such active account", fg=typer.colors.RED)
+            raise typer.Exit(1)
+        for account, days in done.items():
+            typer.echo(f"{account}: {days} day(s) finalised")
+        typer.secho(f"✓ {len(done)} account(s) up to date", fg=typer.colors.GREEN)
+
+    _run(_inner())
+
+
 @cli.command("seed")
 def seed_cmd(
     names: Annotated[
@@ -438,11 +465,19 @@ def restore_backup_cmd(
     path: Annotated[str, typer.Argument(help="Backup zip from GET /api/v1/export/backup")],
     user_id: Annotated[
         str | None,
-        typer.Option("--user-id", help="Restore into this account (default: the backup's own); it must be empty"),
+        typer.Option(
+            "--user-id",
+            help="Restore into this account (default: the backup's own); it must be empty. "
+            "Required for a backup this server did not sign (edited, or made by another server)",
+        ),
     ] = None,
     dry_run: Annotated[bool, typer.Option("--dry-run", help="Report what would change and write nothing")] = False,
 ) -> None:
-    """Restore a backup (idempotent: restoring twice changes nothing)."""
+    """Restore a backup (idempotent: restoring twice changes nothing).
+
+    Only a backup signed by this server (or by one sharing BACKUP_SIGNING_KEY) restores
+    as it is; any other goes only into an empty account named with --user-id, and its
+    XP, scores, streaks, achievements and quests are rebuilt from the restored records."""
     from app.services.restore import RestoreError, read_backup, restore
 
     try:
@@ -473,9 +508,17 @@ def restore_backup_cmd(
 
     same = report.source_user_id == report.target_user_id
     typer.echo(f"backup of {report.created_at} · schema {report.schema_version}")
+    if report.signed:
+        typer.echo("signature: valid — made by this server")
+    else:
+        typer.secho(
+            f"signature: not valid here — {report.signature_problem}; restored as an unsigned backup",
+            fg=typer.colors.YELLOW,
+        )
+    own = same and report.signed
     typer.echo(
         f"account {report.target_user_id}"
-        + (" (the backup's own)" if same else f" (empty; the backup is of {report.source_user_id})")
+        + (" (the backup's own)" if own else f" (empty; the backup is of {report.source_user_id})")
     )
     if report.dry_run:
         typer.secho("DRY RUN — nothing was written; a real run would do exactly this:", fg=typer.colors.YELLOW)
@@ -486,7 +529,7 @@ def restore_backup_cmd(
         if item.rows:
             typer.echo(
                 f"{name:24} {item.rows:>7} {item.inserted:>9} {item.updated:>8} {item.unchanged:>10} "
-                f"{item.merged:>7} {item.skipped:>8}"
+                f"{item.merged:>7} {item.skipped:>8}" + ("   rebuilt by the engine" if item.rebuilt else "")
             )
     for name, lib in report.library.items():
         if lib.referenced:
@@ -494,10 +537,13 @@ def restore_backup_cmd(
                 f"library {name}: {lib.referenced} referenced · {lib.same_id} same id · {lib.matched} matched · "
                 f"{lib.copied} recreated as your own · {lib.missing} unknown here (rows skipped)"
             )
+    for note in report.notes:
+        typer.secho(f"• {note}", fg=typer.colors.YELLOW)
     verb = "would restore" if report.dry_run else "restored"
     typer.secho(
         f"\n✓ {verb}: {report.inserted} inserted, {report.updated} updated, "
-        f"{report.unchanged} unchanged, {report.skipped} skipped",
+        f"{report.unchanged} unchanged, {report.skipped} skipped"
+        + (f", {report.rebuilt} left to the engine" if report.rebuilt else ""),
         fg=typer.colors.GREEN,
     )
 

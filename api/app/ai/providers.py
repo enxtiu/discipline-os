@@ -12,6 +12,12 @@
 Adapters never validate meaning; ``app/ai/runner.py`` does that and owns the
 retry. They only classify failures: transient (timeouts, 429, 5xx → worth
 one retry) or permanent (bad key, bad request → not).
+
+Error messages (stored in ``ai_jobs.error``) never carry a provider's response
+body: a rejection keeps the HTTP status and the provider's machine-readable error
+``type``/``code``/``status`` only — the body's message can echo request content or
+a masked fragment of the server's API key — and a model's refusal text stays out
+too. :func:`public_error` applies the same rule to rows stored before.
 """
 
 from __future__ import annotations
@@ -19,12 +25,80 @@ from __future__ import annotations
 import base64
 import copy
 import json
+import re
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 import httpx
 
 from app.core.config import Settings, get_settings
+
+REJECTED = "provider rejected the request"
+REFUSED = "model refused the request"
+BLOCKED = "prompt blocked"
+# a provider's error identifier ("invalid_api_key", "authentication_error", "INVALID_ARGUMENT"):
+# letters, digits, "_" and "." — no "-", so nothing shaped like a key ("sk-proj-…") passes
+_ERROR_CODE = re.compile(r"[A-Za-z][A-Za-z0-9_.]{0,47}")
+_STORED_REJECTION = re.compile(r"provider rejected the request \((\d{3})(?:: ([A-Za-z0-9_./]*))?\)")
+_BODY_CODE = re.compile(r'"(?:type|code|status)"\s*:\s*(?:"([A-Za-z][A-Za-z0-9_.]{0,47})"|(\d{1,6})\b)')
+
+
+def _code_token(value: Any) -> str | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return str(value) if 0 <= value < 1_000_000 else None
+    if isinstance(value, str) and _ERROR_CODE.fullmatch(value):
+        return value
+    return None
+
+
+def error_codes(body: Any, status: int | None = None) -> list[str]:
+    """``type``/``code``/``status`` of a provider's error body — OpenAI and OpenRouter
+    (``{"error": {"type", "code"}}``), Anthropic (``{"error": {"type"}}``), Gemini
+    (``{"error": {"code", "status"}}``); never the ``message``."""
+    error = body.get("error") if isinstance(body, dict) else None
+    candidates = [error.get("type"), error.get("code"), error.get("status")] if isinstance(error, dict) else [error]
+    out: list[str] = []
+    for value in candidates:
+        token = _code_token(value)
+        if token is not None and token not in out and token != str(status):
+            out.append(token)
+    return out
+
+
+def rejected_message(status: int, codes: Iterable[str] = ()) -> str:
+    """``provider rejected the request (401: invalid_request_error/invalid_api_key)``."""
+    codes = list(codes)
+    return f"{REJECTED} ({status}{': ' + '/'.join(codes) if codes else ''})"
+
+
+def public_error(text: str | None) -> str | None:
+    """A stored ``ai_jobs.error`` as it may leave the server (exports): a rejection
+    stored before this rule (``… (401): <the provider's body>``) is cut down to its
+    status and error codes, a refusal to ``model refused the request``; every other
+    message is ours (timeouts, busy, unreadable replies, schema problems) and stays."""
+    if text is None:
+        return None
+    if text.startswith(REJECTED):
+        if _STORED_REJECTION.fullmatch(text):
+            return text
+        status = re.match(r"provider rejected the request \((\d{3})\)", text)
+        if status is None:
+            return REJECTED
+        codes: list[str] = []
+        for match in _BODY_CODE.finditer(text[status.end() :]):
+            token = match.group(1) or match.group(2)
+            if token not in codes and token != status.group(1):
+                codes.append(token)
+        return rejected_message(int(status.group(1)), codes)
+    if text.startswith("model refused"):
+        return REFUSED
+    if text.startswith(BLOCKED):
+        reason = text.removeprefix(BLOCKED).lstrip(": ")
+        return f"{BLOCKED}: {reason}" if _ERROR_CODE.fullmatch(reason) else BLOCKED
+    return text
 
 
 @dataclass(slots=True)
@@ -85,10 +159,14 @@ async def _post(
     if response.status_code == 429 or response.status_code >= 500:
         raise AiProviderError(f"provider busy ({response.status_code})", transient=True, status=response.status_code)
     if response.status_code >= 400:
-        # 400/401/403/404: configuration or request problem — retrying will not help
-        detail = response.text[:300]
+        # 400/401/403/404: configuration or request problem — retrying will not help.
+        # The status and the provider's error code only: the body never leaves this function.
+        try:
+            body = response.json()
+        except ValueError:
+            body = None
         raise AiProviderError(
-            f"provider rejected the request ({response.status_code}): {detail}",
+            rejected_message(response.status_code, error_codes(body, response.status_code)),
             transient=False,
             status=response.status_code,
         )
@@ -140,7 +218,7 @@ class OpenAICompatibleProvider:
         except (KeyError, IndexError, TypeError) as error:
             raise AiProviderError("unexpected response shape", transient=True) from error
         if message.get("refusal"):
-            raise AiProviderError(f"model refused: {message['refusal'][:200]}", transient=False)
+            raise AiProviderError(REFUSED, transient=False)  # the refusal text is model output: not stored
         usage = payload.get("usage") or {}
         return AiResponse(
             text=message.get("content") or "",
@@ -264,7 +342,7 @@ class GoogleProvider:
         except (KeyError, IndexError, TypeError) as error:
             blocked = (payload.get("promptFeedback") or {}).get("blockReason")
             if blocked:
-                raise AiProviderError(f"prompt blocked: {blocked}", transient=False) from error
+                raise AiProviderError(public_error(f"{BLOCKED}: {blocked}") or BLOCKED, transient=False) from error
             raise AiProviderError("unexpected response shape", transient=True) from error
         usage = payload.get("usageMetadata") or {}
         return AiResponse(

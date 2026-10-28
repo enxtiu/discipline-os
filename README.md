@@ -5,13 +5,15 @@ training, steps, PARA tasks and planner, time tracking, gamification. Built as a
 mobile-first PWA for iPhone (iOS 17+, Safari → Add to Home Screen), dark by
 default, one-handed, every frequent action within two taps.
 
-> **Status: stages 1–7 of 10 are complete** — foundation, nutrition core,
+> **Status: stages 1–8 of 10 are complete** — foundation, nutrition core,
 > nutrition backfill, AI logging (photo/text → review → save, camera barcode
 > scanner), training (templates, weekly plan, live logger, records, burned
 > calories kept out of the food budget), health ingest (iOS Shortcut, steps,
 > weight, sleep), the planner (PARA, tasks with repeats and reminders,
-> calendar with drag, natural-language quick add, timer, journal) and web push
-> notifications (reminders, daily nudges, quiet hours). The foundation is live: repository,
+> calendar with drag, natural-language quick add, timer, journal), web push
+> notifications (reminders, daily nudges, quiet hours) and gamification & insight
+> (day score, XP, streaks, achievements, quests, dashboards, data export and a signed
+> backup). The foundation is live: repository,
 > infrastructure, the full database schema for every entity of the whole
 > product, device-token auth with pairing, settings with target calculation, the
 > design system and app shell with bottom navigation, i18n (ru/en), PWA basics
@@ -38,6 +40,7 @@ default, one-handed, every frequent action within two taps.
 - [Backups and restore](#backups-and-restore)
 - [iPhone setup: install the PWA](#iphone-setup-install-the-pwa)
 - [Web push on iPhone](#web-push-on-iphone)
+- [Notion (optional)](#notion-optional)
 - [iOS Shortcut recipe (steps and active energy)](#ios-shortcut-recipe-steps-and-active-energy)
 - [Troubleshooting](#troubleshooting)
 - [Security notes](#security-notes)
@@ -72,7 +75,9 @@ default, one-handed, every frequent action within two taps.
 | Health: iOS Shortcut ingest (scoped token, idempotent per day, lenient numbers, 62-day backfill), steps on Today with a manual fallback, weight (profile + targets follow) and sleep entries, a /health page with 14-day steps, 90-day weight and a sleep timeline | ✅ stage 5 |
 | Planner: PARA (inbox, projects, areas, resources, archive), tasks P1–P4 with tags, subtasks, due dates, time blocks, estimates, RRULE repeats, reminders and Markdown notes; Today / Inbox / Upcoming / Calendar (day, week, month with drag) and project, area, tag and search pages; natural-language quick add (ru/en) with a live preview; a timer that survives reloads and device switches, a time log; a daily journal with the server's day summary — all offline-queued | ✅ stage 6 |
 | Web push: VAPID subscriptions per device, task reminders and smart daily reminders (meal logging, water, planned workout, evening review) re-checked at send time, quiet hours (task reminders wait, daily nudges are dropped), per-category times, test notification, history; iPhone «На экран Домой» guidance in onboarding and Settings | ✅ stage 7 |
-| Gamification and charts, hardening, redesign | stages 8–10 |
+| Gamification & insight: a daily score whose calorie part peaks inside the target zone (0 below the safe floor), three rings, XP and 30 levels, streaks with freeze tokens (the workout streak is weekly and follows the plan), 46 achievements, daily/weekly quests with a claim; /stats dashboards (nutrition, activity, body, planner, progress; week to year); JSON, CSV and a signed backup download, restored by `python -m app.cli restore-backup` | ✅ stage 8 |
+| Notion (optional, off until connected): a one-way copy of areas, projects, tasks, the journal and day summaries into databases DisciplineOS creates on a page you choose; every 10 minutes or on demand, resumable, never a duplicate | ✅ stage 9 |
+| Hardening (offline sync and conflicts, performance, accessibility), redesign | stages 9–10 |
 
 ---
 
@@ -110,20 +115,20 @@ discipline-os/
 ├── api/                     FastAPI service
 │   ├── app/
 │   │   ├── ai/              provider adapters, strict schema, runner, prompts/*.vN.md (stage 3)
-│   │   ├── api/             routers (v1: auth, devices, tokens, settings, meta, foods, nutrition, ai, training, health, planner, push, notifications)
+│   │   ├── api/             routers (v1: auth, devices, tokens, settings, meta, foods, nutrition, ai, training, health, planner, push, notifications, gamification, stats, export)
 │   │   ├── core/            config, logging, errors, security, rate limit, tz, ids
 │   │   ├── models/          SQLAlchemy 2 models — every entity, every stage
 │   │   ├── schemas/         pydantic v2 request/response models
-│   │   ├── services/        pairing, tokens, targets, settings, scheduler, recurrence, planner/, task_parser, push, notifications
+│   │   ├── services/        pairing, tokens, targets, settings, scheduler, recurrence, planner/, task_parser, push, notifications, gamification/, day_metrics, stats, export, restore
 │   │   ├── seeds/           seed framework + exercise library
 │   │   └── cli.py           server-side admin commands
 │   ├── alembic/versions/    migrations (0001 = the whole schema, 0002 = planner indexes)
 │   ├── importers/           seed (320 foods RU/EN), Open Food Facts, USDA FDC (+ RU names)
-│   └── tests/               pytest suite (990+ tests)
+│   └── tests/               pytest suite (1 200+ tests)
 ├── web/                     React 18 + TS + Vite PWA
 │   ├── src/api/             fetch client, types, generated OpenAPI types
 │   ├── src/components/      design system (ui/) + shell (layout/)
-│   ├── src/features/        auth, today, food (2), ai (3), train (4), health (5), plan (6), notifications (7), settings, placeholders
+│   ├── src/features/        auth, today, food (2), ai (3), train (4), health (5), plan (6), notifications (7), game + stats (8), settings
 │   ├── src/i18n/            ru.json / en.json (all strings live here)
 │   ├── src/lib/             device, offline queue, formatting, errors, targets
 │   └── public/              icons, offline.html, sw-push.js (imported into the generated service worker)
@@ -131,7 +136,7 @@ discipline-os/
 ├── deploy/                  install.sh, update.sh, healthcheck.sh, backup/
 ├── scripts/                 dev-api.sh, smoke.sh, check-i18n.mjs, ui-check.mjs
 ├── .github/workflows/       ci.yml, deploy.yml, backup.yml
-├── docs/                    roadmap.md, stage-1 … stage-7.md, screenshots/
+├── docs/                    roadmap.md, stage-1 … stage-8.md, screenshots/
 ├── docker-compose.yml       postgres + api + caddy (production)
 ├── docker-compose.dev.yml   overlay: published postgres, api with reload
 └── Makefile                 every developer shortcut
@@ -274,6 +279,17 @@ Changing the keys later orphans every browser subscription — each device has t
 «Включить уведомления» again (the API logs `vapid_key_mismatch` if the two keys do not
 belong together).
 
+### Integrations (stage 9)
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `INTEGRATIONS_KEY` | empty | Key material for the Notion secret at rest (Fernet, key derived by HKDF-SHA256, info `dsos-integrations-v1`). Empty → derived from `SECRET_KEY`. Set it (`openssl rand -hex 32`) before you ever rotate `SECRET_KEY` |
+| `NOTION_REQUEST_BUDGET` | `450` | Requests one sync run may send per user; a bigger first sync continues on the next runs |
+| `NOTION_MAX_RPS` | `3` | Pace of the requests (Notion's average limit is 3 per second per connection; at most 3) |
+
+The Notion secret itself is not an environment variable: the owner enters it in
+**Настройки → Интеграции** (see [Notion (optional)](#notion-optional)).
+
 ### Backups
 
 | Variable | Purpose |
@@ -282,6 +298,8 @@ belong together).
 | `BACKUP_LOCAL_DIR` | Local directory, default `/var/backups/dsos` |
 | `BACKUP_RETENTION_DAYS` | Local retention, default `14` |
 | `AGE_RECIPIENT` | `age` public key; the matching private key never leaves the VPS |
+| `BACKUP_SIGNING_KEY` | Signs the manifest of the in-app backup (`GET /api/v1/export/backup`, HMAC-SHA256, key derived with HKDF); empty = derived from `SECRET_KEY`. Set it to keep backups restorable across a `SECRET_KEY` rotation, and give a new server the same value to move there with the whole history — see [Your data: export and restore-backup](#your-data-export-and-restore-backup) |
+| `BACKUP_MAX_DATA_BYTES` | Largest `data.json` that `restore-backup` unpacks, default `536870912` (512 MiB) |
 
 ---
 
@@ -390,14 +408,16 @@ place. New library rows are **unverified** until the owner taps *Подтвер�
 ## Testing
 
 ```bash
-# backend: 990+ tests — calorie math, food search & ranking (incl. the 150 ms
+# backend: 1 200+ tests — calorie math, food search & ranking (incl. the 150 ms
 # budget on a 50k-row library), importers (seed/USDA/OFF), live barcode fallback
 # (mocked), meal logging, recipes, day boundaries, recurrence, tokens/devices,
 # AI logging (fake provider + every adapter behind httpx.MockTransport), training
 # (search, templates, plan, idempotent sets, records, burned kcal, bounds), health
 # ingest, the planner (tasks, repeats across DST, reminders, views, PARA, timer
-# races, journal), 670 quick-add parser cases (ru + en) and web push (a real
+# races, journal), 670 quick-add parser cases (ru + en), web push (a real
 # aes128gcm round-trip, VAPID, the dispatcher's quiet hours and races, SSRF guards)
+# and gamification (the calorie curve, the safe floor in every reward, XP ledger,
+# streaks, quests, achievements, stats series, streamed exports, signed backups)
 cd api
 TEST_DATABASE_URL=postgresql+psycopg://postgres:postgres@127.0.0.1:5432/dsos_test \
   SECRET_KEY=test-secret-key-please-change-0123456789 .venv/bin/pytest -q
@@ -406,20 +426,21 @@ TEST_DATABASE_URL=postgresql+psycopg://postgres:postgres@127.0.0.1:5432/dsos_tes
 # frontend: types + production build (also verifies the PWA generation)
 cd web && npm run typecheck && npm run build
 
-# end-to-end against a running API (23 checks: pairing, scopes, targets, search
+# end-to-end against a running API (24 checks: pairing, scopes, targets, search
 # budget, barcode, recipes, AI parse without auto-save, 413 upload guard, a workout
 # end to end with food totals untouched, the Shortcut ingest, the planner — quick
 # add, a repeat's next instance, timer, journal, calendar — web push: step 16
 # starts a local receiver, sends POST /push/test to it and decrypts the push with
 # http_ece from api/.venv — the API needs VAPID keys and ENV=development for that
-# step, it is skipped otherwise — and revoke)
+# step, it is skipped otherwise — the day score, a stats week and the three exports
+# (stage 8), and revoke)
 API_BASE=http://127.0.0.1:8000/api ./scripts/smoke.sh <PAIRING-CODE>
 
 # i18n gate (also runs in the CI web job): every key the UI uses exists in both
 # locales, the locales do not drift, dynamic prefixes resolve
 node scripts/check-i18n.mjs
 
-# browser acceptance: 218 checks in a real Chromium — pairing gate, code entry,
+# browser acceptance: 325 checks in a real Chromium — pairing gate, code entry,
 # the 4-step onboarding with the live target preview, Today, quick add,
 # settings (language / theme / timezone), every route, the built PWA manifest,
 # food logging, recipes, AI text/photo review → save, offline AI message, the
@@ -429,7 +450,9 @@ node scripts/check-i18n.mjs
 # (views, editor, quick add, PARA, calendar drag, timer, time log, journal, offline;
 # scripts/ui-checks/stage6-*.mjs) and notifications (iPhone install steps,
 # prefs/quiet hours kept after reload, blocked/off/on states, a test push to a local
-# receiver decrypted in Node, history, onboarding on iPhone, ?task= deep links);
+# receiver decrypted in Node, history, onboarding on iPhone, ?task= deep links) and
+# gamification & stats (score card = API, claims, celebrations, achievements, every
+# dashboard section = API, the three downloads, the 429 message);
 # every module cleans up after itself
 # (FAKE_CAMERA plays an EAN-13 video:
 # python3 scripts/make-barcode-y4m.py 460700123456 /tmp/barcode.y4m).
@@ -559,6 +582,50 @@ automatically. `api_media` holds the optional 400 px meal thumbnails (stage 3);
 it is **not** in the `pg_dump` backup — copy the volume too if you want the
 pictures to survive a server loss (the meals themselves are in the database).
 
+### Your data: export and restore-backup
+
+Three downloads (`GET /api/v1/export/json`, `/csv`, `/backup` — a paired device only, 6
+a minute): everything as one JSON document (`disciplineos-YYYY-MM-DD.json`), one CSV per
+table in a zip (`disciplineos-YYYY-MM-DD-csv.zip`) and a restorable backup
+(`disciplineos-YYYY-MM-DD-backup.zip`: `data.json` + a signed `manifest.json`). No
+secret is ever exported (token hashes, pairing codes, push keys, raw AI payloads; an AI
+provider's error keeps only its status and error code).
+
+**CSV and a Russian-locale spreadsheet.** The CSV files are UTF-8 with a BOM, comma
+separated, with a **dot** as the decimal separator. Excel, Google Sheets or LibreOffice
+set to Russian read `12.5` as a date (12 May) and `80.4` as text — set the import locale
+(Excel: Data → From Text/CSV → File Origin/Locale; LibreOffice: the Language field of the
+import dialog) or the spreadsheet's locale (Google Sheets: File → Settings → Locale) to
+English (United States) before importing.
+
+**Restore** a backup on the server (`--dry-run` reports and writes nothing; running it
+twice changes nothing):
+
+```bash
+docker compose exec api python -m app.cli restore-backup /path/disciplineos-2026-10-01-backup.zip [--user-id <uuid>] [--dry-run]
+```
+
+- **Signed by this server → as it is.** The manifest carries an HMAC-SHA256 over all of
+  it — the data checksum, the account, the schema version, the creation time — with a
+  key derived from `BACKUP_SIGNING_KEY` (or `SECRET_KEY`). Such a backup goes back to its
+  own account, or with `--user-id` into an empty one.
+- **Not signed here** (edited, made by another server, or before the key changed) →
+  only into an **empty** account named with `--user-id` (the account inside the file
+  never chooses one). Its XP, daily scores, streaks, achievements and quests are not
+  taken: the engine rebuilds them from the restored records on its next run (claimed
+  quest XP and unlock dates are not carried over, and finished days are scored again
+  with the current targets). To move to a new server with the whole history, give it
+  the same `BACKUP_SIGNING_KEY`.
+- **Values are checked, never trusted.** Types, the shape of every JSON column, the
+  settings API's bounds; a safe floor below the default, or a calorie target below the
+  floor, that was never confirmed is put back to the floor (the CLI says so); XP, scores
+  and streaks of a signed backup must be within what the engine awards. A row may only
+  point at rows of the same account or at library rows. A meal photo is kept only when
+  it is restored on the same server into the same account and its file is still in
+  `api_media`. Any refusal writes nothing.
+- **Bounded.** `manifest.json` ≤ 1 MiB, `data.json` ≤ `BACKUP_MAX_DATA_BYTES`, and above
+  16 MiB at most 200× its compressed size — checked before anything is unpacked.
+
 ---
 
 ## iPhone setup: install the PWA
@@ -638,6 +705,87 @@ off as `vapid_rejected`, so Settings asks to turn notifications on again on that
 `GET|PUT /api/v1/notifications/prefs`, `GET /api/v1/notifications` (history).
 On the lock screen a task reminder shows the task title — keep that in mind for
 sensitive tasks.
+
+---
+
+## Notion (optional)
+
+DisciplineOS can keep a **one-way copy** of your planner and of your days in Notion.
+It is **off until you connect it**, and it creates its own databases on a page you
+choose — nothing has to be prepared in Notion except that page. DisciplineOS stays the
+source of truth: **edits made in Notion are overwritten** by the next sync (the
+server syncs every 10 minutes; «Синхронизировать сейчас» runs one at once).
+
+**Connect** (once; you must be an owner of the Notion workspace):
+
+1. Open the Notion **Developer portal** — <https://app.notion.com/developers/connections>
+   → **Internal connections** → **Create a new connection**, name it (e.g.
+   DisciplineOS) and pick the workspace.
+2. On its **Configuration** tab turn on **Read content**, **Update content** and
+   **Insert content**, then copy the **API token** — that is the secret (`ntn_…`).
+3. Create an empty page in Notion (e.g. «DisciplineOS»). On that page: **⋯** (top
+   right) → **Connections** → **Add connection** → your connection.
+4. Copy the page link (**⋯ → Copy link**).
+5. In the app: **Настройки → Интеграции → Notion** — paste the secret and the link →
+   **Подключить** → **Создать базы**. The first sync starts right away.
+
+The app checks both before saving anything: the secret's format and the link locally,
+then `GET /v1/users/me` (the secret) and `GET /v1/pages/{id}` (the page is shared with the
+connection). A personal access token works too, but it expires (at most a year); an
+internal connection's token does not — if you refresh it in the Developer portal, enter
+the new one under **Интеграции → «Ввести новый секрет»** (same page: the databases and
+links are kept).
+
+**What is synced** — one database per kind, property names in your language (Russian
+or English, as set when the database is created):
+
+| Database | Rows | Columns |
+| --- | --- | --- |
+| Области | areas not archived | name, description, weekly target (min) |
+| Проекты | projects not archived | name, status, area (relation), outcome, start, deadline, completed on, description |
+| Задачи | every task not archived — done and cancelled ones too, subtasks included | title, status, priority, project / area / parent task (relations — two-way, so a project lists its tasks and a task its subtasks), due (a date, or date and time in your timezone), time block, estimate, tracked minutes, tags, context, repeats, completed on, created, notes |
+| Дневник | journal entries with any content | date, day rating, mood, energy, wins, to improve, notes, tags |
+| Итоги дня | the last 365 days that have any data | eaten kcal and the day's target (and whether it was in the target zone), protein, water, steps, sleep (h), workouts, **burned kcal in workouts and Health's active energy — each in its own column, never subtracted from food**, tracked minutes, tasks done, day score |
+
+Every row also carries «ID DisciplineOS» — the key the sync finds it by; leave it alone.
+Notes (Markdown, as plain text) go into a property, split into 2 000-character pieces,
+up to about 20 000 characters. A row deleted or archived in DisciplineOS goes to the
+Notion **trash** (and comes back if you restore it). A database deleted or unshared in
+Notion is shown as missing — **«Создать заново»** makes a new one (the other kinds keep
+syncing meanwhile); a column deleted in Notion is put back with the next change. Day rows
+older than a year are left as they are.
+
+**What is not synced:** resources, time entries, meals and foods, workout sets, weights;
+anything from Notion back into DisciplineOS (one-way); page content (blocks) — notes are a
+property; future repeats of recurring tasks (they do not exist yet). The Obsidian export
+was dropped.
+
+**How it behaves:** each run hashes every row and only creates, updates or trashes what
+changed — an unchanged run sends nothing. It paces itself to ≤ 3 requests a second,
+honours Notion's `Retry-After`, retries 5xx for requests that are safe to repeat, and
+spends at most `NOTION_REQUEST_BUDGET` requests (a big first sync simply continues on
+the next runs). A page is never created twice: a create is recorded before it is sent,
+and if the answer is lost the next run looks the row up by its ID first. One run per user
+at a time (a second «Синхронизировать сейчас» says one is running).
+
+**Errors in words** (Интеграции shows them with what to do): the secret was refused
+(refreshed or revoked → enter the new one), a capability is missing (turn on Read /
+Update / Insert content), the page is not shared or is in the trash, Notion is busy or
+unreachable (the next run retries), a database is missing («Создать заново»), the stored
+secret cannot be read after a key change (enter it again).
+
+**Security:** the secret is stored encrypted (see `INTEGRATIONS_KEY` in
+[Environment variables](#integrations-stage-9)) and never leaves the server — not in an
+API response, a log line, an export or a backup. The server talks only to
+`https://api.notion.com/v1` with `Notion-Version: 2026-03-11`; a pasted link is parsed
+for the page id, never requested. The endpoints need a paired device (an API token
+gets 403): `GET /api/v1/integrations`, `GET|PATCH|DELETE /api/v1/integrations/notion`,
+`POST /api/v1/integrations/notion/connect|setup|sync`.
+
+**Disconnect:** Интеграции → **Отключить Notion** — syncing stops, the secret and the
+links are deleted on the server, and everything already in Notion stays there. The
+connection is not part of exports or backups: after a restore on another server,
+connect again.
 
 ---
 
@@ -812,6 +960,6 @@ dashboard) is delivered — see `docs/stage-2.md` — and stage 2b closed its ga
 budget) — see `docs/stage-2b.md`. Stage 3 (AI photo/text logging, barcode
 scanning, `docs/stage-3.md`), stage 4 (training, `docs/stage-4.md`) and stage 5
 (health ingest: the iOS Shortcut, steps, weight, sleep — `docs/stage-5.md`) and
-stage 6 (the planner — `docs/stage-6.md`) and stage 7 (web push notifications
-— `docs/stage-7.md`) are delivered; stage 8 (gamification, charts, data export)
-is next.
+stage 6 (the planner — `docs/stage-6.md`), stage 7 (web push notifications
+— `docs/stage-7.md`) and stage 8 (gamification, dashboards, data export —
+`docs/stage-8.md`) are delivered; stage 9 (hardening) is next.

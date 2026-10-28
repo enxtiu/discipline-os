@@ -13,7 +13,7 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 
-import { mutate, type QueuedMethod } from '@/lib/offlineQueue'
+import { mutate, type QueuedMethod, type QueueMeta } from '@/lib/offlineQueue'
 import { planApi, planPaths } from './api'
 import type {
   AreaIn,
@@ -257,6 +257,10 @@ interface WriteRequest {
   body?: unknown
   /** Idempotency key; for creates it is the new row's id. */
   clientUuid?: string
+  /** Stage 9: coalesce with the newest queued write of the same path while it waits (autosave, edits). */
+  merge?: boolean
+  /** Stage 9: shown in the sync sheet (a task title, a journal day). */
+  meta?: QueueMeta
 }
 
 /**
@@ -293,6 +297,8 @@ function usePlanWrite<TVars, TData>(
         body: request.body,
         clientUuid: request.clientUuid,
         kind: 'planner',
+        merge: request.merge,
+        meta: request.meta,
       })
       return result.queued ? { queued: true, clientUuid: result.clientUuid } : { queued: false, data: result.data }
     },
@@ -328,27 +334,34 @@ export function useQuickAdd() {
   })
 }
 
+/** `title` (optional) names the task in the sync sheet while the edit waits offline. */
 export function useUpdateTask() {
-  return usePlanWrite<{ id: string; patch: TaskPatchIn }, TaskPatchResult>(({ id, patch }) => ({
+  return usePlanWrite<{ id: string; patch: TaskPatchIn; title?: string }, TaskPatchResult>(({ id, patch, title }) => ({
     path: planPaths.task(id),
     method: 'PATCH',
     body: patch,
+    merge: true, // several offline edits of one task travel as one (each field keeps its first base)
+    meta: title ? { title } : undefined,
   }))
 }
 
 export function useCompleteTask() {
-  return usePlanWrite<{ id: string; completed_at?: string }, TaskCompleteResult>(({ id, completed_at }) => ({
-    path: planPaths.completeTask(id),
-    method: 'POST',
-    body: { completed_at: completed_at ?? new Date().toISOString() },
-  }))
+  return usePlanWrite<{ id: string; completed_at?: string; title?: string }, TaskCompleteResult>(
+    ({ id, completed_at, title }) => ({
+      path: planPaths.completeTask(id),
+      method: 'POST',
+      body: { completed_at: completed_at ?? new Date().toISOString() },
+      meta: title ? { title } : undefined,
+    }),
+  )
 }
 
 export function useReopenTask() {
-  return usePlanWrite<{ id: string }, TaskReopenResult>(({ id }) => ({
+  return usePlanWrite<{ id: string; title?: string }, TaskReopenResult>(({ id, title }) => ({
     path: planPaths.reopenTask(id),
     method: 'POST',
     body: {},
+    meta: title ? { title } : undefined,
   }))
 }
 
@@ -363,25 +376,41 @@ export function useDeleteTask() {
  * Optimistically merge `patch` into every cached copy of a task (lists, views,
  * details). Returns a rollback. Use it for the completion checkbox so the tap
  * answers instantly; the invalidation after the write brings the server truth.
+ * `patch` may be a function of the cached copy (stage 9: queued edits derive
+ * fields such as the status from the block the copy has).
  */
-export function patchTaskInCaches(queryClient: QueryClient, taskId: string, patch: Partial<Task>): () => void {
+export function patchTaskInCaches(
+  queryClient: QueryClient,
+  taskId: string,
+  patch: Partial<Task> | ((task: Task) => Partial<Task>),
+): () => void {
   const snapshots = queryClient.getQueriesData({ queryKey: planKeys.all })
+  let found = false
   const visit = (value: unknown): unknown => {
     if (Array.isArray(value)) return value.map(visit)
     if (value && typeof value === 'object') {
       const record = value as Record<string, unknown>
       const next: Record<string, unknown> = {}
       for (const [key, child] of Object.entries(record)) next[key] = visit(child)
-      if (record.id === taskId && typeof record.title === 'string' && 'status' in record) Object.assign(next, patch)
+      if (record.id === taskId && typeof record.title === 'string' && 'status' in record) {
+        found = true
+        Object.assign(next, typeof patch === 'function' ? patch(record as unknown as Task) : patch)
+      }
       return next
     }
     return value
   }
+  const touched: typeof snapshots = []
   for (const [key, data] of snapshots) {
-    if (data !== undefined) queryClient.setQueryData(key, visit(data))
+    if (data === undefined) continue
+    found = false
+    const next = visit(data)
+    if (!found) continue // this query does not show the task: leave it (and its subscribers) alone
+    touched.push([key, data])
+    queryClient.setQueryData(key, next)
   }
   return () => {
-    for (const [key, data] of snapshots) queryClient.setQueryData(key, data)
+    for (const [key, data] of touched) queryClient.setQueryData(key, data)
   }
 }
 
@@ -516,10 +545,12 @@ export function useDeleteTimeEntry() {
 // ---- journal -------------------------------------------------------------------
 /** Upsert by day; fields not sent keep their value (autosave sends only what changed). */
 export function useSaveJournal() {
-  return usePlanWrite<{ date: string; body: JournalIn }, JournalEntry>(({ date, body }) => ({
+  return usePlanWrite<{ date: string; body: JournalIn; title?: string }, JournalEntry>(({ date, body, title }) => ({
     path: planPaths.journal(date),
     method: 'PUT',
     body,
+    merge: true, // offline autosaves of a day travel as one write
+    meta: { title: title ?? date },
   }))
 }
 export function useDeleteJournal() {

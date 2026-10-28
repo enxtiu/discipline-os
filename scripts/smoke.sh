@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# End-to-end smoke test against a running API (stages 1–7).
+# End-to-end smoke test against a running API (stages 1–9).
 #
 #   API_BASE=http://127.0.0.1:8000/api scripts/smoke.sh VKT6-S6D5
 #
@@ -9,7 +9,8 @@
 # Exits non-zero on the first failed expectation. Read-only apart from one
 # settings PATCH, one target preview and one API token it creates and revokes
 # (stage 7: one push subscription it registers and removes, and the history row
-# of the test notification it sends to a local receiver).
+# of the test notification it sends to a local receiver; stage 8: the reads of the
+# day score and a stats week may store today's score/XP rows, as any app open does).
 set -euo pipefail
 
 API_BASE="${API_BASE:-http://127.0.0.1:8000/api}"
@@ -429,11 +430,77 @@ DECRYPT
   fi
 fi
 
-step "17. device self-revoke (cleanup)"
+step "17. gamification, stats and export (stage 8): the day score, a stats week, the three downloads"
+split "$(api GET /v1/gamification/today '' "$TOKEN")"
+[[ "$STATUS" == "200" ]] || fail "gamification/today returned $STATUS: $BODY"
+GAME="$(parse "$BODY" "f\"score {d['score']['value']:.0f} ({'provisional' if d['score']['provisional'] else 'final'}), {len(d['score']['components'])} parts, {len(d['rings'])} rings, level {d['xp']['level']['level']}\"")"
+[[ "$(parse "$BODY" "d['score']['provisional'] is True and len(d['rings']) == 3 and 0 <= d['score']['value'] <= 100")" == "True" ]] \
+  || fail "today's score is not a provisional 0..100 value with three rings: $BODY"
+split "$(api GET '/v1/stats/nutrition?period=week' '' "$TOKEN")"
+[[ "$STATUS" == "200" ]] || fail "stats/nutrition returned $STATUS: $BODY"
+[[ "$(parse "$BODY" "len(d['days'])")" == "7" ]] || fail "a stats week does not list 7 days: $BODY"
+[[ "$(parse "$BODY" "'burned' not in json.dumps(d) and 'workout_kcal' not in json.dumps(d)")" == "True" ]] \
+  || fail "burned calories appear in the nutrition stats"
+EXPORT_DIR="$(mktemp -d)"
+download() {  # download <path> <file>: saves the body, prints its Content-Disposition header
+  local attempt status wait
+  for attempt in 1 2; do
+    status="$(curl -sS -D "$EXPORT_DIR/$2.headers" -o "$EXPORT_DIR/$2" -w '%{http_code}' \
+      -H "Authorization: Bearer $TOKEN" "$API_BASE$1")"
+    [[ "$status" == "429" ]] || break
+    # exports are limited to 6 a minute per user (the browser checks may have spent them): wait once
+    wait="$(grep -i '^retry-after:' "$EXPORT_DIR/$2.headers" | tr -dc '0-9')"
+    sleep "$(( ${wait:-60} > 65 ? 65 : ${wait:-60} ))"
+  done
+  grep -i '^content-disposition:' "$EXPORT_DIR/$2.headers" | tr -d '\r' || true
+}
+JSON_NAME="$(download /v1/export/json export.json)"
+grep -q 'filename="disciplineos-[0-9-]*\.json"' <<<"$JSON_NAME" || fail "JSON export has no dated attachment name: $JSON_NAME"
+python3 - "$EXPORT_DIR/export.json" <<'PY' || fail "the JSON export is incomplete or carries a secret"
+import json, sys
+text = open(sys.argv[1], encoding="utf-8").read()
+data = json.loads(text)
+assert data["format"] and data["tables"] and "meal_logs" in data["tables"], "tables missing"
+for secret in ("token_hash", "p256dh", "pairing_code", "request_payload", "response_payload", "VAPID"):
+    assert secret not in text, secret
+PY
+CSV_NAME="$(download /v1/export/csv export-csv.zip)"
+grep -q 'filename="disciplineos-[0-9-]*-csv\.zip"' <<<"$CSV_NAME" || fail "CSV export name: $CSV_NAME"
+BACKUP_NAME="$(download /v1/export/backup backup.zip)"
+grep -q 'filename="disciplineos-[0-9-]*-backup\.zip"' <<<"$BACKUP_NAME" || fail "backup name: $BACKUP_NAME"
+python3 - "$EXPORT_DIR/export-csv.zip" "$EXPORT_DIR/backup.zip" <<'PY' || fail "the CSV zip or the backup zip is not what the contract says"
+import hashlib, json, sys, zipfile
+with zipfile.ZipFile(sys.argv[1]) as csv_zip:
+    names = csv_zip.namelist()
+    assert "README.txt" in names and "meal_logs.csv" in names, names[:5]
+    assert csv_zip.read("meal_logs.csv").startswith(b"\xef\xbb\xbf"), "no UTF-8 BOM"
+with zipfile.ZipFile(sys.argv[2]) as backup:
+    manifest = json.loads(backup.read("manifest.json"))
+    data = backup.read("data.json")
+    assert manifest["files"]["data.json"]["sha256"] == hashlib.sha256(data).hexdigest(), "checksum"
+    assert manifest["signature"]["alg"] == "HMAC-SHA256" and manifest["signature"]["value"], "unsigned"
+PY
+rm -rf "$EXPORT_DIR"
+pass "$GAME · a stats week of 7 days without burned calories · JSON, CSV (BOM) and a signed backup with a matching checksum, no secrets"
+
+step "18. Notion (stage 9): the card answers without Notion, a malformed secret is refused before any request"
+split "$(api GET /v1/integrations/notion '' "$TOKEN")"
+[[ "$STATUS" == "200" ]] || fail "GET /integrations/notion returned $STATUS: $BODY"
+[[ "$(parse "$BODY" "sorted(k for k in d if 'secret' in k)")" == "['secret_set']" ]] \
+  || fail "the Notion card exposes more than secret_set: $BODY"
+NOTION_CONNECTED="$(parse "$BODY" "d['connected']")"
+split "$(api POST /v1/integrations/notion/connect '{"secret":"not a secret","page":"https://example.com/x"}' "$TOKEN")"
+[[ "$STATUS" == "422" && "$(parse "$BODY" "d['error']['code']")" == "notion_secret_invalid" ]] \
+  || fail "a malformed secret was not refused locally ($STATUS): $BODY"
+split "$(api GET /v1/integrations/notion '' "$TOKEN")"
+[[ "$(parse "$BODY" "d['connected']")" == "$NOTION_CONNECTED" ]] || fail "a refused connect changed the connection"
+pass "card ok (connected=$NOTION_CONNECTED, no secret in it) · malformed secret → 422 notion_secret_invalid, nothing changed"
+
+step "19. device self-revoke (cleanup)"
 split "$(api DELETE "/v1/devices/$DEVICE_ID" '' "$TOKEN")"
 [[ "$STATUS" == "200" ]] || fail "device revoke returned $STATUS: $BODY"
 split "$(api GET /v1/auth/session '' "$TOKEN")"
 [[ "$STATUS" == "401" ]] || fail "a revoked device token still works ($STATUS)"
 pass "smoke device revoked, its token is dead"
 
-printf '\n\033[32mAll smoke checks passed (stages 1–7).\033[0m\n'
+printf '\n\033[32mAll smoke checks passed (stages 1–9).\033[0m\n'

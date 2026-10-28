@@ -23,8 +23,9 @@ Smart reminders re-check their condition **at send time**, so nobody gets a
 pointless nudge: meal (nothing logged in the window), water (behind the
 pro-rata share of the target), workout (planned today, not started), evening
 review (no journal entry yet), streak at risk (stage 8: a streak of ≥ 3 days/weeks
-not counted yet today, after 18:00). Meal reminders are about *logging*: no message
-ever suggests eating less or praises skipping a meal (see ``MESSAGES``).
+not counted yet today, after 18:00 — planned at the first minute from 18:00 that is
+not inside the quiet hours, :func:`streak_slot`). Meal reminders are about *logging*:
+no message ever suggests eating less or praises skipping a meal (see ``MESSAGES``).
 """
 
 from __future__ import annotations
@@ -89,7 +90,7 @@ DEFAULT_MEAL_TIMES: tuple[str, ...] = ("13:00", "19:30")
 DEFAULT_WATER_TIMES: tuple[str, ...] = ("12:00", "16:00", "20:00")
 DEFAULT_WORKOUT_TIME = "18:00"
 DEFAULT_EVENING_REVIEW_TIME = "21:30"
-STREAK_REMINDER_TIME = "20:00"  # stage 8: streaks are "at risk" from 18:00; one evening nudge
+STREAK_REMINDER_FROM = time(18, 0)  # stage 8: streaks are "at risk" from 18:00; one evening nudge
 
 STALE_AFTER = timedelta(minutes=60)  # a reminder more than an hour late is dropped, not sent
 NUDGE_TTL = timedelta(minutes=30)  # a daily nudge is worth less: a push service keeps it at most this long
@@ -572,6 +573,17 @@ def _generic_text(kind: ReminderKind, lang: str) -> tuple[str, str]:
 # --------------------------------------------------------------------------- #
 # Conditions (evaluated at send time)
 # --------------------------------------------------------------------------- #
+def _follow_streak_slot(row: Reminder, slot: tuple[date, str], quiet: QuietHours) -> tuple[date, str]:
+    """The streak slot follows the quiet hours: when they changed since the row was
+    planned, the row moves to today's slot (rescheduled when that is later, sent now
+    when it has passed) instead of being dropped as "prefs changed"."""
+    at = streak_slot(quiet)
+    if at is None or at == slot[1]:
+        return slot
+    row.payload = {**(row.payload if isinstance(row.payload, dict) else {}), "time": at}
+    return slot[0], at
+
+
 def _slot_of(reminder: Reminder) -> tuple[date, str] | None:
     payload = reminder.payload if isinstance(reminder.payload, dict) else {}
     try:
@@ -580,7 +592,19 @@ def _slot_of(reminder: Reminder) -> tuple[date, str] | None:
         return None
 
 
-def configured_slots(kind: ReminderKind, prefs: Prefs) -> tuple[str, ...]:
+def streak_slot(quiet: QuietHours) -> str | None:
+    """The streak reminder's time: the first minute from 18:00 (when streaks become "at
+    risk") that is not inside the quiet hours — ``None`` when the whole evening is quiet
+    (then there is no streak reminder that day). Still one per day."""
+    start = STREAK_REMINDER_FROM.hour * 60 + STREAK_REMINDER_FROM.minute
+    for minute in range(start, 24 * 60):
+        at = time(minute // 60, minute % 60)
+        if not quiet.contains(at):
+            return at.strftime("%H:%M")
+    return None
+
+
+def configured_slots(kind: ReminderKind, prefs: Prefs, quiet: QuietHours) -> tuple[str, ...]:
     if kind is ReminderKind.MEAL:
         return prefs.meal_times
     if kind is ReminderKind.WATER:
@@ -590,7 +614,8 @@ def configured_slots(kind: ReminderKind, prefs: Prefs) -> tuple[str, ...]:
     if kind is ReminderKind.EVENING_REVIEW:
         return (prefs.evening_review_time,)
     if kind is ReminderKind.STREAK:
-        return (STREAK_REMINDER_TIME,)
+        at = streak_slot(quiet)
+        return (at,) if at is not None else ()
     return ()
 
 
@@ -942,8 +967,10 @@ async def claim_reminder(db: AsyncSession, reminder_id: uuid.UUID, now: datetime
         display = task_message(task, now=now, tz=ctx.tz, lang=ctx.lang)
     elif smart:
         slot = _slot_of(row)
-        if slot is not None and configured_slots(row.kind, ctx.prefs):
-            if slot[1] not in configured_slots(row.kind, ctx.prefs):
+        if slot is not None and row.kind is ReminderKind.STREAK:
+            slot = _follow_streak_slot(row, slot, ctx.quiet)
+        if slot is not None and configured_slots(row.kind, ctx.prefs, ctx.quiet):
+            if slot[1] not in configured_slots(row.kind, ctx.prefs, ctx.quiet):
                 return _close(row, ReminderStatus.CANCELLED, "prefs_changed")
             expected = local_instant(slot[0], _hhmm(slot[1]), ctx.tz)
             if expected > now + timedelta(minutes=1):  # the timezone changed since it was planned
@@ -1171,8 +1198,9 @@ async def wanted_slots(db: AsyncSession, ctx: UserContext, day: date) -> list[tu
     if prefs.streak_at_risk:
         from app.services.gamification.streaks import NOTIFY_MIN_STREAK, has_streak
 
-        if await has_streak(db, ctx.user_id, NOTIFY_MIN_STREAK):  # nothing to protect → no row
-            slots.append((ReminderKind.STREAK, f"streak:{day.isoformat()}", STREAK_REMINDER_TIME))
+        at = streak_slot(ctx.quiet)  # the first minute from 18:00 outside the quiet hours
+        if at is not None and await has_streak(db, ctx.user_id, NOTIFY_MIN_STREAK):  # nothing to protect → no row
+            slots.append((ReminderKind.STREAK, f"streak:{day.isoformat()}", at))
     return slots
 
 

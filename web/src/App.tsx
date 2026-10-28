@@ -46,6 +46,10 @@ const StatsRoutes = lazy(() => import('@/features/stats/StatsRoutes'))
 // Food's and Plan's chunks load once the app is up and idle (prefetchTabs)
 const food = chunk(() => import('@/features/food/FoodPage'))
 const FoodPage = food('FoodPage')
+// stage 9: Settings → Интеграции (the optional Notion sync) loads on first visit
+const IntegrationsScreen = lazy(() =>
+  import('@/features/integrations/IntegrationsScreen').then((m) => ({ default: m.IntegrationsScreen })),
+)
 import { SettingsHeader } from '@/features/settings/SettingsHeader'
 
 export default function App() {
@@ -89,6 +93,7 @@ function Shell() {
           <Route path="tokens" element={<TokensSection />} />
           <Route path="shortcut" element={<ShortcutSection />} />
           <Route path="data" element={<DataSection />} />
+          <Route path="integrations" element={<Lazy><IntegrationsScreen /></Lazy>} />
         </Route>
 
         <Route path="*" element={<Navigate to="/today" replace />} />

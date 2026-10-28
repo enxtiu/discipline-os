@@ -110,6 +110,13 @@ export function kilograms(value: number | null | undefined, digits = 1): string 
   return value === null || value === undefined ? '—' : `${number(value, digits)} ${i18n.t('common.kg')}`
 }
 
+/** 1 234 567 → «1,2 МБ» (bytes, KB, MB in the UI language). */
+export function fileSize(bytes: number): string {
+  if (bytes < 1024) return `${number(bytes)} ${i18n.t('common.size_b')}`
+  if (bytes < 1024 * 1024) return `${number(bytes / 1024, bytes < 10 * 1024 ? 1 : 0)} ${i18n.t('common.size_kb')}`
+  return `${number(bytes / (1024 * 1024), 1)} ${i18n.t('common.size_mb')}`
+}
+
 export function percent(value: number | null | undefined, digits = 0): string {
   if (value === null || value === undefined || Number.isNaN(value)) return '—'
   return `${number(value, digits)}%`

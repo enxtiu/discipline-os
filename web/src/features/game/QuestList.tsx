@@ -100,6 +100,13 @@ function QuestRow({ quest, onClaim, claiming }: { quest: UserQuest; onClaim: (qu
             {questProgress(quest)} · {t('game.quest_reward', { xp: quest.xp_reward })}
           </span>
         </div>
+        {quest.status === 'active' && quest.progress >= quest.target && (
+          // the amount is reached, but the server credits nutrition quests only on a day with food
+          // logged at or above the safe floor (water, protein…) — say why it is not «Получить» yet
+          <p className="mt-1 text-xs muted" data-testid="quest-needs-food">
+            {t('game.quest_needs_food')}
+          </p>
+        )}
       </div>
       {quest.status === 'completed' && (
         <Button

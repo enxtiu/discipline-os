@@ -48,7 +48,7 @@ export function useCompleteToggle(todayHint?: string, placement: PlanToastPlacem
       completed_day: null,
     })
     reopen.mutate(
-      { id: task.id },
+      { id: task.id, title: task.title },
       {
         onSuccess: (result) => {
           if (result.queued) planToast.info(t('task.queued'), { placement })
@@ -68,7 +68,7 @@ export function useCompleteToggle(todayHint?: string, placement: PlanToastPlacem
       overdue: false,
     })
     complete.mutate(
-      { id: task.id },
+      { id: task.id, title: task.title },
       {
         onSuccess: (result) => {
           const action = { label: t('task.undo'), onClick: () => reopenTask(task) }
