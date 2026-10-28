@@ -78,6 +78,7 @@ export function TrainPage() {
 
   return (
     <div className="space-y-6">
+      <h1 className="sr-only">{t('train.title')}</h1>
       {/* the one thing to do now */}
       {today.isLoading ? (
         <Skeleton className="h-36 rounded-card" />

@@ -594,7 +594,7 @@ function ExerciseCard({
                   onChange={(patch) => update(row.id, { ...patch, dirty: row.state !== 'planned' })}
                 />
                 {isPr && (
-                  <span className="shrink-0 text-violet-300" title={t('train.record')} aria-label={t('train.record')}>
+                  <span className="shrink-0 text-violet-300" title={t('train.record')} role="img" aria-label={t('train.record')}>
                     <IconStar size={16} filled />
                   </span>
                 )}

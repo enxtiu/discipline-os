@@ -107,6 +107,7 @@ export function TodayPage() {
 
   return (
     <div className="space-y-5">
+      <h1 className="sr-only">{t('today.title')}</h1>
       <TimerBar variant="today" />
 
       <section className="flex flex-col items-center gap-4">

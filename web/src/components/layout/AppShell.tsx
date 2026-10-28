@@ -19,6 +19,7 @@ import { IconButton } from '@/components/ui'
 import { AiCaptureProvider } from '@/features/ai/AiCapture'
 import { TaskSheetHost } from '@/features/plan/tasks/TaskSheetHost'
 import { useNotificationBridge } from '@/features/notifications/useNotificationBridge'
+import { useDocumentTitle } from '@/lib/useDocumentTitle'
 
 export function AppShell() {
   const { t } = useTranslation()
@@ -26,6 +27,7 @@ export function AppShell() {
   const { session } = useAuth()
   const [quickAddOpen, setQuickAddOpen] = useState(false)
   useNotificationBridge() // stage 7: ?task=<id> deep links, service-worker navigation
+  useDocumentTitle() // stage 9: «План · DisciplineOS» — screen readers announce where you are
 
   const greeting = greetingKey()
   const name = session?.user.display_name ?? ''

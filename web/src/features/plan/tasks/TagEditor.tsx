@@ -108,7 +108,7 @@ export function TagEditor({
         )}
       </div>
       {matches.length > 0 && !full && (
-        <div className="flex flex-wrap gap-2" aria-label={t('task.tag_suggestions')}>
+        <div className="flex flex-wrap gap-2" role="group" aria-label={t('task.tag_suggestions')}>
           {matches.map((name) => (
             <Chip key={name} onClick={() => add(name)} data-testid="tag-suggestion">
               #{name}

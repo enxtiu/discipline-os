@@ -113,7 +113,8 @@ export function FoodPage() {
 
   return (
     <div className="space-y-5">
-      <div className="grid grid-cols-3 gap-2" aria-label={t('ai.capture_row')}>
+      <h1 className="sr-only">{t('food.title')}</h1>
+      <div className="grid grid-cols-3 gap-2" role="group" aria-label={t('ai.capture_row')}>
         <PhotoTrigger className="btn-secondary btn-sm min-h-tap cursor-pointer flex-col gap-1 py-2 text-xs">
           <IconCamera size={20} className="text-[rgb(var(--accent))]" />
           {t('food.photo')}
