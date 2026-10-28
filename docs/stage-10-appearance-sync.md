@@ -118,7 +118,7 @@ api/app/services/appearance.py                    ★ check_appearance_base (409
 api/app/services/entitlements.py                  ★ the plan gate seam: plan_allows · require_feature · FEATURE_APPEARANCE_SYNC
 api/app/api/v1/settings.py                        PATCH: gate, lock, base check before any write, apply
 api/app/services/restore.py                       a restored appearance is re-validated
-api/tests/test_stage10_appearance_sync.py         ★ 40 tests
+api/tests/test_stage10_appearance_sync.py         ★ 41 tests
 web/src/lib/appearanceSync.ts                     ★ the switch, base, merge, debounced push, retries (lazy chunk)
 web/src/features/settings/ThemeSection.tsx        the «Устройства» group
 web/src/main.tsx                                  loads appearanceSync after the first render
@@ -182,7 +182,24 @@ By hand, with two phones (or two browsers):
 
 ## 7. Evidence (this build)
 
-EVIDENCE_PLACEHOLDER
+Commit before this file's last edit, as the worktree `stage-10-appearance-sync` (from internal `main` at `c1c7acd`). Run in this
+container on 29 Oct 2026; PostgreSQL 16 (UTF-8, en_US), the API with the fake AI provider.
+
+| Gate | Result |
+| --- | --- |
+| `alembic downgrade 0004` · `upgrade head` | the column goes and comes back; `alembic current` = `0005 (head)` |
+| `ruff check` · `ruff format --check` | clean (183 files) |
+| `pytest -q` (whole suite, DB `dsos_test_s10sync`) | **1 491 passed, 7 skipped, 0 failed** (7.5 min); 41 of them are the new `test_stage10_appearance_sync.py` |
+| `npm run typecheck` · `npm run build` | exit 0 — main chunk **297.30 kB** (297.1 before; the only addition is the `import()` that loads the sync); `appearanceSync` is a 4.91 kB (gzip 2.14) chunk of its own |
+| `node scripts/check-i18n.mjs` | complete and in sync — 1 997 keys in each locale |
+| `node scripts/perf/bundle-report.mjs --check` | ok — main 297.4 kB ≤ 300 kB |
+| whole `scripts/ui-check.mjs` (fresh DB `dsos_s10_sync_ui`, every module) | **730 ok, 0 failed** (exit 0; 646 before the stage-10 part-2 and this module) |
+| `stage10-appearance-sync` (part of that run) | 35 checks: the switch (default on, 48 px, stored on the device, copy), a fresh device uploads nothing, preview instant, three taps = one write with `base`, the second device adopts at start and writes nothing, follows when back online without a reload, OFF neither writes nor reads (0 writes, own look kept across a restart), ON again takes the account's look, first enable with nothing on the account uploads this device's, offline → «Нет связи…» → sent when back, a stale base → 409 → merged (own key wins, the rest follows, two writes), a `base` of another account ignored, no console errors, the account reset to null |
+| axe on Оформление (stage10-themes, stage9-a11y — both now include the «Устройства» group) | 0 serious/critical nodes, 48 px targets |
+| `scripts/smoke.sh` | not run (no API change outside `/settings`; the whole pytest suite and the browser run cover it) |
+
+Screenshots (390 × 844): `/home/claude/runint/s10sync/shots/s10-sync-on-evolution.png`, `s10-sync-off-evolution.png`,
+`s10-sync-on-stickers.png`.
 
 ## 8. Decisions
 
