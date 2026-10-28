@@ -41,6 +41,41 @@
     --rose-200: 254 205 211;     /* #FECDD3 */
     --rose-300: 253 164 175;     /* #FDA4AF */
     --rose-400: 251 113 133;     /* #FB7185 */
+
+    /* Stage 10 — categories: what calories, macros, water, steps, the streak, the day score
+       and XP are drawn in (rings, bars, tiles). «Эволюция» keeps its stage-8 colours, so the
+       values follow the tokens they were drawn with (dark and light); a theme sets its own.
+       --on-cat-*: text on a fill of that category. */
+    --cat-kcal: var(--accent);
+    --cat-protein: var(--accent-2);
+    --cat-fat: var(--warn);
+    --cat-carbs: var(--accent);
+    --cat-fibre: var(--accent);
+    --cat-water: var(--aqua-400);
+    --cat-steps: var(--violet-400);
+    --cat-streak: var(--warn);
+    --cat-score: var(--accent);
+    --cat-xp: var(--violet-400);
+    --on-cat-kcal: var(--on-accent);
+    --on-cat-protein: var(--on-accent);
+    --on-cat-fat: var(--on-accent);
+    --on-cat-carbs: var(--on-accent);
+    --on-cat-fibre: var(--on-accent);
+    --on-cat-water: var(--on-accent);
+    --on-cat-steps: var(--on-accent);
+    --on-cat-streak: var(--on-accent);
+    --on-cat-score: var(--on-accent);
+    --on-cat-xp: var(--on-accent);
+
+    /* Stage 10 — chart roles (features/stats/charts/theme.ts): «Эволюция» = the stage-8 tokens */
+    --chart-food: var(--accent);
+    --chart-move: var(--accent-2);
+    --chart-score: var(--accent);
+    --chart-xp: var(--accent-2);
+    --chart-rest: var(--text-muted);
+    --chart-grid: var(--border);
+    --chart-outline: none;
+    --chart-outline-width: 0;
   }
 
   :root[data-theme='light'] {

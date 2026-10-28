@@ -6,7 +6,7 @@
  * list grouped by type, and the "burned is not budget" card (workouts since
  * stage 4, from `GET /v1/training/today`), steps, weight and sleep since
  * stage 5 (`GET /v1/health/today`), the planner card and the running timer since
- * stage 6, gamification in stage 8.
+ * stage 6, gamification in stage 8. Stage 10: category colours from the theme's tokens.
  */
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -14,7 +14,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { m } from 'framer-motion'
 
 import { Button, Callout, Card, EmptyState, ProgressBar, Skeleton } from '@/components/ui'
-import { ProgressRing } from '@/components/ui/ProgressRing'
+import { ProgressRing, type Category } from '@/components/ui/ProgressRing'
 import {
   IconCamera,
   IconDroplet,
@@ -151,7 +151,7 @@ export function TodayPage() {
             max={targetKcal ?? 0}
             size={196}
             thickness={14}
-            tone={progressPercent > 100 ? 'warn' : 'accent'}
+            tone={progressPercent > 100 ? 'warn' : 'kcal'}
             label={hasTargets ? number(eaten.kcal) : '—'}
             sublabel={t('today.kcal')}
             name={t('today.kcal')}
@@ -195,17 +195,17 @@ export function TodayPage() {
       {hasTargets && (
         <Card className="space-y-4">
           <div className="grid grid-cols-4 gap-3">
-            <MacroRing title={t('today.protein')} value={eaten.protein_g} max={targets?.target_protein_g ?? 0} tone="violet" unit={t('common.g')} />
-            <MacroRing title={t('today.fat')} value={eaten.fat_g} max={targets?.target_fat_g ?? 0} tone="warn" unit={t('common.g')} />
-            <MacroRing title={t('today.carbs')} value={eaten.carbs_g} max={targets?.target_carbs_g ?? 0} tone="accent" unit={t('common.g')} />
-            <MacroRing title={t('today.fiber')} value={eaten.fiber_g} max={targets?.target_fiber_g ?? 0} tone="accent" unit={t('common.g')} />
+            <MacroRing title={t('today.protein')} value={eaten.protein_g} max={targets?.target_protein_g ?? 0} tone="protein" unit={t('common.g')} />
+            <MacroRing title={t('today.fat')} value={eaten.fat_g} max={targets?.target_fat_g ?? 0} tone="fat" unit={t('common.g')} />
+            <MacroRing title={t('today.carbs')} value={eaten.carbs_g} max={targets?.target_carbs_g ?? 0} tone="carbs" unit={t('common.g')} />
+            <MacroRing title={t('today.fiber')} value={eaten.fiber_g} max={targets?.target_fiber_g ?? 0} tone="fibre" unit={t('common.g')} />
           </div>
           <div className="divider" />
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5 text-sm">
                 <span className="flex items-center gap-1.5">
-                  <span className="text-aqua-400">
+                  <span className="text-[rgb(var(--cat-water))]">
                     <IconDroplet size={16} />
                   </span>
                   {t('today.water')}
@@ -214,7 +214,7 @@ export function TodayPage() {
                   {number(waterMl)} / {number(targets?.target_water_ml ?? 0)}&nbsp;{t('common.ml')}
                 </span>
               </div>
-              <ProgressBar value={waterMl} max={targets?.target_water_ml ?? 1} />
+              <ProgressBar value={waterMl} max={targets?.target_water_ml ?? 1} tone="water" />
               {waterPending && (
                 <p className="text-[11px] text-violet-300" data-testid="water-pending">
                   {t('sync.pending_mark')}
@@ -236,7 +236,7 @@ export function TodayPage() {
                   {number(steps)} / {number(targetSteps)}
                 </span>
               </div>
-              <ProgressBar value={steps} max={targetSteps || 1} tone="violet" />
+              <ProgressBar value={steps} max={targetSteps || 1} tone="steps" />
               <Button size="sm" variant="secondary" className="min-h-tap" onClick={() => setHealthSheet('steps')}>
                 {t('health.steps_enter')}
               </Button>
@@ -452,7 +452,7 @@ function MacroRing({
   title: string
   value: number
   max: number
-  tone: 'accent' | 'violet' | 'warn'
+  tone: Category
   unit: string
 }) {
   const { t } = useTranslation()

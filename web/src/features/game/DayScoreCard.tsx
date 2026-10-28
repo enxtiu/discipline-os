@@ -93,7 +93,7 @@ export function DayScoreCard() {
               max={100}
               size={112}
               thickness={10}
-              tone="accent"
+              tone="score"
               className="[&_svg]:overflow-visible"
               label={
                 <span className="text-[34px]" data-testid="day-score-value">
@@ -174,7 +174,7 @@ function LevelBlock({ xp }: { xp: XpToday }) {
         </span>
         <span className="min-w-0 flex-1 truncate font-semibold">{levelTitle(level)}</span>
       </div>
-      <ProgressBar value={level.progress} max={1} tone="violet" />
+      <ProgressBar value={level.progress} max={1} tone="xp" />
       <div className="tnum flex items-baseline justify-between gap-3 text-xs">
         <span className="font-semibold text-[rgb(var(--accent-2))]" data-testid="day-xp-today">
           {t('game.xp_today', { xp: number(xp.today) })}
@@ -211,7 +211,7 @@ function StreakBlock({ streaks }: { streaks: Streak[] }) {
                 <IconFlameLit
                   lit={streak.today_met}
                   size={16}
-                  className={clsx('shrink-0', streak.today_met ? 'text-[rgb(var(--warn))]' : 'text-[rgb(var(--text-muted))]')}
+                  className={clsx('shrink-0', streak.today_met ? 'text-[rgb(var(--cat-streak))]' : 'text-[rgb(var(--text-muted))]')}
                 />
                 <span className="tnum truncate text-sm font-semibold">{streakLength(streak, streak.current)}</span>
               </span>
