@@ -62,7 +62,7 @@ services:
     env_file: [.env]
     environment:
       DOMAIN: ${DOMAIN}
-      ACME_EMAIL: ${ACME_EMAIL}
+      ACME_EMAIL: ${ACME_EMAIL:-}  # optional
     ports:
       - "80:80"
       - "443:443"

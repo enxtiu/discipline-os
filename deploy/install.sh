@@ -82,7 +82,7 @@ cd "$APP_DIR"
 if [[ ! -f .env ]]; then
   say "Writing .env (secrets are generated locally; nothing is echoed to CI)"
   ask DOMAIN "Public domain (A-record must point here)"
-  ask ACME_EMAIL "E-mail for Let's Encrypt"
+  ask ACME_EMAIL "E-mail for Let's Encrypt expiry notices (optional, Enter to skip)"
   ask GHCR_OWNER "GitHub owner (lowercase) that publishes the images"
   ask BACKUP_REPO "Private git repo for encrypted backups" ""
 

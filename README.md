@@ -199,7 +199,7 @@ All of them live in `.env` (copy from `.env.example`; never commit the real one)
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `DOMAIN` | — | Public hostname; Caddy obtains the Let's Encrypt certificate for it |
-| `ACME_EMAIL` | — | Contact address for certificate expiry notices |
+| `ACME_EMAIL` | — | Contact address for certificate expiry notices. Optional — empty or unset, Caddy starts without it |
 | `COMPOSE_PROJECT_NAME` | `disciplineos` | Compose project name |
 | `API_IMAGE` / `WEB_IMAGE` | `ghcr.io/OWNER/…:latest` | Image coordinates; CI rewrites the tag per release |
 | `VITE_APP_VERSION` | `prod` | Baked into the bundle and shown in Settings → Data |

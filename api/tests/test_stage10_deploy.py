@@ -413,3 +413,171 @@ def test_healthcheck_names_what_is_wrong_with_the_payload(health_box: Sandbox, b
     done, out = run_check(health_box, body)
     assert problem in out, out
     assert done.returncode == 1, out
+
+
+# --------------------------------------------------------------------------- #
+# 5. Caddy — the ACME account e-mail is optional (docker/caddy-entrypoint.sh + the Caddyfile import)
+# --------------------------------------------------------------------------- #
+CADDY = os.environ.get("CADDY_BIN") or shutil.which("caddy")
+needs_caddy = pytest.mark.skipif(CADDY is None, reason="no caddy binary (set CADDY_BIN or put caddy on PATH)")
+ENTRYPOINT = REPO / "docker" / "caddy-entrypoint.sh"
+
+
+@pytest.fixture
+def caddy_dir(tmp_path: Path) -> Path:
+    """What the image has in /etc/caddy: the Caddyfile and the comment-only default snippet."""
+    target = tmp_path / "etc-caddy"
+    target.mkdir()
+    shutil.copy2(REPO / "docker" / "Caddyfile", target)
+    shutil.copy2(REPO / "docker" / "acme-email.caddy", target)
+    return target
+
+
+def start_container(caddy_dir: Path, email: str | None, *command: str):
+    """What the image's ENTRYPOINT does before it hands over to `caddy run`."""
+    env = {"PATH": os.environ["PATH"], "CADDY_ACME_EMAIL_FILE": str(caddy_dir / "acme-email.caddy")}
+    if email is not None:
+        env["ACME_EMAIL"] = email
+    return run(["sh", ENTRYPOINT, *(command or ("true",))], env=env, timeout=30)
+
+
+def snippet_directives(caddy_dir: Path) -> list[str]:
+    lines = (caddy_dir / "acme-email.caddy").read_text().splitlines()
+    return [line for line in lines if line.strip() and not line.lstrip().startswith("#")]
+
+
+def issuer_emails(caddy_dir: Path) -> list[str | None] | None:
+    """The e-mail the real caddy puts into the ACME issuers of the adapted Caddyfile (None = no TLS app)."""
+    adapted = run(
+        [CADDY or "caddy", "adapt", "--config", caddy_dir / "Caddyfile", "--adapter", "caddyfile"],
+        env={"PATH": os.environ["PATH"], "DOMAIN": "dsos.example.com", "HOME": str(caddy_dir)},
+        timeout=60,
+    )
+    assert adapted.returncode == 0, adapted.stderr
+    tls = json.loads(adapted.stdout)["apps"].get("tls")
+    if not tls:
+        return None
+    return [issuer.get("email") for issuer in tls["automation"]["policies"][0]["issuers"]]
+
+
+def caddy_validate(caddy_dir: Path):
+    return run(
+        [CADDY or "caddy", "validate", "--config", caddy_dir / "Caddyfile", "--adapter", "caddyfile"],
+        env={"PATH": os.environ["PATH"], "DOMAIN": "dsos.example.com", "HOME": str(caddy_dir)},
+        timeout=60,
+    )
+
+
+@pytest.mark.parametrize(
+    ("email", "directive"),
+    [
+        (None, []),
+        ("", []),
+        ("   ", []),
+        ("me@example.com", ['email "me@example.com"']),
+        ("  me@example.com  ", ['email "me@example.com"']),
+        ("me@example.com\r", ['email "me@example.com"']),  # a .env with CRLF line endings
+        ("first.last+dsos@mail.example.co.uk", ['email "first.last+dsos@mail.example.co.uk"']),
+    ],
+    ids=["unset", "empty", "blanks", "address", "padded", "crlf", "plus-and-dots"],
+)
+def test_entrypoint_writes_the_email_directive_only_when_there_is_an_address(
+    caddy_dir: Path, email: str | None, directive: list[str]
+) -> None:
+    done = start_container(caddy_dir, email)
+    assert done.returncode == 0, done.stderr
+    assert snippet_directives(caddy_dir) == directive
+    assert done.stderr == ""
+
+
+@pytest.mark.parametrize(
+    "email",
+    [
+        "me @example.com",
+        'me"@example.com',
+        "me@{env.ACME}",
+        "me@example.com\nbind 1.2.3.4",
+        "no-at-sign",
+        "a@b@c.d",
+        "@x.y",
+        "me@",
+    ],
+    ids=["space", "quote", "placeholder", "newline-injection", "no-at", "two-ats", "no-local-part", "no-domain"],
+)
+def test_entrypoint_ignores_a_value_that_is_not_an_email_address(caddy_dir: Path, email: str) -> None:
+    done = start_container(caddy_dir, email)
+    assert done.returncode == 0, done.stderr  # the site still comes up
+    assert snippet_directives(caddy_dir) == []
+    assert "does not look like an e-mail address" in done.stderr
+
+
+def test_entrypoint_hands_over_to_its_command_and_keeps_its_exit_code(caddy_dir: Path) -> None:
+    done = start_container(caddy_dir, "me@example.com", "sh", "-c", 'echo "started with $0 $1"; exit 3', "a", "b")
+    assert done.returncode == 3
+    assert done.stdout.strip() == "started with a b"
+    assert snippet_directives(caddy_dir) == ['email "me@example.com"']  # written before the command ran
+
+
+def test_entrypoint_rewrites_the_snippet_on_every_start(caddy_dir: Path) -> None:
+    start_container(caddy_dir, "me@example.com")
+    assert snippet_directives(caddy_dir) == ['email "me@example.com"']
+    start_container(caddy_dir, "")  # the address was taken out of .env and the container restarted
+    assert snippet_directives(caddy_dir) == []
+
+
+def test_entrypoint_still_starts_when_it_cannot_write_the_snippet(tmp_path: Path) -> None:
+    env = {"PATH": os.environ["PATH"], "CADDY_ACME_EMAIL_FILE": str(tmp_path / "missing-dir" / "acme-email.caddy")}
+    env["ACME_EMAIL"] = "me@example.com"
+    done = run(["sh", ENTRYPOINT, "echo", "up"], env=env, timeout=30)
+    assert done.returncode == 0 and done.stdout.strip() == "up"
+    assert "cannot write" in done.stderr
+
+
+@needs_caddy
+def test_the_caddyfile_as_committed_is_valid_without_any_acme_email() -> None:
+    """The repo's own docker/ directory is a working /etc/caddy: CI (or you) can `caddy validate` it as it is."""
+    done = run(
+        [CADDY or "caddy", "validate", "--config", REPO / "docker" / "Caddyfile", "--adapter", "caddyfile"],
+        env={"PATH": os.environ["PATH"], "DOMAIN": "dsos.example.com", "HOME": str(REPO)},
+        timeout=60,
+    )
+    assert done.returncode == 0, done.stderr
+    assert "Valid configuration" in done.stdout + done.stderr
+
+
+@needs_caddy
+@pytest.mark.parametrize(
+    "email", [None, "", "   ", "not an address", "me@example.com"], ids=["unset", "empty", "blanks", "bad", "good"]
+)
+def test_caddy_starts_with_and_without_the_acme_email(caddy_dir: Path, email: str | None) -> None:
+    """The bug: an empty ACME_EMAIL made `email {$ACME_EMAIL}` a Caddyfile parse error."""
+    assert start_container(caddy_dir, email).returncode == 0
+    done = caddy_validate(caddy_dir)
+    assert done.returncode == 0, done.stderr
+    assert "Valid configuration" in done.stdout + done.stderr
+    expected = ["me@example.com", "me@example.com"] if email == "me@example.com" else None
+    assert issuer_emails(caddy_dir) == expected  # the address reaches both ACME issuers; otherwise none is set
+
+
+@needs_caddy
+def test_the_old_caddyfile_really_broke_on_an_empty_email(caddy_dir: Path) -> None:
+    """The regression guard for the guard: with the previous directive the same input does not parse."""
+    old = (caddy_dir / "Caddyfile").read_text().replace("import acme-email.caddy", "email {$ACME_EMAIL}")
+    (caddy_dir / "Caddyfile").write_text(old)
+    broken = run(
+        [CADDY or "caddy", "validate", "--config", caddy_dir / "Caddyfile", "--adapter", "caddyfile"],
+        env={"PATH": os.environ["PATH"], "DOMAIN": "dsos.example.com", "ACME_EMAIL": "", "HOME": str(caddy_dir)},
+        timeout=60,
+    )
+    assert broken.returncode != 0 and "wrong argument count" in broken.stderr
+
+
+def test_the_image_and_compose_wire_the_entrypoint_up() -> None:
+    dockerfile = (REPO / "docker" / "caddy.Dockerfile").read_text()
+    assert 'ENTRYPOINT ["/usr/local/bin/caddy-entrypoint.sh"]' in dockerfile
+    assert 'CMD ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]' in dockerfile
+    assert "docker/acme-email.caddy" in dockerfile and "docker/caddy-entrypoint.sh" in dockerfile
+    assert "email {$ACME_EMAIL}" not in (REPO / "docker" / "Caddyfile").read_text()
+    assert (
+        "ACME_EMAIL: ${ACME_EMAIL:-}" in (REPO / "docker-compose.yml").read_text()
+    )  # no «variable is not set» warning

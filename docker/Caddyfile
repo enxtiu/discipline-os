@@ -6,7 +6,11 @@
 #   - localhost falls back to an internal CA / self-signed cert for dev
 # ---------------------------------------------------------------------------
 {
-	email {$ACME_EMAIL}
+	# The ACME account e-mail (Let's Encrypt expiry notices) is optional, and an `email` without
+	# an argument is a parse error — so it is not written here. docker/caddy-entrypoint.sh
+	# generates acme-email.caddy from $ACME_EMAIL at start: `email "…"` when it is set, only a
+	# comment when it is empty or unset. (The file next to this one in the repo is that default.)
+	import acme-email.caddy
 	servers {
 		protocols h1 h2 h3
 	}
