@@ -5,15 +5,17 @@ training, steps, PARA tasks and planner, time tracking, gamification. Built as a
 mobile-first PWA for iPhone (iOS 17+, Safari → Add to Home Screen), dark by
 default, one-handed, every frequent action within two taps.
 
-> **Status: stages 1–8 of 10 are complete** — foundation, nutrition core,
+> **Status: stages 1–9 of 10 are complete** — foundation, nutrition core,
 > nutrition backfill, AI logging (photo/text → review → save, camera barcode
 > scanner), training (templates, weekly plan, live logger, records, burned
 > calories kept out of the food budget), health ingest (iOS Shortcut, steps,
 > weight, sleep), the planner (PARA, tasks with repeats and reminders,
 > calendar with drag, natural-language quick add, timer, journal), web push
-> notifications (reminders, daily nudges, quiet hours) and gamification & insight
+> notifications (reminders, daily nudges, quiet hours), gamification & insight
 > (day score, XP, streaks, achievements, quests, dashboards, data export and a signed
-> backup). The foundation is live: repository,
+> backup) and hardening (offline writes never lost and conflicts shown instead of
+> overwritten, an optional Notion mirror, a faster first screen, an accessibility
+> pass). Stage 10, the redesign, is planned together with the owner. The foundation is live: repository,
 > infrastructure, the full database schema for every entity of the whole
 > product, device-token auth with pairing, settings with target calculation, the
 > design system and app shell with bottom navigation, i18n (ru/en), PWA basics
@@ -60,7 +62,7 @@ default, one-handed, every frequent action within two taps.
 | App shell: bottom tabs Today / Food / Train / Plan / Stats + quick add | ✅ |
 | i18n ru (default) + en, per-device and per-user switch | ✅ |
 | PWA: manifest, icons, service worker, offline shell, install flow | ✅ |
-| Offline write queue with client UUIDs (Dexie) | ✅ infrastructure |
+| Offline write queue with client UUIDs (Dexie) | ✅ infrastructure (polished in stage 9) |
 | Database schema for **all** 49 tables of every stage | ✅ |
 | Docker Compose (postgres + api + caddy, automatic HTTPS) | ✅ |
 | GitHub Actions: CI, build → GHCR → SSH deploy, nightly backup | ✅ |
@@ -77,7 +79,10 @@ default, one-handed, every frequent action within two taps.
 | Web push: VAPID subscriptions per device, task reminders and smart daily reminders (meal logging, water, planned workout, evening review) re-checked at send time, quiet hours (task reminders wait, daily nudges are dropped), per-category times, test notification, history; iPhone «На экран Домой» guidance in onboarding and Settings | ✅ stage 7 |
 | Gamification & insight: a daily score whose calorie part peaks inside the target zone (0 below the safe floor), three rings, XP and 30 levels, streaks with freeze tokens (the workout streak is weekly and follows the plan), 46 achievements, daily/weekly quests with a claim; /stats dashboards (nutrition, activity, body, planner, progress; week to year); JSON, CSV and a signed backup download, restored by `python -m app.cli restore-backup` | ✅ stage 8 |
 | Notion (optional, off until connected): a one-way copy of areas, projects, tasks, the journal and day summaries into databases DisciplineOS creates on a page you choose; every 10 minutes or on demand, resumable, never a duplicate | ✅ stage 9 |
-| Hardening (offline sync and conflicts, performance, accessibility), redesign | stages 9–10 |
+| Offline sync: nothing lost — failed writes kept with the server's reason, retries with backoff, writes in dependency order, meals/water and task edits shown at once while they wait, a sync sheet behind the header pill; edits from another device surface as a conflict («Оставить их версию» / «Сохранить мою») instead of being overwritten | ✅ stage 9 |
+| Performance: main chunk 640 → 283 kB (only the active locale, lazy motion and screens), the first screen's reads start from `index.html`, tab switches without refetching (8 API requests instead of 28), three SQL statements fewer per request; `scripts/perf/` and `api/scripts/bench_api.py` to measure again | ✅ stage 9 |
+| Accessibility: axe-core (WCAG 2.1 AA) clean on every screen and sheet in both themes, 48 px targets, modal sheets for keyboard and VoiceOver, named rings and charts, quiet live regions, reduced motion, `<html lang>`, pinch-zoom | ✅ stage 9 |
+| Redesign: brand book, colour palette, typography, iconography — chosen with the owner, re-skinned through the tokens | stage 10 |
 
 ---
 
@@ -115,28 +120,28 @@ discipline-os/
 ├── api/                     FastAPI service
 │   ├── app/
 │   │   ├── ai/              provider adapters, strict schema, runner, prompts/*.vN.md (stage 3)
-│   │   ├── api/             routers (v1: auth, devices, tokens, settings, meta, foods, nutrition, ai, training, health, planner, push, notifications, gamification, stats, export)
-│   │   ├── core/            config, logging, errors, security, rate limit, tz, ids
+│   │   ├── api/             routers (v1: auth, devices, tokens, settings, meta, foods, nutrition, ai, training, health, planner, push, notifications, gamification, stats, export, integrations)
+│   │   ├── core/            config, logging, errors, security, rate limit, tz, ids, secret box (stage 9)
 │   │   ├── models/          SQLAlchemy 2 models — every entity, every stage
 │   │   ├── schemas/         pydantic v2 request/response models
-│   │   ├── services/        pairing, tokens, targets, settings, scheduler, recurrence, planner/, task_parser, push, notifications, gamification/, day_metrics, stats, export, restore
+│   │   ├── services/        pairing, tokens, targets, settings, scheduler, recurrence, planner/, task_parser, push, notifications, gamification/, day_metrics, stats, export, restore, notion/ (stage 9)
 │   │   ├── seeds/           seed framework + exercise library
 │   │   └── cli.py           server-side admin commands
-│   ├── alembic/versions/    migrations (0001 = the whole schema, 0002 = planner indexes)
+│   ├── alembic/versions/    migrations (0001 = the whole schema, 0002 = planner indexes, 0003 = XP kinds, 0004 = integrations)
 │   ├── importers/           seed (320 foods RU/EN), Open Food Facts, USDA FDC (+ RU names)
-│   └── tests/               pytest suite (1 200+ tests)
+│   └── tests/               pytest suite (1 300+ tests)
 ├── web/                     React 18 + TS + Vite PWA
 │   ├── src/api/             fetch client, types, generated OpenAPI types
 │   ├── src/components/      design system (ui/) + shell (layout/)
-│   ├── src/features/        auth, today, food (2), ai (3), train (4), health (5), plan (6), notifications (7), game + stats (8), settings
+│   ├── src/features/        auth, today, food (2), ai (3), train (4), health (5), plan (6), notifications (7), game + stats (8), sync + integrations (9), settings
 │   ├── src/i18n/            ru.json / en.json (all strings live here)
 │   ├── src/lib/             device, offline queue, formatting, errors, targets
 │   └── public/              icons, offline.html, sw-push.js (imported into the generated service worker)
 ├── docker/                  api.Dockerfile, caddy.Dockerfile, Caddyfile
 ├── deploy/                  install.sh, update.sh, healthcheck.sh, backup/
-├── scripts/                 dev-api.sh, smoke.sh, check-i18n.mjs, ui-check.mjs
+├── scripts/                 dev-api.sh, smoke.sh, check-i18n.mjs, ui-check.mjs (+ ui-checks/), perf/
 ├── .github/workflows/       ci.yml, deploy.yml, backup.yml
-├── docs/                    roadmap.md, stage-1 … stage-8.md, screenshots/
+├── docs/                    roadmap.md, stage-1 … stage-9*.md, screenshots/
 ├── docker-compose.yml       postgres + api + caddy (production)
 ├── docker-compose.dev.yml   overlay: published postgres, api with reload
 └── Makefile                 every developer shortcut
@@ -408,7 +413,7 @@ place. New library rows are **unverified** until the owner taps *Подтвер�
 ## Testing
 
 ```bash
-# backend: 1 200+ tests — calorie math, food search & ranking (incl. the 150 ms
+# backend: 1 300+ tests — calorie math, food search & ranking (incl. the 150 ms
 # budget on a 50k-row library), importers (seed/USDA/OFF), live barcode fallback
 # (mocked), meal logging, recipes, day boundaries, recurrence, tokens/devices,
 # AI logging (fake provider + every adapter behind httpx.MockTransport), training
@@ -416,8 +421,10 @@ place. New library rows are **unverified** until the owner taps *Подтвер�
 # ingest, the planner (tasks, repeats across DST, reminders, views, PARA, timer
 # races, journal), 670 quick-add parser cases (ru + en), web push (a real
 # aes128gcm round-trip, VAPID, the dispatcher's quiet hours and races, SSRF guards)
-# and gamification (the calorie curve, the safe floor in every reward, XP ledger,
-# streaks, quests, achievements, stats series, streamed exports, signed backups)
+# gamification (the calorie curve, the safe floor in every reward, XP ledger,
+# streaks, quests, achievements, stats series, streamed exports, signed backups),
+# the edit-conflict contract (`base` → 409 edit_conflict on six endpoints) and the
+# Notion sync against a fake Notion (no network: lost answers, retries, budgets, races)
 cd api
 TEST_DATABASE_URL=postgresql+psycopg://postgres:postgres@127.0.0.1:5432/dsos_test \
   SECRET_KEY=test-secret-key-please-change-0123456789 .venv/bin/pytest -q
@@ -426,21 +433,22 @@ TEST_DATABASE_URL=postgresql+psycopg://postgres:postgres@127.0.0.1:5432/dsos_tes
 # frontend: types + production build (also verifies the PWA generation)
 cd web && npm run typecheck && npm run build
 
-# end-to-end against a running API (24 checks: pairing, scopes, targets, search
+# end-to-end against a running API (26 checks: pairing, scopes, targets, search
 # budget, barcode, recipes, AI parse without auto-save, 413 upload guard, a workout
 # end to end with food totals untouched, the Shortcut ingest, the planner — quick
 # add, a repeat's next instance, timer, journal, calendar — web push: step 16
 # starts a local receiver, sends POST /push/test to it and decrypts the push with
 # http_ece from api/.venv — the API needs VAPID keys and ENV=development for that
 # step, it is skipped otherwise — the day score, a stats week and the three exports
-# (stage 8), and revoke)
+# (stage 8), an edit from a stale base answering 409 edit_conflict and the Notion card
+# (stage 9), and revoke — on a fresh install the only device is kept, 409 last_device)
 API_BASE=http://127.0.0.1:8000/api ./scripts/smoke.sh <PAIRING-CODE>
 
 # i18n gate (also runs in the CI web job): every key the UI uses exists in both
 # locales, the locales do not drift, dynamic prefixes resolve
 node scripts/check-i18n.mjs
 
-# browser acceptance: 325 checks in a real Chromium — pairing gate, code entry,
+# browser acceptance: 585 checks in a real Chromium — pairing gate, code entry,
 # the 4-step onboarding with the live target preview, Today, quick add,
 # settings (language / theme / timezone), every route, the built PWA manifest,
 # food logging, recipes, AI text/photo review → save, offline AI message, the
@@ -452,7 +460,11 @@ node scripts/check-i18n.mjs
 # prefs/quiet hours kept after reload, blocked/off/on states, a test push to a local
 # receiver decrypted in Node, history, onboarding on iPhone, ?task= deep links) and
 # gamification & stats (score card = API, claims, celebrations, achievements, every
-# dashboard section = API, the three downloads, the 429 message);
+# dashboard section = API, the three downloads, the 429 message), offline sync (the sync
+# sheet, waiting meals/water/task edits, failed writes, conflicts both ways), Settings →
+# Интеграции (Notion) and the accessibility audit (axe in both themes on every screen and
+# sheet, 48 px targets, keyboard and focus in sheets, live regions, reduced motion,
+# <html lang>, zoom to 320 px; the full report lands in $SHOTS/a11y-axe.json);
 # every module cleans up after itself
 # (FAKE_CAMERA plays an EAN-13 video:
 # python3 scripts/make-barcode-y4m.py 460700123456 /tmp/barcode.y4m).
@@ -460,6 +472,14 @@ node scripts/check-i18n.mjs
 npm i -D playwright && npx playwright install chromium   # once per machine
 cd api && .venv/bin/python -m app.cli pairing-code       # copy the printed code
 FAKE_CAMERA=/tmp/barcode.y4m PAIRING_CODE=XXXX-XXXX node scripts/ui-check.mjs   # screenshots → $SHOTS
+
+# performance (stage 9, see docs/stage-9-perf.md): the bundle budget (also worth running
+# before a release), then — on a throwaway database only — a seeded year of history, the
+# API benchmark and throttled browser runs (seed_year.py refuses an account with meals)
+node scripts/perf/bundle-report.mjs --check     # main chunk ≤ 300 kB, no charts/stats/motion features at start
+cd api && .venv/bin/python scripts/seed_year.py && .venv/bin/python scripts/bench_api.py --runs 30 --explain 4
+cd web && npm run build && npx vite preview --port 4173 &   # then, with a pairing code:
+PAIRING_CODE=XXXX-XXXX WEB_URL=http://127.0.0.1:4173 node scripts/perf/perf-run.mjs --runs 5 --tabs
 ```
 
 What the suite covers: pairing-code lifecycle and single use, device limits,
@@ -962,4 +982,6 @@ scanning, `docs/stage-3.md`), stage 4 (training, `docs/stage-4.md`) and stage 5
 (health ingest: the iOS Shortcut, steps, weight, sleep — `docs/stage-5.md`) and
 stage 6 (the planner — `docs/stage-6.md`), stage 7 (web push notifications
 — `docs/stage-7.md`) and stage 8 (gamification, dashboards, data export —
-`docs/stage-8.md`) are delivered; stage 9 (hardening) is next.
+`docs/stage-8.md`) and stage 9 (hardening: offline sync and conflicts, the optional
+Notion sync, performance, accessibility — `docs/stage-9.md`) are delivered; stage 10
+(the redesign) is next and is planned together with the owner.
