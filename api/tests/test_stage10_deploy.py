@@ -12,63 +12,21 @@ import json
 import os
 import re
 import shutil
-import stat
 import time
 from pathlib import Path
 
 import pytest
 import yaml
 
-from tests.stage10_helpers import REPO, run
-
-ANSI = re.compile(r"\x1b\[[0-9;]*m")
-
-
-def plain(text: str) -> str:
-    return ANSI.sub("", text)
-
-
-class Sandbox:
-    """``<root>/deploy/…`` (the real scripts), ``<root>/.env`` and ``<root>/bin`` (fake commands)."""
-
-    def __init__(self, root: Path) -> None:
-        self.root = root
-        self.bin = root / "bin"
-        self.bin.mkdir()
-        for rel in ("deploy/backup/backup.sh", "deploy/healthcheck.sh"):
-            self.copy(rel)
-        self.env_lines: dict[str, str] = {}
-
-    def copy(self, rel: str) -> Path:
-        target = self.root / rel
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(REPO / rel, target)
-        return target
-
-    def fake(self, name: str, body: str) -> Path:
-        path = self.bin / name
-        path.write_text("#!/usr/bin/env bash\n" + body)
-        path.chmod(path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-        return path
-
-    def write_env(self, **values: str) -> None:
-        self.env_lines.update(values)
-        (self.root / ".env").write_text("".join(f"{k}={v}\n" for k, v in self.env_lines.items()))
-
-    def environ(self, **extra: str) -> dict[str, str]:
-        env = {k: v for k, v in os.environ.items() if k not in {"DOMAIN", "BACKUP_LOCAL_DIR", "AGE_IDENTITY_FILE"}}
-        env["PATH"] = f"{self.bin}:{os.environ['PATH']}"
-        env["HOME"] = str(self.root)
-        env.update(extra)
-        return env
-
-    def run(self, script: str, *args: str, **extra_env: str):
-        return run(["bash", self.root / script, *args], cwd=self.root, env=self.environ(**extra_env), timeout=120)
+from tests.stage10_helpers import REPO, Sandbox, plain, run
 
 
 @pytest.fixture
 def sandbox(tmp_path: Path) -> Sandbox:
-    return Sandbox(tmp_path)
+    box = Sandbox(tmp_path)
+    for rel in ("deploy/backup/backup.sh", "deploy/healthcheck.sh"):
+        box.copy(rel)
+    return box
 
 
 # --------------------------------------------------------------------------- #

@@ -532,10 +532,23 @@ ssh root@your-server
 bash <(curl -fsSL https://raw.githubusercontent.com/OWNER/discipline-os/main/deploy/install.sh)
 ```
 
-`deploy/install.sh` installs Docker + the compose plugin + `age`, opens
-22/80/443, clones the repository into `/opt/disciplineos`, generates the secrets
+`deploy/install.sh` makes sure Docker, the compose plugin, buildx and `age` are there,
+opens 22/80/443, clones the repository into `/opt/disciplineos`, generates the secrets
 into a `chmod 600 .env`, pulls the images, starts the stack, runs migrations and
-creates the owner. It is idempotent — re-run it any time.
+creates the owner. It is idempotent — re-run it any time. Questions it asks (domain, an
+optional Let's Encrypt e-mail, the GitHub owner of the images, a backup repository) can be
+answered up front in the environment, an empty value included:
+`DOMAIN=dsos.example.com ACME_EMAIL= GHCR_OWNER=owner bash install.sh`.
+
+**Docker that is already on the box stays as it is.** On a bare host the script adds Docker's
+apt repository and installs `docker-ce`. If Docker is already installed — Docker's packages,
+Ubuntu's `docker.io`, a VPN container running on it — nothing is replaced, upgraded or
+restarted: only a missing CLI plugin is installed, from the family the engine came from
+(`docker.io`: `docker-compose-v2` and `docker-buildx`; `docker-ce`: `docker-compose-plugin`
+and `docker-buildx-plugin`; `docker-compose-plugin` does not exist in Ubuntu's own
+repositories, and Ubuntu's `docker-buildx` would pull `docker.io` in next to `docker-ce`).
+For an engine it cannot place (a snap, a static binary) it stops and tells you what is
+missing rather than guess.
 
 If the GHCR packages are private, give the server a token:
 
@@ -918,6 +931,12 @@ indistinguishable from a code that never existed.
 
 **"Device limit reached (2/2)".** Revoke an old device in Settings → Devices, or
 raise `MAX_DEVICES_DEFAULT` in `.env` and restart the API.
+
+**`docker-compose-plugin` / `docker-buildx-plugin` «Unable to locate package», or «BuildKit is
+enabled but the buildx component is missing».** The server's Docker comes from Ubuntu's
+`docker.io`: its packages are `docker-compose-v2` and `docker-buildx`
+(`apt-get install --no-install-recommends docker-compose-v2 docker-buildx` — the recommends
+would pull in `docker.io` again), and `deploy/install.sh` installs the right ones by itself.
 
 **Caddy cannot obtain a certificate.** The `A` record must already point at the
 server and port 80 must be reachable (Let's Encrypt HTTP-01). Check
