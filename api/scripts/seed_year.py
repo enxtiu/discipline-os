@@ -903,8 +903,10 @@ async def main() -> int:
         from app.services.gamification import engine
 
         game_started = clock.perf_counter()
+        # the whole backlog in the engine's own chunks (a request finalises at most 60
+        # days), as `app.cli backfill-scores` does: a year of use is a finished history
+        snapshot, finalised = await engine.sync_fully(user.id)
         async with SessionLocal() as db:
-            snapshot = await engine.sync_user(db, user.id)
             # a year of use: every unlock has been shown and celebrated already
             await db.execute(
                 update(UserAchievement).where(UserAchievement.user_id == user.id).values(seen=True, celebrated=True)
@@ -913,7 +915,7 @@ async def main() -> int:
         assert snapshot is not None
         print(
             f"✓ gamification over the history in {clock.perf_counter() - game_started:.1f} s: "
-            f"{len(snapshot.computed)} days scored, {snapshot.xp_total} XP, level {snapshot.level.current.level}"
+            f"{finalised} days finalised, {snapshot.xp_total} XP, level {snapshot.level.current.level}"
         )
     return 0
 

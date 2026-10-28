@@ -46,6 +46,7 @@ os.environ.setdefault("SCHEDULER_ENABLED", "false")
 import httpx  # noqa: E402
 from sqlalchemy import event, select, text  # noqa: E402
 
+from app.core import rate_limit  # noqa: E402
 from app.db import SessionLocal, engine  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import User, UserSettings  # noqa: E402
@@ -155,14 +156,18 @@ async def bench(client: httpx.AsyncClient, screen: str, path: str, runs: int) ->
     global CAPTURE
     result = Result(path=path, screen=screen)
     for _ in range(3):
+        rate_limit.reset()  # the engine GETs share a per-user budget (120/min): measure the work
         warm = await client.get(f"/api{path}")
         if warm.status_code >= 400:
             raise SystemExit(f"✗ {path}: HTTP {warm.status_code} {warm.text[:300]}")
     for _ in range(runs):
+        rate_limit.reset()
         CAPTURE = []
         started, cpu_started = time.perf_counter(), time.process_time()
         response = await client.get(f"/api{path}")
         elapsed = (time.perf_counter() - started) * 1000
+        if response.status_code >= 400:
+            raise SystemExit(f"✗ {path}: HTTP {response.status_code} {response.text[:300]}")
         result.cpu_ms.append((time.process_time() - cpu_started) * 1000)
         captured, CAPTURE = CAPTURE, None
         result.ms.append(elapsed)
