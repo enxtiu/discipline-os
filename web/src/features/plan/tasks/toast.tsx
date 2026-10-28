@@ -12,9 +12,10 @@
  * with the iPhone keyboard up, the top of the screen is what is visible.
  */
 import { useSyncExternalStore } from 'react'
-import { AnimatePresence, m, useReducedMotion } from 'framer-motion'
+import { AnimatePresence, m } from 'framer-motion'
 
 import { IconAlert, IconCheck, IconInfo } from '@/components/ui/icons'
+import { useReducedMotionPref } from '@/lib/appearance'
 
 export interface PlanToastAction {
   label: string
@@ -92,7 +93,7 @@ export function PlanToastHost() {
 }
 
 function ToastStack({ items: stack, placement }: { items: PlanToastItem[]; placement: PlanToastPlacement }) {
-  const reduce = useReducedMotion()
+  const reduce = useReducedMotionPref() // the OS or «Меньше анимации» (stage 10)
   const offset = placement === 'top' ? -16 : 16
   return (
     <div

@@ -17,31 +17,20 @@ import { m, MotionConfig } from 'framer-motion'
 
 import { Button, Sheet } from '@/components/ui'
 import { IconChevronRight } from '@/components/ui/icons'
+import { useReducedMotionPref } from '@/lib/appearance'
 import { achievementDescription, achievementName, RARITY_ORDER } from './format'
 import { IconTrophy } from './icons'
 import { AchievementBadge, RarityPill } from './parts'
 import { useMarkSeen } from './queries'
 import type { Achievement } from './types'
 
-const REDUCED_MOTION = '(prefers-reduced-motion: reduce)'
-
 /**
- * The live reduced-motion preference. framer-motion's `useReducedMotion` keeps
- * the value from the first render, and this sheet is mounted long before it
- * opens — a setting changed in between must still count.
+ * The live reduced-motion preference (the OS or «Меньше анимации», stage 10).
+ * framer-motion's `useReducedMotion` keeps the value from the first render, and
+ * this sheet is mounted long before it opens — a setting changed in between must
+ * still count.
  */
-function usePrefersReducedMotion(): boolean {
-  const [reduced, setReduced] = useState(() => typeof window !== 'undefined' && !!window.matchMedia?.(REDUCED_MOTION).matches)
-  useEffect(() => {
-    const media = window.matchMedia?.(REDUCED_MOTION)
-    if (!media) return
-    const update = () => setReduced(media.matches)
-    update()
-    media.addEventListener?.('change', update)
-    return () => media.removeEventListener?.('change', update)
-  }, [])
-  return reduced
-}
+const usePrefersReducedMotion = useReducedMotionPref
 
 /** The halo behind the hero badge takes the rarity's colour (literal classes: Tailwind purges built ones). */
 const HALO: Record<Achievement['rarity'], string> = {

@@ -1,9 +1,8 @@
 /**
  * Appearance: language, theme, timezone, week start, units.
- * All four are stored server-side (so a second device picks them up) and the
- * theme is also mirrored to localStorage for a flash-free first paint.
+ * All four are stored server-side (so a second device picks them up); the
+ * theme is per device (stage 10: lib/appearance.ts, applied before the first paint).
  */
-import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
@@ -13,7 +12,8 @@ import type { SettingsUpdate } from '@/api/types'
 import { queryKeys } from '@/lib/queryClient'
 import { useToast } from '@/components/ui/Toast'
 import { errorMessage } from '@/lib/errors'
-import { detectedTimezone, storedTheme, applyTheme, type Theme } from '@/lib/device'
+import { detectedTimezone } from '@/lib/device'
+import { setAppearance, useAppearance } from '@/lib/appearance'
 import { time, fromApiTime, toApiTime } from '@/lib/format'
 import i18n, { type Language } from '@/i18n'
 import { useAuth } from '@/features/auth/AuthProvider'
@@ -39,7 +39,7 @@ export function AppearanceSection() {
   const toast = useToast()
   const queryClient = useQueryClient()
   const { refreshSession } = useAuth()
-  const [theme, setTheme] = useState<Theme>(() => storedTheme())
+  const appearance = useAppearance()
 
   const settingsQuery = useQuery({ queryKey: queryKeys.settings, queryFn: () => endpoints.settings() })
 
@@ -52,10 +52,6 @@ export function AppearanceSection() {
     },
     onError: (error) => toast.error(errorMessage(error)),
   })
-
-  useEffect(() => {
-    applyTheme(theme)
-  }, [theme])
 
   if (settingsQuery.isLoading) return <SkeletonCard lines={5} />
   if (!settingsQuery.data) return null
@@ -85,8 +81,8 @@ export function AppearanceSection() {
 
         <Field label={t('settings.theme')}>
           <SegmentedControl
-            value={theme}
-            onChange={(value) => setTheme(value)}
+            value={appearance.mode === 'light' ? 'light' : 'dark'}
+            onChange={(mode) => setAppearance({ mode })}
             options={[
               { value: 'dark', label: t('settings.theme_dark') },
               { value: 'light', label: t('settings.theme_light') },

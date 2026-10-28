@@ -4,6 +4,7 @@
  */
 import { useEffect, useState, useSyncExternalStore } from 'react'
 
+import { useReducedMotionPref } from '@/lib/appearance'
 import { getQueueState, listEntries, onQueueState, type QueuedRequest, type QueueState } from '@/lib/offlineQueue'
 
 export function useQueueState(): QueueState {
@@ -30,23 +31,11 @@ export function useQueueEntries(filter?: (entry: QueuedRequest) => boolean): Que
   return entries
 }
 
-const REDUCED_MOTION = '(prefers-reduced-motion: reduce)'
-
-/** The live reduced-motion preference (framer-motion's hook keeps the first value). */
-export function usePrefersReducedMotion(): boolean {
-  const [reduced, setReduced] = useState(
-    () => typeof window !== 'undefined' && !!window.matchMedia?.(REDUCED_MOTION).matches,
-  )
-  useEffect(() => {
-    const media = window.matchMedia?.(REDUCED_MOTION)
-    if (!media) return
-    const update = () => setReduced(media.matches)
-    update()
-    media.addEventListener?.('change', update)
-    return () => media.removeEventListener?.('change', update)
-  }, [])
-  return reduced
-}
+/**
+ * The live reduced-motion preference: the OS or «Меньше анимации» (stage 10,
+ * lib/appearance.ts — framer-motion's own hook keeps the first value).
+ */
+export const usePrefersReducedMotion = useReducedMotionPref
 
 /** The time now, re-rendering every `ms` while `active` (relative times, a retry countdown). */
 export function useTicker(active: boolean, ms = 1000): number {

@@ -14,6 +14,8 @@
  */
 import { useEffect, useState } from 'react'
 
+import { useReducedMotionPref } from '@/lib/appearance'
+
 export interface ChartTheme {
   dark: boolean
   food: string
@@ -81,15 +83,5 @@ export function useChartTheme(): ChartTheme {
   return theme
 }
 
-/** `prefers-reduced-motion`, live (charts skip their grow-in animation). */
-export function useReducedMotion(): boolean {
-  const query = '(prefers-reduced-motion: reduce)'
-  const [reduced, setReduced] = useState(() => typeof window !== 'undefined' && window.matchMedia(query).matches)
-  useEffect(() => {
-    const media = window.matchMedia(query)
-    const update = () => setReduced(media.matches)
-    media.addEventListener('change', update)
-    return () => media.removeEventListener('change', update)
-  }, [])
-  return reduced
-}
+/** Less motion, live: the OS preference or «Меньше анимации» (charts skip their grow-in animation). */
+export const useReducedMotion = useReducedMotionPref

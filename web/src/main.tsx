@@ -7,28 +7,31 @@
  * the session that index.html already requested, so the first render is the app
  * shell, not a spinner swapped for it a moment later (index.html shows the same
  * spinner meanwhile). The animation features of framer-motion load alongside.
+ *
+ * Stage 10: the appearance (theme, mode, ground, large text, less motion) is applied
+ * before the first render — index.html already set the same attributes before any CSS.
  */
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import { QueryClientProvider } from '@tanstack/react-query'
-import { MotionConfig } from 'framer-motion'
 import { registerSW } from 'virtual:pwa-register'
 
 import App from './App'
 import { queryClient, queryKeys } from '@/lib/queryClient'
 import { endpoints } from '@/api/client'
 import { ToastProvider } from '@/components/ui/Toast'
-import { applyTheme, hasToken, storedTheme } from '@/lib/device'
+import { hasToken } from '@/lib/device'
+import { installAppearance } from '@/lib/appearance'
 import { installOfflineSync } from '@/lib/offlineQueue'
 import { installQueueRefresh } from '@/lib/queueRefresh'
-import { MotionProvider } from '@/lib/motion'
+import { AppMotionConfig, MotionProvider } from '@/lib/motion'
 import { i18nReady } from '@/i18n'
 import { syncDocumentLanguage } from '@/i18n/documentLanguage'
 import '@/styles/index.css'
 
-// Theme first — avoids a flash of the wrong palette.
-applyTheme(storedTheme())
+// Appearance first — avoids a flash of the wrong palette (index.html applied it inline already).
+installAppearance()
 // <html lang> follows the UI language (screen-reader voice, hyphenation).
 syncDocumentLanguage()
 
@@ -64,12 +67,12 @@ void Promise.all([i18nReady, sessionReady()]).then(() =>
       <QueryClientProvider client={queryClient}>
         <BrowserRouter>
           <MotionProvider>
-            {/* prefers-reduced-motion: no slides, springs or layout animations anywhere */}
-            <MotionConfig reducedMotion="user">
+            {/* prefers-reduced-motion or «Меньше анимации»: no slides, springs or layout animations anywhere */}
+            <AppMotionConfig>
               <ToastProvider>
                 <App />
               </ToastProvider>
-            </MotionConfig>
+            </AppMotionConfig>
           </MotionProvider>
         </BrowserRouter>
       </QueryClientProvider>

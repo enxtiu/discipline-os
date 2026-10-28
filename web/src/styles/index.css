@@ -1,3 +1,7 @@
+/* stage 10: themes («Настройки → Оформление»): each one re-skins the tokens and the shared
+   classes below under :root[data-skin='…'] (lib/appearance.ts sets the attributes) */
+@import './skins/stickers.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -146,6 +150,20 @@
       transition-duration: 0.001ms !important;
       scroll-behavior: auto !important;
     }
+  }
+  /* stage 10: «Меньше анимации» (Оформление) does the same without the OS setting */
+  :root[data-motion='reduce'] *,
+  :root[data-motion='reduce'] *::before,
+  :root[data-motion='reduce'] *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  /* stage 10: «Крупный текст» — type and spacing set in rem grow by an eighth (16 → 18 px) */
+  :root[data-text='large'] {
+    font-size: 112.5%;
   }
 
   ::-webkit-scrollbar {
@@ -330,4 +348,37 @@
   .pb-tabbar {
     padding-bottom: calc(7rem + env(safe-area-inset-bottom, 0px));
   }
+}
+
+/* Stage 10: «Крупный текст» — the few type sizes set in pixels follow the rem ones (×1.125).
+   Outside the layers on purpose: never purged, and it wins over the utilities. */
+:root[data-text='large'] .text-\[9px\] {
+  font-size: 10px;
+}
+:root[data-text='large'] .text-\[9\.5px\] {
+  font-size: 10.5px;
+}
+:root[data-text='large'] .text-\[10px\] {
+  font-size: 11.5px;
+}
+:root[data-text='large'] .text-\[11px\] {
+  font-size: 12.5px;
+}
+:root[data-text='large'] .text-\[11\.5px\] {
+  font-size: 13px;
+}
+:root[data-text='large'] .text-\[13px\] {
+  font-size: 14.5px;
+}
+:root[data-text='large'] .text-\[15px\] {
+  font-size: 17px;
+}
+:root[data-text='large'] .text-\[17px\] {
+  font-size: 19px;
+}
+:root[data-text='large'] .text-\[30px\] {
+  font-size: 34px;
+}
+:root[data-text='large'] .text-\[34px\] {
+  font-size: 38px;
 }
