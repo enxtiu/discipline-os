@@ -8,6 +8,9 @@
  * the anchor. Each section loads on its own and has its own skeleton, error
  * with retry and empty state; while another period loads, the previous one
  * stays on screen, dimmed.
+ *
+ * Stage 10: the level plaque (level, XP to the next one, XP this week and today, the
+ * streak) sits at the top, above the period switch — it is not scoped by the period.
  */
 import type { ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
@@ -17,6 +20,7 @@ import type { UseQueryResult } from '@tanstack/react-query'
 import { IconTrophy } from '@/features/game/icons'
 import { useAuth } from '@/features/auth/AuthProvider'
 import { addDays } from '@/lib/format'
+import { LevelPlaque } from './LevelPlaque'
 import { PERIODS, PeriodSwitcher } from './PeriodSwitcher'
 import { CardError, CardSkeleton } from './parts'
 import { useStats, useStatsAutoRefresh } from './queries'
@@ -74,6 +78,8 @@ export default function StatsPage() {
           <span>{t('stats.achievements')}</span>
         </Link>
       </header>
+
+      <LevelPlaque />
 
       <PeriodSwitcher
         period={period}

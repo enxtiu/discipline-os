@@ -1151,7 +1151,18 @@
       "to_achievements": "Streaks, levels and achievements",
       "legend_provisional": "today, provisional"
     },
-    "of_m": "of {{m}}"
+    "of_m": "of {{m}}",
+    "plaque": {
+      "level_sr": "Level {{level}}",
+      "bar_label": "XP to level {{level}}",
+      "bar_label_top": "XP: top level",
+      "bar_value": "{{value}} of {{max}} XP",
+      "to_next": "{{value}} / {{max}} XP to {{level}} · {{title}}",
+      "left": "{{xp}} XP to go",
+      "week": "This week",
+      "today": "Today",
+      "plus_xp": "+{{xp}} XP"
+    }
   },
   "settings": {
     "title": "Settings",
@@ -2080,7 +2091,14 @@
       "burned_note": "Burned calories never become food budget.",
       "window_note": "Today's and yesterday's XP is recalculated: delete an entry and its XP goes too. Quest, achievement and streak rewards stay for good."
     },
-    "quest_needs_food": "Counts once food at or above the safe floor is logged for the day"
+    "quest_needs_food": "Counts once food at or above the safe floor is logged for the day",
+    "status": {
+      "title": "Today's status",
+      "streak": "Streak",
+      "freezes": "Freezes left: {{count}}",
+      "no_freezes": "No freezes left",
+      "xp_total": "{{xp}} XP"
+    }
   },
   "integrations": {
     "title": "Integrations",

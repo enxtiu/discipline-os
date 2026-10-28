@@ -6,7 +6,8 @@
  * list grouped by type, and the "burned is not budget" card (workouts since
  * stage 4, from `GET /v1/training/today`), steps, weight and sleep since
  * stage 5 (`GET /v1/health/today`), the planner card and the running timer since
- * stage 6, gamification in stage 8. Stage 10: category colours from the theme's tokens.
+ * stage 6, gamification in stage 8. Stage 10: the status of the day (score, streak,
+ * level and XP) under the calories, and category colours from the theme's tokens.
  */
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -42,6 +43,7 @@ import { useHealthQueueRefresh, useHealthToday } from '@/features/health/useHeal
 import { PlanTodayCard } from '@/features/plan/PlanTodayCard'
 import { TimerBar } from '@/features/plan/timer/TimerBar'
 import { DayScoreCard } from '@/features/game/DayScoreCard'
+import { TodayStatus } from '@/features/game/TodayStatus'
 import { useOnceTrue } from '@/lib/lazy'
 
 // stage 9: the recipe log sheet loads on first use (a pinned recipe). The health sheets
@@ -191,6 +193,8 @@ export function TodayPage() {
           </Button>
         </Callout>
       )}
+
+      <TodayStatus />
 
       {hasTargets && (
         <Card className="space-y-4">
