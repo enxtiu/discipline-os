@@ -12,7 +12,6 @@
 import { useEffect } from 'react'
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 
-import { onQueueChange } from '@/lib/offlineQueue'
 import { gameApi } from './api'
 import type { GameProfile, GameToday, QuestClaim, UserQuest } from './types'
 
@@ -69,12 +68,7 @@ export function useGameAutoRefresh(): void {
       if (Array.isArray(key) && key[0] === gameKeys.all[0]) return // our own writes refresh themselves
       refresh()
     })
-    // the offline queue replays writes outside TanStack: a shrinking queue means data changed
-    let pending = -1
-    onQueueChange((count) => {
-      if (pending > count) refresh()
-      pending = count
-    })
+    // writes replayed by the offline queue: the app-wide refresh (lib/queueRefresh.ts) covers them
   }, [queryClient])
 }
 

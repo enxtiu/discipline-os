@@ -81,6 +81,8 @@ jobs:
       - name: build (tsc + vite + PWA)
         working-directory: web
         run: npm run build
+      - name: bundle budget (main chunk ≤ 300 kB; no charts, stats or motion features at start)
+        run: node scripts/perf/bundle-report.mjs --check --top 10
       - uses: actions/upload-artifact@v4
         with:
           name: web-dist

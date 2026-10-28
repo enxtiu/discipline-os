@@ -32,11 +32,11 @@ export interface ChartTheme {
 
 const FALLBACK: Record<string, string> = {
   '--accent': '56 224 200',
-  '--accent-2': '139 92 246',
+  '--accent-2': '161 130 249',
   '--chart-burn': '201 122 6',
   '--chart-sleep': '96 165 250',
   '--text': '232 238 247',
-  '--text-muted': '132 146 171',
+  '--text-muted': '138 151 176',
   '--border': '31 44 69',
   '--bg-elevated': '17 26 43',
   '--bg-sunken': '8 13 22',

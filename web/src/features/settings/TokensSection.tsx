@@ -107,7 +107,9 @@ export function TokensSection() {
                   <Button
                     size="sm"
                     variant="ghost"
-                    className="text-rose-400"
+                    className="w-tap px-0 text-rose-400"
+                    aria-label={t('a11y.token_revoke', { name: token.name })}
+                    title={t('settings.token_revoke')}
                     onClick={() => revokeMutation.mutate(token.id)}
                   >
                     <IconTrash size={16} />
@@ -168,7 +170,7 @@ export function TokensSection() {
               <span className="block break-all font-mono text-xs">{issued.token}</span>
             </Callout>
             <div className="flex justify-center">
-              <div className="rounded-2xl bg-white p-3">
+              <div className="rounded-2xl bg-white p-3" role="img" aria-label={t('a11y.qr_token')}>
                 <QRCodeSVG value={issued.token} size={168} />
               </div>
             </div>

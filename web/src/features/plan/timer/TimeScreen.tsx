@@ -242,6 +242,7 @@ function SummaryCards({ summary, today }: { summary: TimeSummary; today: string 
           )}
         </div>
         <ul
+          role="list"
           className="grid gap-0.5"
           style={{ gridTemplateColumns: `repeat(${Math.max(1, days.length)}, minmax(0, 1fr))` }}
           aria-label={t('timer.by_day')}
@@ -256,9 +257,11 @@ function SummaryCards({ summary, today }: { summary: TimeSummary; today: string 
                   type="button"
                   onClick={() => setActive(active === day.date ? null : day.date)}
                   aria-pressed={active === day.date}
-                  aria-label={t('timer.day_bar', { day: dayTitle(day.date), duration: formatMinutes(day.minutes) })}
                   className="flex min-h-tap w-full flex-col items-center justify-end gap-1"
                 >
+                  <span className="sr-only">
+                    {t('timer.day_bar', { day: dayTitle(day.date), duration: formatMinutes(day.minutes) })}
+                  </span>
                   <span className="flex w-full justify-center" style={{ height: BAR_PX }} aria-hidden="true">
                     <span
                       className={clsx(
@@ -274,6 +277,7 @@ function SummaryCards({ summary, today }: { summary: TimeSummary; today: string 
                       'tnum h-3 text-[10px] leading-none',
                       day.date === today ? 'font-semibold text-[rgb(var(--accent))]' : 'muted',
                     )}
+                    aria-hidden="true"
                   >
                     {label}
                   </span>

@@ -8,10 +8,12 @@
  * delete act immediately; leaving with unsaved edits asks first. Server
  * validation errors are shown at the field they belong to.
  */
-import { useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useQueryClient } from '@tanstack/react-query'
 
 import { ApiError } from '@/api/client'
+import { ConflictView } from '@/features/sync/ConflictView'
 import { Button, ErrorState, IconButton, Input, Select, Sheet, Skeleton } from '@/components/ui'
 import { IconPin } from '@/components/ui/icons'
 import { errorMessage, fieldErrors } from '@/lib/errors'
@@ -19,7 +21,9 @@ import { openTask } from '../events'
 import { formatMinutes } from '../format'
 import { IconPlay } from '../icons'
 import {
+  invalidatePlanner,
   newId,
+  planKeys,
   useAreas,
   useCounts,
   useCreateTask,
@@ -30,8 +34,8 @@ import {
   useTimerStart,
   useUpdateTask,
 } from '../queries'
-import type { ReminderIn, Ref, TaskIn } from '../types'
-import { buildCreate, buildPatch, draftFromPrefill, draftFromTask, useTaskDraft, type Draft } from './draft'
+import type { EditConflictDetails, ReminderIn, Ref, TaskDetail, TaskIn, TaskPatchIn } from '../types'
+import { buildCreate, buildPatch, draftFromPrefill, draftFromTask, useTaskDraft, type Draft, type DraftKey } from './draft'
 import { BlockEditor, DueEditor, EstimateEditor, FieldSection, PriorityPicker, StatusPicker } from './fields'
 import { ReminderEditor } from './ReminderEditor'
 import { isRelativeReminder, MAX_REMINDERS, reminderInLabel, sameReminder } from './reminders'
@@ -90,6 +94,36 @@ interface FormError {
   fields: Record<string, string>
 }
 
+/** An online save answered 409 `edit_conflict` (stage 9). */
+interface SaveConflict {
+  fields: string[]
+  current: TaskDetail | null
+  patch: TaskPatchIn
+}
+
+/** The patch without some fields (and without their `base`). */
+function withoutFields(patch: TaskPatchIn, fields: string[]): TaskPatchIn {
+  const next: Record<string, unknown> = { ...patch }
+  const base: Record<string, unknown> = { ...(patch.base ?? {}) }
+  for (const field of fields) {
+    delete next[field]
+    delete base[field]
+  }
+  delete next.base
+  if (Object.keys(base).length > 0) next.base = base
+  return next as TaskPatchIn
+}
+
+/** The patch without the compare-and-set check for some fields: they overwrite. */
+function withoutBase(patch: TaskPatchIn, fields: string[]): TaskPatchIn {
+  const base: Record<string, unknown> = { ...(patch.base ?? {}) }
+  for (const field of fields) delete base[field]
+  const next: TaskPatchIn = { ...patch }
+  delete next.base
+  if (Object.keys(base).length > 0) next.base = base
+  return next
+}
+
 function TitleInput({
   value,
   onChange,
@@ -120,7 +154,7 @@ function TitleInput({
       aria-invalid={invalid || undefined}
       placeholder={t('task.title_placeholder')}
       enterKeyHint="done"
-      className="block w-full resize-none overflow-hidden border-b border-[rgb(var(--border))] bg-transparent py-2.5 text-lg font-semibold leading-snug placeholder:text-[rgb(var(--text-muted))]/70 focus:border-[rgb(var(--accent))] focus:outline-none"
+      className="block min-h-tap w-full resize-none overflow-hidden border-b border-[rgb(var(--border))] bg-transparent py-2.5 text-lg font-semibold leading-snug placeholder:text-[rgb(var(--text-muted))]/70 focus:border-[rgb(var(--accent))] focus:outline-none"
       onChange={(event) => onChange(event.target.value.replace(/[\r\n]+/g, ' '))}
       onKeyDown={(event) => {
         if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
@@ -177,6 +211,7 @@ export function TaskSheet({
   const update = useUpdateTask()
   const remove = useDeleteTask()
   const timerStart = useTimerStart()
+  const queryClient = useQueryClient()
   const { toggle } = useCompleteToggle(today, 'top')
   const contextId = useId()
   const projectId = useId()
@@ -199,6 +234,8 @@ export function TaskSheet({
   const [pendingSubtasks, setPendingSubtasks] = useState<string[]>([])
   const [formError, setFormError] = useState<FormError | null>(null)
   const [pendingAction, setPendingAction] = useState<null | (() => void)>(null)
+  const [conflict, setConflict] = useState<SaveConflict | null>(null)
+  const conflictRef = useRef<HTMLDivElement>(null)
   // «before» reminders taken off because the task lost its date and block
   const [dropped, setDropped] = useState<ReminderIn[]>([])
   const [lastSession, setLastSession] = useState(sessionKey)
@@ -208,7 +245,13 @@ export function TaskSheet({
     setFormError(null)
     setPendingAction(null)
     setDropped([])
+    setConflict(null)
   }
+
+  // a conflict is shown where the eye is: at the top of the sheet
+  useEffect(() => {
+    if (conflict) conflictRef.current?.scrollIntoView({ block: 'nearest' })
+  }, [conflict])
 
   const errors = useMemo(() => {
     const out: Partial<Record<SectionKey, string>> = {}
@@ -257,11 +300,61 @@ export function TaskSheet({
     else action()
   }
 
-  const onSaveError = (error: unknown) => {
+  const onSaveError = (error: unknown, patch?: TaskPatchIn) => {
+    setPendingAction(null)
+    if (patch && error instanceof ApiError && error.code === 'edit_conflict') {
+      // changed on another device since this edit started: show both and let the user choose
+      const details = error.details as unknown as EditConflictDetails<TaskDetail>
+      if (details.current) queryClient.setQueryData(planKeys.task(details.current.id), details.current)
+      void invalidatePlanner(queryClient)
+      setConflict({ fields: details.fields ?? [], current: details.current ?? null, patch })
+      return
+    }
+    const missing = error instanceof ApiError && error.status === 404 ? (error.details as { id?: unknown } | null)?.id : undefined
+    if (patch && error instanceof ApiError && error.status === 404 && (missing === undefined || missing === task?.id)) {
+      // the task itself is gone (deleted on another device), not something it points at
+      planToast.error(t('sync.reason.deleted_elsewhere'), { placement: 'top' })
+      return
+    }
     // the sheet stays open: keep its footer free
     planToast.error(errorMessage(error), { placement: 'top' })
     setFormError({ code: error instanceof ApiError ? error.code : undefined, fields: fieldErrors(error) })
-    setPendingAction(null)
+  }
+
+  const sendPatch = (patch: TaskPatchIn, after: () => void) => {
+    if (!task) return
+    update.mutate(
+      { id: task.id, patch, title: task.title },
+      {
+        onSuccess: (result) => {
+          setConflict(null)
+          if (result.queued) planToast.info(t('task.queued'))
+          else {
+            const next = result.data.next_instance
+            planToast.success(next ? t('task.saved_next', { when: nextInstanceLabel(next, today) }) : t('task.saved'))
+          }
+          form.reset()
+          after()
+        },
+        onError: (error) => onSaveError(error, patch),
+      },
+    )
+  }
+
+  /** «Оставить их версию»: drop my change of the conflicting fields, save the rest of the edit. */
+  const keepTheirs = () => {
+    if (!conflict) return
+    const rest = withoutFields(conflict.patch, conflict.fields)
+    form.drop(conflict.fields as DraftKey[])
+    setConflict(null)
+    if (Object.keys(rest).some((key) => key !== 'base')) sendPatch(rest, onClose)
+    else planToast.info(t('sync.kept_theirs'), { placement: 'top' })
+  }
+
+  /** «Сохранить мою»: send it again without the check for those fields (they overwrite). */
+  const keepMine = () => {
+    if (!conflict) return
+    sendPatch(withoutBase(conflict.patch, conflict.fields), onClose)
   }
 
   const save = (after: () => void = onClose) => {
@@ -294,31 +387,18 @@ export function TaskSheet({
             })
           after()
         },
-        onError: onSaveError,
+        onError: (error) => onSaveError(error),
       })
       return
     }
     if (!task) return
-    const patch = buildPatch(base, draft, form.touched)
+    // stage 9: `base` = the values each changed field had when the editing started
+    const patch = buildPatch(base, draft, form.touched, form.origin)
     if (Object.keys(patch).length === 0) {
       after()
       return
     }
-    update.mutate(
-      { id: task.id, patch },
-      {
-        onSuccess: (result) => {
-          if (result.queued) planToast.info(t('task.queued'))
-          else {
-            const next = result.data.next_instance
-            planToast.success(next ? t('task.saved_next', { when: nextInstanceLabel(next, today) }) : t('task.saved'))
-          }
-          form.reset()
-          after()
-        },
-        onError: onSaveError,
-      },
-    )
+    sendPatch(patch, after)
   }
 
   const discard = () => {
@@ -423,6 +503,18 @@ export function TaskSheet({
 
       {(mode === 'create' || task) && (
         <div key={sessionKey} className="space-y-5 pb-4" data-testid="task-sheet" data-task-id={task?.id}>
+          {conflict && (
+            <div ref={conflictRef}>
+              <ConflictView
+                fields={conflict.fields}
+                mine={conflict.patch as Record<string, unknown>}
+                current={conflict.current}
+                busy={update.isPending}
+                onKeepTheirs={keepTheirs}
+                onKeepMine={keepMine}
+              />
+            </div>
+          )}
           {task?.parent_id && task.parent_title && (
             <button
               type="button"

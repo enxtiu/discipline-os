@@ -229,7 +229,7 @@ function ExportRow({
       {progress && (
         <div className="space-y-1.5" aria-live="polite">
           {progress.total ? (
-            <ProgressBar value={progress.received} max={progress.total} />
+            <ProgressBar value={progress.received} max={progress.total} label={t(`settings.export.${kind}.title`)} />
           ) : (
             <div className="skeleton h-2 w-full rounded-pill" aria-hidden="true" />
           )}

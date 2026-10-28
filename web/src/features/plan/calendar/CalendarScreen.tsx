@@ -294,9 +294,12 @@ function DayAgenda({
             <Row
               key={task.id}
               onClick={() => openTask(task.id)}
-              className={clsx(isDone(task) && 'opacity-60')}
-              icon={<span className={clsx('block h-2.5 w-2.5 rounded-full', PRIORITY_STYLES[task.priority].dot)} />}
-              label={<span className={clsx(isDone(task) && 'line-through')}>{task.title}</span>}
+              icon={
+                <span
+                  className={clsx('block h-2.5 w-2.5 rounded-full', PRIORITY_STYLES[task.priority].dot, isDone(task) && 'opacity-60')}
+                />
+              }
+              label={<span className={clsx(isDone(task) && 'text-[rgb(var(--text-muted))] line-through')}>{task.title}</span>}
               hint={task.project?.name ?? task.area?.name ?? undefined}
               value={timeOf(task)}
             />
@@ -305,9 +308,8 @@ function DayAgenda({
             <Row
               key={`occ:${occurrence.task_id}`}
               onClick={() => openTask(occurrence.task_id)}
-              className="opacity-70"
               icon={<span className="block h-2.5 w-2.5 rounded-full border border-dashed border-[rgb(var(--text-muted))]" />}
-              label={occurrence.title}
+              label={<span className="text-[rgb(var(--text-muted))]">{occurrence.title}</span>}
               hint={t('calendar.repeat')}
               value={occurrence.block ? blockLabel(occurrence.block) : occurrence.due_time ?? t('calendar.all_day')}
             />

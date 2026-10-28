@@ -122,8 +122,8 @@ export function TimerBar({ variant = 'plan' }: { variant?: 'plan' | 'today' }) {
           type="button"
           onClick={() => navigate('/plan/time')}
           className="flex min-h-tap min-w-0 flex-1 items-center gap-3 rounded-2xl px-3 text-left"
-          aria-label={t('timer.open_log', { title })}
         >
+          <span className="sr-only">{t('a11y.open_time_log')}: </span>
           <span className="relative flex h-2.5 w-2.5 shrink-0" aria-hidden="true">
             <span
               className={clsx(

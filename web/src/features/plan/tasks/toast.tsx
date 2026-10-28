@@ -12,7 +12,7 @@
  * with the iPhone keyboard up, the top of the screen is what is visible.
  */
 import { useSyncExternalStore } from 'react'
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
+import { AnimatePresence, m, useReducedMotion } from 'framer-motion'
 
 import { IconAlert, IconCheck, IconInfo } from '@/components/ui/icons'
 
@@ -100,14 +100,14 @@ function ToastStack({ items: stack, placement }: { items: PlanToastItem[]; place
       style={
         placement === 'top'
           ? { top: 'calc(0.75rem + env(safe-area-inset-top, 0px))' }
-          : { bottom: 'calc(5.5rem + env(safe-area-inset-bottom, 0px))' }
+          : { bottom: 'calc(7.25rem + env(safe-area-inset-bottom, 0px))' }
       }
       aria-live="polite"
       role="status"
     >
       <AnimatePresence initial={false}>
         {stack.map((item) => (
-          <motion.div
+          <m.div
             key={item.id}
             layout={!reduce}
             initial={reduce ? { opacity: 0 } : { opacity: 0, y: offset, scale: 0.97 }}
@@ -150,7 +150,7 @@ function ToastStack({ items: stack, placement }: { items: PlanToastItem[]; place
                 {item.action.label}
               </button>
             )}
-          </motion.div>
+          </m.div>
         ))}
       </AnimatePresence>
     </div>

@@ -7,7 +7,7 @@
  * saved. The final action posts everything through `/settings/onboarding`.
  */
 import { useMemo, useState } from 'react'
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence, m } from 'framer-motion'
 import { useTranslation } from 'react-i18next'
 import { useMutation } from '@tanstack/react-query'
 
@@ -114,7 +114,11 @@ export function OnboardingWizard({ onDone }: { onDone: () => void }) {
             {step + 1} / 4
           </Badge>
           {step > 0 && (
-            <button type="button" className="text-sm muted" onClick={() => setStep((step - 1) as Step)}>
+            <button
+              type="button"
+              className="-my-3 -mr-3 min-h-tap rounded-xl px-3 text-sm muted"
+              onClick={() => setStep((step - 1) as Step)}
+            >
               {t('app.back')}
             </button>
           )}
@@ -129,7 +133,7 @@ export function OnboardingWizard({ onDone }: { onDone: () => void }) {
 
       <div className="mx-auto mt-6 w-full max-w-md flex-1">
         <AnimatePresence mode="wait">
-          <motion.div
+          <m.div
             key={step}
             initial={{ opacity: 0, x: 24 }}
             animate={{ opacity: 1, x: 0 }}
@@ -298,6 +302,7 @@ export function OnboardingWizard({ onDone }: { onDone: () => void }) {
                   <Field label="—" htmlFor="quiet-to">
                     <Input
                       id="quiet-to"
+                      aria-label={t('a11y.quiet_hours_to')}
                       type="time"
                       value={(draft.quiet_hours_end ?? '07:00').slice(0, 5)}
                       onChange={(event) => update('quiet_hours_end', toApiTime(event.target.value))}
@@ -312,7 +317,7 @@ export function OnboardingWizard({ onDone }: { onDone: () => void }) {
                       <div key={key} className="flex items-center justify-between gap-3 px-4 py-3">
                         <span className="text-sm">{t(`settings.notify_types.${key}`)}</span>
                         <Toggle
-                          label={key}
+                          label={t(`settings.notify_types.${key}`)}
                           checked={draft.notifications?.[key] ?? true}
                           onChange={(value) =>
                             update('notifications', { ...(draft.notifications ?? {}), [key]: value })
@@ -327,7 +332,7 @@ export function OnboardingWizard({ onDone }: { onDone: () => void }) {
                 <PushStatusCard variant="onboarding" />
               </>
             )}
-          </motion.div>
+          </m.div>
         </AnimatePresence>
       </div>
 
@@ -341,7 +346,7 @@ export function OnboardingWizard({ onDone }: { onDone: () => void }) {
             {t('onboarding.complete')}
           </Button>
         )}
-        <button type="button" className="mt-3 w-full text-center text-xs muted" onClick={onDone}>
+        <button type="button" className="mt-1 min-h-tap w-full rounded-xl text-center text-xs muted" onClick={onDone}>
           {t('app.skip')}
         </button>
       </footer>

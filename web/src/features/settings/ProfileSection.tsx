@@ -231,7 +231,7 @@ export function ProfileSection() {
           </Field>
         )}
         <div className="grid grid-cols-3 gap-3">
-          <Field label="Б г/кг">
+          <Field label={`${t('today.protein')}, ${t('common.g')}/${t('common.kg')}`}>
             <Input
               type="number"
               step="0.1"
@@ -239,7 +239,7 @@ export function ProfileSection() {
               onChange={(event) => setDraft({ ...draft, goal_protein_g_per_kg: Number(event.target.value) })}
             />
           </Field>
-          <Field label="Ж г/кг">
+          <Field label={`${t('today.fat')}, ${t('common.g')}/${t('common.kg')}`}>
             <Input
               type="number"
               step="0.1"
@@ -247,7 +247,7 @@ export function ProfileSection() {
               onChange={(event) => setDraft({ ...draft, goal_fat_min_g_per_kg: Number(event.target.value) })}
             />
           </Field>
-          <Field label="Вода мл/кг">
+          <Field label={`${t('today.water')}, ${t('common.ml')}/${t('common.kg')}`}>
             <Input
               type="number"
               value={draft.goal_water_ml_per_kg ?? 33}
@@ -277,7 +277,7 @@ export function ProfileSection() {
         onConfirm={setFloorConfirm}
       />
 
-      <div className="sticky bottom-20 z-10">
+      <div className="sticky bottom-28 z-10">
         <Button block loading={saveMutation.isPending} onClick={save}>
           {t('app.save')}
         </Button>
@@ -367,7 +367,7 @@ function TargetsCard({
         <MacroPill label={t('today.carbs')} value={targets.target_carbs_g} />
         <MacroPill label={t('today.fiber')} value={targets.target_fiber_g} />
         <MacroPill label={t('today.water')} value={targets.target_water_ml} unit={t('common.ml')} />
-        <MacroPill label={t('today.steps')} value={targets.target_steps} />
+        <MacroPill label={t('today.steps')} value={targets.target_steps} unit="" />
       </div>
 
       {targets.warnings.length > 0 && (
@@ -393,7 +393,7 @@ function TargetsCard({
       </Field>
       {currentFloor < targets.safe_floor_kcal && (
         <Callout tone="danger" title={t('settings.safe_floor_warning')}>
-          <label className="flex items-center gap-3 text-sm">
+          <label className="flex min-h-tap items-center gap-3 text-sm">
             <input
               type="checkbox"
               checked={confirm}
@@ -453,7 +453,7 @@ function TargetsCard({
           </div>
           {belowFloor && (
             <Callout tone="danger" title={t('settings.safe_floor_warning')}>
-              <label className="flex items-center gap-3 text-sm">
+              <label className="flex min-h-tap items-center gap-3 text-sm">
                 <input
                   type="checkbox"
                   checked={confirm}
@@ -518,13 +518,16 @@ function Metric({
   )
 }
 
-function MacroPill({ label, value, unit = 'g' }: { label: string; value: number | null | undefined; unit?: string }) {
+function MacroPill({ label, value, unit }: { label: string; value: number | null | undefined; unit?: string }) {
+  const { t } = useTranslation()
+  // grams unless told otherwise, in the UI language (a fixed «g» was English text in a Russian UI)
+  const shown = unit ?? t('common.g')
   return (
     <div className="surface-sunken px-2 py-1.5">
       <p className="text-[10px] uppercase tracking-wide muted">{label}</p>
       <p className="tnum text-sm font-semibold">
         {number(value)}
-        <span className="ml-0.5 text-[10px] muted">{unit}</span>
+        {shown && <span className="ml-0.5 text-[10px] muted">{shown}</span>}
       </p>
     </div>
   )

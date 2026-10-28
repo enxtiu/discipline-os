@@ -13,6 +13,7 @@ OpenAPI types by name). The journal's cross-domain digest is
 
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import date as Date
 from datetime import datetime
@@ -314,6 +315,122 @@ class TaskIn(PlannerIn):
         return self
 
 
+# --------------------------------------------------------------------------- #
+# Compare-and-set (stage 9): the values an edit started from
+# --------------------------------------------------------------------------- #
+_BASE_TIME = re.compile(r"^([01]?\d|2[0-3]):([0-5]\d)(:[0-5]\d(\.\d{1,6})?)?$")
+
+
+def _base_time(value: str) -> str:
+    """``9:00``, ``09:00`` and ``09:00:00`` are the same wall-clock minute: ``09:00``."""
+    match = _BASE_TIME.match(value.strip())
+    if match is None:
+        raise ValueError("time must be HH:MM")
+    return f"{int(match.group(1)):02d}:{match.group(2)}"
+
+
+BaseTime = Annotated[
+    str, Field(max_length=15, description="HH:MM (H:MM and HH:MM:SS accepted)"), AfterValidator(_base_time)
+]
+BaseText = Annotated[str, Field(max_length=20000)]
+BASE_DOC = (
+    "Compare-and-set: the values this edit started from, for the fields it changes (any field of this "
+    "request may be listed). A listed field whose stored value differs — and is not already the value "
+    "this request sets — answers 409 `edit_conflict` with `details.fields` and `details.current`; "
+    "nothing is written. Absent: last write wins."
+)
+
+
+class BaseIn(PlannerIn):
+    """Base values are compared, never stored: representation is lenient, keys are not."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=False, allow_inf_nan=False)
+
+
+class BlockBaseIn(BaseIn):
+    date: PlannerDate
+    start: BaseTime
+    end: BaseTime
+
+
+class TaskBaseIn(BaseIn):
+    title: BaseText | None = None
+    notes_md: BaseText | None = None
+    status: TaskStatusLiteral | None = Field(default=None, description="`scheduled` compares as `open`")
+    priority: int | None = Field(default=None, ge=1, le=4)
+    project_id: uuid.UUID | None = None
+    area_id: uuid.UUID | None = None
+    parent_id: uuid.UUID | None = None
+    due_date: PlannerDate | None = None
+    due_time: BaseTime | None = None
+    block: BlockBaseIn | None = None
+    estimate_minutes: int | None = Field(default=None, ge=0, le=100000)
+    recurrence_rule: str | None = Field(default=None, max_length=255, description="RRULE text or a preset key")
+    recurrence_until: PlannerDate | None = None
+    tags: list[RawTag] | None = Field(default=None, max_length=100, description="order and case do not matter")
+    context: str | None = Field(default=None, max_length=65)
+    energy: int | None = Field(default=None, ge=1, le=3)
+    is_pinned: bool | None = None
+    sort_order: TaskSortOrder | None = None
+    reminders: list[ReminderIn] | None = Field(
+        default=None, max_length=100, description="the pending ones; order does not matter"
+    )
+
+
+class AreaBaseIn(BaseIn):
+    name: BaseText | None = None
+    description: BaseText | None = None
+    color: str | None = Field(default=None, max_length=7)
+    icon: str | None = Field(default=None, max_length=48)
+    weekly_target_minutes: int | None = Field(default=None, ge=0, le=10080)
+    is_archived: bool | None = None
+    sort_order: SmallSortOrder | None = None
+
+
+class ProjectBaseIn(BaseIn):
+    name: BaseText | None = None
+    outcome: BaseText | None = None
+    description_md: BaseText | None = None
+    area_id: uuid.UUID | None = None
+    status: ProjectStatusLiteral | None = None
+    deadline: PlannerDate | None = None
+    start_date: PlannerDate | None = None
+    color: str | None = Field(default=None, max_length=7)
+    icon: str | None = Field(default=None, max_length=48)
+    is_archived: bool | None = None
+    sort_order: SmallSortOrder | None = None
+
+
+class ResourceBaseIn(BaseIn):
+    name: BaseText | None = None
+    notes_md: BaseText | None = None
+    url: str | None = Field(default=None, max_length=500)
+    area_id: uuid.UUID | None = None
+    tags: list[RawTag] | None = Field(default=None, max_length=100, description="order and case do not matter")
+    is_archived: bool | None = None
+
+
+class TimeEntryBaseIn(BaseIn):
+    task_id: uuid.UUID | None = None
+    project_id: uuid.UUID | None = None
+    area_id: uuid.UUID | None = None
+    description: BaseText | None = None
+    note: BaseText | None = None
+    date: PlannerDate | None = None
+    start: BaseTime | None = None
+    end: BaseTime | None = Field(default=None, description="null while the entry runs")
+
+
+class JournalBaseIn(BaseIn):
+    note_md: BaseText | None = None
+    rating: Scale5 | None = None
+    mood: Scale5 | None = None
+    energy: Scale5 | None = None
+    wins_md: BaseText | None = None
+    improvements_md: BaseText | None = None
+    tags: list[RawTag] | None = Field(default=None, max_length=100, description="order and case do not matter")
+
+
 class TaskPatchIn(PlannerIn):
     """Every field optional; ``null`` clears a nullable field."""
 
@@ -336,6 +453,7 @@ class TaskPatchIn(PlannerIn):
     is_pinned: bool | None = None
     sort_order: TaskSortOrder | None = None
     reminders: list[ReminderIn] | None = Field(default=None, max_length=100)
+    base: TaskBaseIn | None = Field(default=None, description=BASE_DOC)
 
     @model_validator(mode="after")
     def _checks(self) -> TaskPatchIn:
@@ -483,6 +601,7 @@ class AreaPatchIn(PlannerIn):
     weekly_target_minutes: int | None = Field(default=None, ge=0, le=10080)
     is_archived: bool | None = None
     sort_order: SmallSortOrder | None = None
+    base: AreaBaseIn | None = Field(default=None, description=BASE_DOC)
 
     @model_validator(mode="after")
     def _not_null(self) -> AreaPatchIn:
@@ -545,6 +664,7 @@ class ProjectPatchIn(PlannerIn):
     icon: str | None = Field(default=None, max_length=48)
     is_archived: bool | None = None
     sort_order: SmallSortOrder | None = None
+    base: ProjectBaseIn | None = Field(default=None, description=BASE_DOC)
 
     @model_validator(mode="after")
     def _not_null(self) -> ProjectPatchIn:
@@ -582,6 +702,7 @@ class ResourcePatchIn(PlannerIn):
     area_id: uuid.UUID | None = None
     tags: list[RawTag] | None = Field(default=None, max_length=100)
     is_archived: bool | None = None
+    base: ResourceBaseIn | None = Field(default=None, description=BASE_DOC)
 
     @model_validator(mode="after")
     def _not_null(self) -> ResourcePatchIn:
@@ -799,6 +920,7 @@ class TimeEntryPatchIn(PlannerIn):
     date: PlannerDate | None = None
     start: HHMM | None = None
     end: HHMM | None = None
+    base: TimeEntryBaseIn | None = Field(default=None, description=BASE_DOC)
 
     @model_validator(mode="after")
     def _times_together(self) -> TimeEntryPatchIn:
@@ -865,6 +987,7 @@ class JournalIn(PlannerIn):
     wins_md: str | None = Field(default=None, max_length=20000)
     improvements_md: str | None = Field(default=None, max_length=20000)
     tags: list[RawTag] | None = Field(default=None, max_length=20)
+    base: JournalBaseIn | None = Field(default=None, description=BASE_DOC)
 
 
 class JournalAreaMinutesOut(PlannerOut):

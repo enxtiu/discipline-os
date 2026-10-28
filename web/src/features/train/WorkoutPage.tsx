@@ -541,7 +541,7 @@ function ExerciseCard({
   return (
     <Card className="space-y-3 p-3.5" data-testid="workout-exercise">
       <div className="flex items-start gap-2">
-        <button type="button" onClick={onOpenHistory} className="min-w-0 flex-1 text-left">
+        <button type="button" onClick={onOpenHistory} className="min-h-tap min-w-0 flex-1 text-left">
           <span className="block truncate text-[15px] font-semibold">{exerciseName(entry.exercise)}</span>
           {targetText && <span className="block text-xs muted">{t('train.target', { value: targetText })}</span>}
           {previous.length > 0 ? (
@@ -594,7 +594,7 @@ function ExerciseCard({
                   onChange={(patch) => update(row.id, { ...patch, dirty: row.state !== 'planned' })}
                 />
                 {isPr && (
-                  <span className="shrink-0 text-violet-300" title={t('train.record')} aria-label={t('train.record')}>
+                  <span className="shrink-0 text-violet-300" title={t('train.record')} role="img" aria-label={t('train.record')}>
                     <IconStar size={16} filled />
                   </span>
                 )}
@@ -606,7 +606,7 @@ function ExerciseCard({
                   className={clsx(
                     'flex h-tap w-tap shrink-0 items-center justify-center rounded-2xl border transition-colors',
                     saved && !row.dirty
-                      ? 'border-transparent bg-[rgb(var(--accent))] text-ink-950'
+                      ? 'border-transparent bg-[rgb(var(--accent))] text-on-accent'
                       : 'border-[rgb(var(--border))] text-[rgb(var(--text-muted))]',
                   )}
                   data-testid="save-set"
@@ -764,9 +764,13 @@ function RestBar({
     onChange({ endsAt: Math.max(Date.now(), rest.endsAt + seconds * 1000), total: Math.max(15, rest.total + seconds) })
 
   return (
-    <div className="fixed inset-x-0 z-30 px-4 above-tabbar" role="timer" aria-live="polite" data-testid="rest-timer">
+    <div className="fixed inset-x-0 z-30 px-4 above-tabbar" data-testid="rest-timer">
+      {/* announced when the rest starts, changes length and ends — never every second */}
+      <p className="sr-only" role="status" aria-live="polite">
+        {left > 0 ? t('a11y.rest_started', { time: clock(rest.total) }) : t('train.rest_over')}
+      </p>
       <div className="mx-auto flex max-w-lg items-center gap-2 rounded-2xl border border-[rgb(var(--border))] bg-[rgb(var(--bg-elevated))]/95 p-2 pl-4 shadow-card backdrop-blur-xl">
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1" role="timer" aria-live="off">
           <p className="text-xs muted">{left > 0 ? t('train.rest') : t('train.rest_over')}</p>
           <p className="tnum text-xl font-semibold">{clock(Math.max(0, left))}</p>
           <div className="mt-1 h-1 overflow-hidden rounded-full bg-[rgb(var(--border))]">

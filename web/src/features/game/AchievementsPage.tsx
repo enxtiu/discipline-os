@@ -172,7 +172,7 @@ function LevelCard({ xp, levels }: { xp: ProfileXp; levels: Level[] }) {
                   className={clsx(
                     'tnum flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-semibold',
                     current
-                      ? 'bg-[rgb(var(--accent-2))] text-white'
+                      ? 'bg-[rgb(var(--accent-2))] text-on-accent-2'
                       : reached
                         ? 'bg-[rgb(var(--accent-2))]/15 text-[rgb(var(--accent-2))]'
                         : 'bg-[rgb(var(--bg-sunken))] text-[rgb(var(--text-muted))]',

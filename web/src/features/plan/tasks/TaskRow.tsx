@@ -11,6 +11,7 @@ import clsx from 'clsx'
 
 import { IconCheck, IconClock } from '@/components/ui/icons'
 import { openTask } from '../events'
+import { usePendingTaskIds } from '../pending'
 import { blockLabel, dueLabel, formatMinutes, PRIORITY_STYLES, relativeDay } from '../format'
 import { IconBellSmall, IconCalendar, IconRepeat, IconSubtasks, IconTimer } from '../icons'
 import type { Occurrence, Priority, Ref, Task } from '../types'
@@ -89,7 +90,7 @@ export function TaskCheck({
         className={clsx(
           'flex h-[22px] w-[22px] items-center justify-center rounded-full border-2 transition-colors',
           done
-            ? 'border-transparent bg-[rgb(var(--accent))] text-ink-950'
+            ? 'border-transparent bg-[rgb(var(--accent))] text-on-accent'
             : [PRIORITY_STYLES[priority].ring, PRIORITY_FILL[priority]],
         )}
       >
@@ -114,8 +115,16 @@ export interface TaskRowProps {
 export function TaskRow({ task, today, day, showContainer = true, children }: TaskRowProps) {
   const { t } = useTranslation()
   const { toggle, busy } = useCompleteToggle(today)
+  const waiting = usePendingTaskIds().has(task.id)
   const closed = isClosed(task)
   const meta: ReactNode[] = []
+  if (waiting) {
+    meta.push(
+      <Meta key="waiting" className="text-violet-300">
+        <span data-testid="task-pending">{t('sync.pending_mark')}</span>
+      </Meta>,
+    )
+  }
 
   if (task.due_date) {
     const label = day && task.due_date === day ? (task.due_time ?? '') : dueLabel(task, today)
@@ -165,7 +174,7 @@ export function TaskRow({ task, today, day, showContainer = true, children }: Ta
   }
 
   return (
-    <div data-testid="task-row" data-task-id={task.id} data-status={task.status}>
+    <div data-testid="task-row" data-task-id={task.id} data-status={task.status} data-pending={waiting ? 'true' : 'false'}>
       <div className="flex items-start">
         <TaskCheck
           done={closed}
@@ -177,7 +186,7 @@ export function TaskRow({ task, today, day, showContainer = true, children }: Ta
         <button
           type="button"
           onClick={() => openTask(task.id)}
-          className="min-w-0 flex-1 py-3 pr-4 text-left transition-colors active:bg-[rgb(var(--border))]/30"
+          className="min-h-tap min-w-0 flex-1 py-3 pr-4 text-left transition-colors active:bg-[rgb(var(--border))]/30"
         >
           {task.parent_title && (
             <span className="mb-0.5 block truncate text-xs muted">{t('task.parent_prefix', { title: task.parent_title })}</span>
@@ -192,7 +201,7 @@ export function TaskRow({ task, today, day, showContainer = true, children }: Ta
             {task.title}
           </span>
           {meta.length > 0 && (
-            <span className={clsx('mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs muted', closed && 'opacity-70')}>
+            <span className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs muted">
               {meta}
             </span>
           )}
@@ -219,16 +228,16 @@ export function OccurrenceRow({
   const time = occurrence.block ? blockLabel(occurrence.block) : (occurrence.due_time ?? '')
   const container = occurrence.project ?? occurrence.area
   return (
-    <div className="flex items-start opacity-60" data-testid="occurrence-row" data-task-id={occurrence.task_id}>
-      <span className="flex h-12 w-12 shrink-0 items-center justify-center" aria-hidden="true">
+    <div className="flex items-start" data-testid="occurrence-row" data-task-id={occurrence.task_id}>
+      <span className="flex h-12 w-12 shrink-0 items-center justify-center opacity-60" aria-hidden="true">
         <span className={clsx('h-[22px] w-[22px] rounded-full border-2 border-dashed', PRIORITY_STYLES[occurrence.priority].ring)} />
       </span>
       <button
         type="button"
         onClick={() => openTask(occurrence.task_id)}
-        className="min-w-0 flex-1 py-3 pr-4 text-left"
+        className="min-h-tap min-w-0 flex-1 py-3 pr-4 text-left"
       >
-        <span className="block break-words text-[15px] leading-snug">{occurrence.title}</span>
+        <span className="block break-words text-[15px] leading-snug text-[rgb(var(--text-muted))]">{occurrence.title}</span>
         <span className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs muted">
           <Meta icon={<IconRepeat size={12} />}>{t('task.virtual_repeat')}</Meta>
           {(!day || occurrence.date !== day) && <Meta className="tnum">{relativeDay(occurrence.date, today)}</Meta>}

@@ -4,8 +4,13 @@
  *
  * Caps at 100 % visually but reports the raw percentage to screen readers, so
  * "142 % of protein" is still announced correctly.
+ *
+ * With a `name` the ring is one progressbar for screen readers («Белки, 8 из
+ * 160 г») and the text drawn inside it is hidden from them; without one the
+ * circle is decoration and the text inside is read as plain text (use that
+ * when a surrounding control or caption already says it all).
  */
-import { motion } from 'framer-motion'
+import { m } from 'framer-motion'
 import clsx from 'clsx'
 import type { ReactNode } from 'react'
 
@@ -21,12 +26,17 @@ export interface RingProps {
   className?: string
   /** Rendered inside the ring under the label (e.g. unit). */
   children?: ReactNode
+  /** Accessible name; without it the ring is decorative. */
+  name?: string
+  /** What a screen reader says for the value, e.g. «220 из 2 080 ккал». */
+  valueText?: string
 }
 
+// strokes follow the theme tokens (a light-theme ring stays visible on white)
 const TONES = {
-  accent: { stroke: '#38E0C8', glow: 'rgb(56 224 200 / .45)' },
-  violet: { stroke: '#8B5CF6', glow: 'rgb(139 92 246 / .45)' },
-  warn: { stroke: '#FBBF24', glow: 'rgb(251 191 36 / .45)' },
+  accent: { stroke: 'rgb(var(--accent))', glow: 'rgb(56 224 200 / .45)' },
+  violet: { stroke: 'rgb(var(--accent-2))', glow: 'rgb(139 92 246 / .45)' },
+  warn: { stroke: 'rgb(var(--warn))', glow: 'rgb(251 191 36 / .45)' },
   muted: { stroke: '#3B4E70', glow: 'transparent' },
 } as const
 
@@ -41,6 +51,8 @@ export function ProgressRing({
   glow = true,
   className,
   children,
+  name,
+  valueText,
 }: RingProps) {
   const ratio = max > 0 ? Math.max(0, Math.min(1, value / max)) : 0
   const radius = (size - thickness) / 2
@@ -53,13 +65,18 @@ export function ProgressRing({
     <div
       className={clsx('relative inline-flex items-center justify-center', className)}
       style={{ width: size, height: size }}
-      role="progressbar"
-      aria-valuenow={percent}
-      aria-valuemin={0}
-      aria-valuemax={100}
-      aria-label={typeof label === 'string' ? label : undefined}
+      {...(name
+        ? {
+            role: 'progressbar',
+            'aria-label': name,
+            'aria-valuenow': percent,
+            'aria-valuemin': 0,
+            'aria-valuemax': 100,
+            'aria-valuetext': valueText,
+          }
+        : {})}
     >
-      <svg width={size} height={size} className="-rotate-90">
+      <svg width={size} height={size} className="-rotate-90" aria-hidden="true">
         <circle
           cx={size / 2}
           cy={size / 2}
@@ -68,22 +85,24 @@ export function ProgressRing({
           stroke="rgb(var(--border))"
           strokeWidth={thickness}
         />
-        <motion.circle
+        <m.circle
           cx={size / 2}
           cy={size / 2}
           r={radius}
           fill="none"
-          stroke={colors.stroke}
           strokeWidth={thickness}
           strokeLinecap="round"
           strokeDasharray={circumference}
           initial={{ strokeDashoffset: circumference }}
           animate={{ strokeDashoffset: offset }}
           transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
-          style={glow ? { filter: `drop-shadow(0 0 6px ${colors.glow})` } : undefined}
+          style={{ stroke: colors.stroke, ...(glow ? { filter: `drop-shadow(0 0 6px ${colors.glow})` } : {}) }}
         />
       </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center gap-0.5 px-2 text-center">
+      <div
+        className="absolute inset-0 flex flex-col items-center justify-center gap-0.5 px-2 text-center"
+        aria-hidden={name ? true : undefined}
+      >
         {label !== undefined && <span className="stat-value leading-none">{label}</span>}
         {sublabel !== undefined && (
           <span className="text-[11px] font-medium uppercase tracking-wide text-[rgb(var(--text-muted))]">
@@ -127,8 +146,10 @@ export function RingCluster({
             tone={ring.tone}
             label={Math.round(ring.value)}
             glow={false}
+            name={ring.title}
+            valueText={`${Math.round(ring.value)} / ${Math.round(ring.max)} ${ring.unit ?? ''}`.trim()}
           />
-          <div className="text-center">
+          <div className="text-center" aria-hidden="true">
             <p className="text-xs font-semibold leading-tight">{ring.title}</p>
             <p className="text-[10px] uppercase tracking-wide text-[rgb(var(--text-muted))]">
               / {Math.round(ring.max)} {ring.unit ?? ''}

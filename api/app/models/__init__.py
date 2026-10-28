@@ -12,6 +12,7 @@ add endpoints, never migrations for *these* entities):
 * stage 7 — push subscriptions, notifications log
 * stage 8 — xp events, levels, achievements, user achievements, streaks,
             daily scores, quests
+* stage 9 — integrations, integration links (migration 0004, the optional Notion sync)
 """
 
 from app.models.base import Base
@@ -29,6 +30,13 @@ from app.models.gamification import (
     UserQuest,
     XpEvent,
     XpKind,
+)
+from app.models.integrations import (
+    ENTITY_TYPES,
+    Integration,
+    IntegrationLink,
+    IntegrationProvider,
+    IntegrationStatus,
 )
 from app.models.nutrition import (
     Food,
@@ -188,6 +196,12 @@ __all__ = [
     "QuestKind",
     "QuestStatus",
     "UserQuest",
+    # integrations (stage 9)
+    "ENTITY_TYPES",
+    "Integration",
+    "IntegrationLink",
+    "IntegrationProvider",
+    "IntegrationStatus",
     # system
     "PushSubscription",
     "NotificationLog",

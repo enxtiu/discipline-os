@@ -9,7 +9,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Path, Query, Response
 
 from app.api.deps import CurrentPrincipal, DbSession, require_device
-from app.api.v1.planner import Write, clock_for, sane_day, week_start_of
+from app.api.v1.planner import EDIT_CONFLICT, Write, clock_for, sane_day, week_start_of
 from app.api.v1.presenters import (
     journal_day_summary_out,
     journal_has_note_out,
@@ -39,8 +39,8 @@ from app.schemas.planner import (
     TimerStopOut,
     TimeSummaryOut,
 )
-from app.services.planner import journal, loader, time_tracking
-from app.services.planner.common import Clock, minutes
+from app.services.planner import conflicts, journal, loader, time_tracking
+from app.services.planner.common import Clock, advisory_lock, minutes
 
 router = APIRouter(prefix="/planner", tags=["planner"], dependencies=[Depends(require_device)])
 EntryId = Annotated[uuid.UUID, Path(alias="id", description="time entry id")]
@@ -134,11 +134,25 @@ async def create_entry(payload: TimeEntryIn, principal: CurrentPrincipal, db: Db
     return (await _entries(db, principal, [entry], clock))[0]
 
 
-@router.patch("/time-entries/{id}", response_model=TimeEntryOut, summary="Correct a time entry", dependencies=Write)
+@router.patch(
+    "/time-entries/{id}",
+    response_model=TimeEntryOut,
+    summary="Correct a time entry",
+    dependencies=Write,
+    responses=EDIT_CONFLICT,
+)
 async def patch_entry(
     entry_id: EntryId, payload: TimeEntryPatchIn, principal: CurrentPrincipal, db: DbSession
 ) -> TimeEntryOut:
     clock = clock_for(principal)
+    if payload.base is not None:  # compare-and-set (stage 9), in update_entry's lock order
+        await advisory_lock(db, principal.user_id, time_tracking.LOCK_SCOPE)
+        locked = await time_tracking._own_entry(db, principal.user_id, entry_id)
+        current = (await _entries(db, principal, [locked], clock))[0]
+        values = conflicts.time_entry_values(
+            current, task_id=locked.task_id, project_id=locked.project_id, area_id=locked.area_id
+        )
+        conflicts.check_base("time_entry", payload, values, current)
     entry = await time_tracking.update_entry(
         db, user_id=principal.user_id, clock=clock, entry_id=entry_id, payload=payload
     )
@@ -241,9 +255,18 @@ async def get_journal(day: JournalDay, principal: CurrentPrincipal, db: DbSessio
     response_model=JournalOut,
     summary="Write the day's journal (fields not sent keep their value)",
     dependencies=Write,
+    responses=EDIT_CONFLICT,
 )
 async def put_journal(day: JournalDay, payload: JournalIn, principal: CurrentPrincipal, db: DbSession) -> JournalOut:
-    entry = await journal.upsert(db, user_id=principal.user_id, clock=clock_for(principal), day=day, payload=payload)
+    clock = clock_for(principal)
+    if payload.base is not None:
+        # compare-and-set (stage 9): one base-carrying write per day at a time; no entry = every field empty
+        journal.check_day(day, clock)
+        await advisory_lock(db, principal.user_id, f"journal:{day.isoformat()}")
+        existing = await journal.get_entry(db, principal.user_id, day, lock=True)
+        current = journal_out(existing) if existing is not None else None
+        conflicts.check_base("journal", payload, conflicts.journal_values(current), current, ignore=("base", "id"))
+    entry = await journal.upsert(db, user_id=principal.user_id, clock=clock, day=day, payload=payload)
     return journal_out(entry)
 
 

@@ -30,7 +30,7 @@ import { LogSheet, type LogTarget } from './LogSheet'
 import { RecipeSheet } from './RecipeSheet'
 import {
   useAddWater,
-  useDay,
+  useDayView,
   useDeleteMeal,
   useFavorites,
   useFoodSearch,
@@ -57,7 +57,9 @@ export function FoodPage() {
   const [customSheet, setCustomSheet] = useState(false)
   const searchRef = useRef<HTMLInputElement>(null)
 
-  const day = useDay()
+  // stage 9: the server's day plus meals still waiting in the offline queue
+  const day = useDayView()
+  const pendingIds = day.pendingIds
   const recents = useRecents()
   const favorites = useFavorites()
   const recipes = useRecipes()
@@ -83,7 +85,10 @@ export function FoodPage() {
       addWater.mutate(
         { amountMl: 250, id: crypto.randomUUID() },
         {
-          onSuccess: () => toast.success(t('today.water_added', { ml: 250 })),
+          onSuccess: (result) =>
+            result.queued
+              ? toast.info(t('sync.water_queued', { ml: 250 }))
+              : toast.success(t('today.water_added', { ml: 250 })),
           onError: (error) => toast.error(errorMessage(error)),
         },
       )
@@ -113,7 +118,8 @@ export function FoodPage() {
 
   return (
     <div className="space-y-5">
-      <div className="grid grid-cols-3 gap-2" aria-label={t('ai.capture_row')}>
+      <h1 className="sr-only">{t('food.title')}</h1>
+      <div className="grid grid-cols-3 gap-2" role="group" aria-label={t('ai.capture_row')}>
         <PhotoTrigger className="btn-secondary btn-sm min-h-tap cursor-pointer flex-col gap-1 py-2 text-xs">
           <IconCamera size={20} className="text-[rgb(var(--accent))]" />
           {t('food.photo')}
@@ -135,6 +141,7 @@ export function FoodPage() {
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           placeholder={t('food.search_placeholder')}
+          aria-label={t('food.search')}
           className="pl-10"
           autoComplete="off"
         />
@@ -262,21 +269,41 @@ export function FoodPage() {
                   </span>
                 </div>
                 {(mealsByType.get(type) ?? []).map((meal) => (
-                  <div key={meal.id} className="flex items-center gap-3">
+                  <div
+                    key={meal.id}
+                    className="flex items-center gap-3"
+                    data-testid="meal-row"
+                    data-meal-id={meal.client_uuid}
+                    data-pending={pendingIds.has(meal.id) ? 'true' : 'false'}
+                  >
                     <span className="tnum w-11 shrink-0 text-xs muted">
                       {time(meal.logged_at, session?.settings.timezone)}
                     </span>
-                    <span className="min-w-0 flex-1 truncate text-sm">
-                      {(meal.items ?? []).map((item) => item.name).join(', ')}
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm">
+                        {(meal.items ?? []).map((item) => item.name).join(', ')}
+                      </span>
+                      {pendingIds.has(meal.id) && (
+                        <span className="block text-[11px] text-violet-300" data-testid="meal-pending">
+                          {t('sync.pending_mark')}
+                        </span>
+                      )}
                     </span>
                     <span className="tnum shrink-0 text-sm">{number(meal.kcal)}</span>
                     <button
                       type="button"
-                      className="muted"
-                      aria-label={t('app.delete')}
+                      className="-my-2 -mr-3 flex h-tap w-tap shrink-0 items-center justify-center rounded-2xl muted"
+                      aria-label={t('a11y.delete_meal', { name: (meal.items ?? []).map((item) => item.name).join(', ') })}
                       onClick={() =>
-                        deleteMeal.mutate(meal.id, { onError: (error) => toast.error(errorMessage(error)) })
+                        deleteMeal.mutate(meal.id, {
+                          onSuccess: (result) => {
+                            if (result.withdrawn) toast.info(t('sync.meal_discarded'))
+                            else if (result.queued) toast.info(t('sync.queued'))
+                          },
+                          onError: (error) => toast.error(errorMessage(error)),
+                        })
                       }
+                      data-testid="meal-delete"
                     >
                       <IconTrash size={16} />
                     </button>
@@ -314,7 +341,7 @@ export function FoodPage() {
                   <Card key={recipe.id} className="flex items-center gap-2 py-2 pr-2">
                     <button
                       type="button"
-                      className="min-w-0 flex-1 py-1 text-left"
+                      className="min-h-tap min-w-0 flex-1 py-1 text-left"
                       onClick={() => setTarget({ kind: 'recipe', recipe })}
                     >
                       <p className="truncate text-sm font-semibold">{recipe.name}</p>

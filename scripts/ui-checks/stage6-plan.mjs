@@ -152,9 +152,18 @@ export async function run(ctx) {
     await page.locator('[data-testid="subtask-row"]').filter({ hasText: `шаг ${stamp}` }).waitFor({ timeout: 8000 }).catch(() => {})
     await shot('41-plan-editor')
     const saved = await act(new RegExp(`/tasks/${edited.id}$`), 'PATCH', () => page.locator('[data-testid="task-save"]').click())
+    // stage 9: `base` carries the values the changed fields started from (compare-and-set)
+    const sentFields = Object.keys(saved.sent ?? {}).filter((key) => key !== 'base').sort().join(',')
+    const base = saved.sent?.base ?? {}
     check(
-      Object.keys(saved.sent ?? {}).sort().join(',') === 'due_date,priority,recurrence_rule,tags',
-      'the editor PATCH carries only the changed fields',
+      sentFields === 'due_date,priority,recurrence_rule,tags' &&
+        Object.keys(base).sort().join(',') === sentFields &&
+        base.priority === 4 &&
+        base.due_date === null &&
+        base.recurrence_rule === null &&
+        Array.isArray(base.tags) &&
+        base.tags.length === 0,
+      'the editor PATCH carries only the changed fields, with the values they started from as base',
       Object.keys(saved.sent ?? {}).join(', '),
     )
     const afterEdit = await getTask(edited.id)
@@ -215,7 +224,10 @@ export async function run(ctx) {
     const upcoming = (await api(`${P}/views/upcoming?days=3`)).body
     check(
       (await virtual.count()) === 1 &&
-        Number(await virtual.evaluate((el) => getComputedStyle(el).opacity)) < 1 &&
+        // dimmed by its faded dashed circle and muted title (stage 9: row opacity took the text under 4.5:1)
+        (await virtual.evaluate(
+          (el) => Number(getComputedStyle(el.querySelector('[aria-hidden="true"]') ?? el).opacity) < 1 || Number(getComputedStyle(el).opacity) < 1,
+        )) &&
         !!upcoming?.days?.find((entry) => entry.date === day(1))?.occurrences?.some((item) => item.task_id === daily.id),
       'upcoming shows tomorrow’s repeat of a daily task as a dimmed virtual row',
     )

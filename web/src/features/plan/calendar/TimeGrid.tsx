@@ -258,19 +258,23 @@ export function TimeGrid({
                     key={day}
                     type="button"
                     onClick={() => onPickDay?.(day)}
-                    aria-label={t('calendar.open_day_named', { day: dayTitle(day) })}
                     aria-current={day === today ? 'date' : undefined}
                     className="flex min-h-tap flex-col items-center justify-center gap-0.5 py-1"
                     data-testid="cal-day-header"
                     data-date={day}
                   >
-                    <span className={clsx('text-[10px] uppercase', day === today ? 'text-[rgb(var(--accent))]' : 'muted')}>
+                    <span className="sr-only">{t('calendar.open_day_named', { day: dayTitle(day) })}</span>
+                    <span
+                      className={clsx('text-[10px] uppercase', day === today ? 'text-[rgb(var(--accent))]' : 'muted')}
+                      aria-hidden="true"
+                    >
                       {weekdayShort(day)}
                     </span>
                     <span
+                      aria-hidden="true"
                       className={clsx(
                         'tnum flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-[13px] font-semibold',
-                        day === today && 'bg-[rgb(var(--accent))] text-ink-950',
+                        day === today && 'bg-[rgb(var(--accent))] text-on-accent',
                       )}
                     >
                       {dayNumber(day)}
@@ -468,12 +472,12 @@ const BlocksLayer = memo(function BlocksLayer({
               onClick={() => openTask(task.id)}
               {...(movable ? bind(origin) : {})}
               className={clsx(
-                'absolute z-10 flex flex-col overflow-hidden rounded-md border-l-[3px] py-0.5 text-left leading-tight text-[rgb(var(--text))]',
+                'absolute z-10 flex flex-col overflow-hidden rounded-md border-l-[3px] py-0.5 text-left leading-tight',
+                done ? 'text-[rgb(var(--text-muted))]' : 'text-[rgb(var(--text))]',
                 compact ? 'text-[10px]' : 'text-xs',
                 narrow ? 'px-0.5' : 'px-1',
                 PRIORITY_TINT[task.priority],
                 !task.project?.color && PRIORITY_STYLES[task.priority].ring,
-                done && 'opacity-50',
                 draggingId === task.id && 'opacity-30',
                 movable && clsx(DRAG_SURFACE, 'cursor-grab'),
               )}
@@ -586,7 +590,7 @@ function AllDayCell({
               'block truncate rounded-md text-left',
               compact ? 'w-full max-w-full px-1 text-[10px] leading-5' : 'min-h-tap max-w-[15rem] shrink-0 px-3 text-sm',
               PRIORITY_CHIP[task.priority],
-              isDone(task) && 'line-through opacity-50',
+              isDone(task) && 'text-[rgb(var(--text-muted))] line-through',
             )}
             title={label}
             aria-label={label}

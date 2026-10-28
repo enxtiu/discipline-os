@@ -42,6 +42,17 @@ the latest `docs/stage-*.md` for what exists before touching code.
   `web/src/styles/index.css`: dark default, tabular numerals, safe-area insets,
   48 px targets, every frequent action within two taps. Class names must be
   literal strings (or safelisted in `tailwind.config.js`) or Tailwind purges them.
+- Writes from the UI go through the offline queue (`web/src/lib/offlineQueue.ts`);
+  nothing in it is dropped silently. Edits of existing planner rows send `base`
+  (the values they started from) so a change made on another device answers
+  409 `edit_conflict` instead of being overwritten (`docs/stage-9-offline.md` §3).
+- Animations use `m.*` from framer-motion (LazyMotion, `web/src/lib/motion.tsx`);
+  a `motion.*` component pulls every animation feature back into the start-up JS.
+- New screens and sheets get a state in `scripts/ui-checks/stage9-a11y.mjs` and must
+  pass it (no serious or critical axe node in either theme, 48 px targets, sheets
+  modal for the keyboard).
+- Third-party secrets (Notion) are sealed with `app/core/secret_box.py` and are
+  never returned, logged, exported or backed up.
 - One branch per stage (`stage-N-short-name`), small conventional commits,
   a PR (or a ready-to-apply commit sequence) with the stage summary.
 - Every stage ends with `docs/stage-N.md` (plan · files · commands · walkthrough
@@ -54,6 +65,7 @@ cd api && .venv/bin/pytest -q                       # real PostgreSQL (TEST_DATA
 cd api && .venv/bin/ruff check . && .venv/bin/ruff format --check .
 cd web && npm run typecheck && npm run build        # tsc + vite + PWA
 node scripts/check-i18n.mjs
+node scripts/perf/bundle-report.mjs --check         # main chunk ≤ 300 kB (stage 9 budget)
 PAIRING_CODE=XXXX-XXXX node scripts/ui-check.mjs    # Playwright, 390x844
 API_BASE=http://127.0.0.1:8000/api ./scripts/smoke.sh <PAIRING-CODE>
 ```

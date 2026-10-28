@@ -169,6 +169,7 @@ export function RecipeSheet({ open, onClose }: { open: boolean; onClose: () => v
                   value={pickerQuery}
                   onChange={(event) => setPickerQuery(event.target.value)}
                   placeholder={t('food.search_placeholder')}
+                  aria-label={t('food.search')}
                   className="pl-9"
                   autoFocus
                 />

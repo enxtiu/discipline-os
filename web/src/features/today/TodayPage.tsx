@@ -8,10 +8,10 @@
  * stage 5 (`GET /v1/health/today`), the planner card and the running timer since
  * stage 6, gamification in stage 8.
  */
-import { useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { motion } from 'framer-motion'
+import { m } from 'framer-motion'
 
 import { Button, Callout, Card, EmptyState, ProgressBar, Skeleton } from '@/components/ui'
 import { ProgressRing } from '@/components/ui/ProgressRing'
@@ -30,8 +30,8 @@ import type { MealLog, MealType, Recipe } from '@/api/types'
 import { useAuth } from '@/features/auth/AuthProvider'
 import { number, time, today } from '@/lib/format'
 import { errorMessage } from '@/lib/errors'
-import { useAddWater, useDay, useDeleteMeal, useRecipes } from '@/features/food/useNutrition'
-import { LogSheet } from '@/features/food/LogSheet'
+import { useAddWater, useDayView, useDeleteMeal, useDeleteWater, useRecipes } from '@/features/food/useNutrition'
+import { planToast } from '@/features/plan/tasks/toast'
 import { PhotoTrigger, useAiCapture } from '@/features/ai/AiCapture'
 import { MealPhoto } from '@/features/ai/MealPhoto'
 import { TrainingTodayCard } from '@/features/train/TrainingTodayCard'
@@ -42,6 +42,11 @@ import { useHealthQueueRefresh, useHealthToday } from '@/features/health/useHeal
 import { PlanTodayCard } from '@/features/plan/PlanTodayCard'
 import { TimerBar } from '@/features/plan/timer/TimerBar'
 import { DayScoreCard } from '@/features/game/DayScoreCard'
+import { useOnceTrue } from '@/lib/lazy'
+
+// stage 9: the recipe log sheet loads on first use (a pinned recipe). The health sheets
+// stay: mounted with Today, they read their series with it and open prefilled.
+const LogSheet = lazy(() => import('@/features/food/LogSheet').then((module) => ({ default: module.LogSheet })))
 
 const MEAL_ORDER: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack', 'other']
 
@@ -51,8 +56,11 @@ export function TodayPage() {
   const navigate = useNavigate()
   const toast = useToast()
 
-  const dayQuery = useDay()
+  // stage 9: the server's day plus meals and water still waiting in the offline queue
+  const dayQuery = useDayView()
+  const pendingIds = dayQuery.pendingIds
   const addWater = useAddWater()
+  const deleteWater = useDeleteWater()
   const deleteMeal = useDeleteMeal()
   const capture = useAiCapture()
   const recipes = useRecipes()
@@ -75,11 +83,13 @@ export function TodayPage() {
     }
   }, [action, setParams])
   const [logRecipe, setLogRecipe] = useState<Recipe | null>(null)
+  const logSheetUsed = useOnceTrue(logRecipe !== null)
   const pinned = (recipes.data?.items ?? []).filter((recipe) => recipe.is_pinned)
 
   const day = dayQuery.data
   const eaten = day?.totals ?? { kcal: 0, protein_g: 0, fat_g: 0, carbs_g: 0, fiber_g: 0 }
   const waterMl = day?.water_ml ?? 0
+  const waterPending = (day?.water_logs ?? []).some((row) => pendingIds.has(row.id))
 
   const targets = session?.targets as Record<string, number | null> | undefined
   const targetKcal = targets?.target_kcal ?? null
@@ -96,17 +106,40 @@ export function TodayPage() {
     return grouped
   }, [day])
 
-  const quickWater = () =>
+  const quickWater = () => {
+    const id = crypto.randomUUID()
     addWater.mutate(
-      { amountMl: 250, id: crypto.randomUUID() },
+      { amountMl: 250, id },
       {
-        onSuccess: () => toast.success(t('today.water_added', { ml: 250 })),
+        onSuccess: (result) => {
+          const undo = {
+            label: t('task.undo'),
+            onClick: () =>
+              deleteWater.mutate(id, {
+                onSuccess: () => toast.info(t('sync.water_removed')),
+                onError: (error) => toast.error(errorMessage(error)),
+              }),
+          }
+          if (result.queued) planToast.info(t('sync.water_queued', { ml: 250 }), undo)
+          else planToast.success(t('today.water_added', { ml: 250 }), undo)
+        },
         onError: (error) => toast.error(errorMessage(error)),
       },
     )
+  }
+
+  const removeMeal = (id: string) =>
+    deleteMeal.mutate(id, {
+      onSuccess: (result) => {
+        if (result.withdrawn) toast.info(t('sync.meal_discarded'))
+        else if (result.queued) toast.info(t('sync.queued'))
+      },
+      onError: (error) => toast.error(errorMessage(error)),
+    })
 
   return (
     <div className="space-y-5">
+      <h1 className="sr-only">{t('today.title')}</h1>
       <TimerBar variant="today" />
 
       <section className="flex flex-col items-center gap-4">
@@ -121,6 +154,12 @@ export function TodayPage() {
             tone={progressPercent > 100 ? 'warn' : 'accent'}
             label={hasTargets ? number(eaten.kcal) : '—'}
             sublabel={t('today.kcal')}
+            name={t('today.kcal')}
+            valueText={
+              hasTargets
+                ? t('a11y.value_of', { value: number(eaten.kcal), target: number(targetKcal), unit: t('common.kcal') })
+                : t('a11y.value_unit', { value: number(eaten.kcal), unit: t('common.kcal') })
+            }
           >
             {hasTargets ? (
               <span className="mt-1 text-[11px] muted">
@@ -176,6 +215,11 @@ export function TodayPage() {
                 </span>
               </div>
               <ProgressBar value={waterMl} max={targets?.target_water_ml ?? 1} />
+              {waterPending && (
+                <p className="text-[11px] text-violet-300" data-testid="water-pending">
+                  {t('sync.pending_mark')}
+                </p>
+              )}
               <Button size="sm" variant="secondary" loading={addWater.isPending} onClick={quickWater}>
                 {t('today.quick_water', { ml: 250 })}
               </Button>
@@ -291,16 +335,30 @@ export function TodayPage() {
                 </span>
               </div>
               {(mealsByType.get(type) ?? []).map((meal) => (
-                <div key={meal.id} className="flex items-center gap-3">
+                <div
+                  key={meal.id}
+                  className="flex items-center gap-3"
+                  data-testid="meal-row"
+                  data-meal-id={meal.client_uuid}
+                  data-pending={pendingIds.has(meal.id) ? 'true' : 'false'}
+                >
                   <span className="tnum w-11 shrink-0 text-xs muted">{time(meal.logged_at, session?.settings.timezone)}</span>
                   {meal.has_photo && <MealPhoto mealId={meal.id} />}
-                  <span className="min-w-0 flex-1 truncate text-sm">{(meal.items ?? []).map((item) => item.name).join(', ')}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm">{(meal.items ?? []).map((item) => item.name).join(', ')}</span>
+                    {pendingIds.has(meal.id) && (
+                      <span className="block text-[11px] text-violet-300" data-testid="meal-pending">
+                        {t('sync.pending_mark')}
+                      </span>
+                    )}
+                  </span>
                   <span className="tnum shrink-0 text-sm">{number(meal.kcal)}</span>
                   <button
                     type="button"
-                    className="muted"
-                    aria-label={t('app.delete')}
-                    onClick={() => deleteMeal.mutate(meal.id, { onError: (error) => toast.error(errorMessage(error)) })}
+                    className="-my-2 -mr-3 flex h-tap w-tap shrink-0 items-center justify-center rounded-2xl muted"
+                    aria-label={t('a11y.delete_meal', { name: (meal.items ?? []).map((item) => item.name).join(', ') })}
+                    onClick={() => removeMeal(meal.id)}
+                    data-testid="meal-delete"
                   >
                     <IconTrash size={16} />
                   </button>
@@ -343,10 +401,14 @@ export function TodayPage() {
         {today()} · {number(progressPercent)}%
       </p>
 
-      <LogSheet
-        target={logRecipe ? { kind: 'recipe', recipe: logRecipe } : null}
-        onClose={() => setLogRecipe(null)}
-      />
+      {logSheetUsed && (
+        <Suspense fallback={null}>
+          <LogSheet
+            target={logRecipe ? { kind: 'recipe', recipe: logRecipe } : null}
+            onClose={() => setLogRecipe(null)}
+          />
+        </Suspense>
+      )}
       <StepsSheet open={healthSheet === 'steps'} onClose={() => setHealthSheet(null)} />
       <WeightSheet open={healthSheet === 'weight'} onClose={() => setHealthSheet(null)} />
       <SleepSheet open={healthSheet === 'sleep'} onClose={() => setHealthSheet(null)} />
@@ -366,7 +428,7 @@ function MiniStat({
   accent?: boolean
 }) {
   return (
-    <motion.div
+    <m.div
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       className="surface-sunken px-3 py-2.5 text-center"
@@ -376,7 +438,7 @@ function MiniStat({
         {value}
         {unit && <span className="ml-1 text-[11px] font-normal muted">{unit}</span>}
       </p>
-    </motion.div>
+    </m.div>
   )
 }
 
@@ -393,10 +455,22 @@ function MacroRing({
   tone: 'accent' | 'violet' | 'warn'
   unit: string
 }) {
+  const { t } = useTranslation()
   return (
     <div className="flex flex-col items-center gap-2">
-      <ProgressRing size={64} thickness={6} value={value} max={max} tone={tone} glow={false} label={number(value)} />
-      <div className="text-center">
+      <ProgressRing
+        size={64}
+        thickness={6}
+        value={value}
+        max={max}
+        tone={tone}
+        glow={false}
+        label={number(value)}
+        name={title}
+        valueText={t('a11y.value_of', { value: number(value), target: number(max), unit })}
+      />
+      {/* the ring above already says «Белки, 8 из 160 г» */}
+      <div className="text-center" aria-hidden="true">
         <p className="text-[11px] font-semibold">{title}</p>
         <p className="text-[10px] muted tnum">
           / {number(max)} {unit}

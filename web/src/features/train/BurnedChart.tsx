@@ -55,37 +55,42 @@ export function BurnedChart({ data, loading }: { data: Burned | undefined; loadi
           {(data?.total_kcal ?? 0) === 0 && (
             <p className="pointer-events-none absolute inset-x-0 top-8 text-center text-sm muted">{t('train.burned_empty')}</p>
           )}
-          <div className="grid grid-cols-7 gap-0.5" role="list" aria-label={t('train.burned_week')}>
+          <ul className="grid grid-cols-7 gap-0.5" role="list" aria-label={t('train.burned_week')}>
             {days.map((day) => {
               const height = day.kcal > 0 ? Math.max(4, Math.round((day.kcal / max) * HEIGHT)) : 0
               const labelled = day.date === todayDate || day.date === best || day.date === active
               return (
-                <button
-                  key={day.date}
-                  type="button"
-                  role="listitem"
-                  onClick={() => setActive(active === day.date ? null : day.date)}
-                  aria-label={t('train.burned_day', {
-                    day: dayLabel(day.date, 'long'),
-                    kcal: number(day.kcal),
-                    n: day.workouts,
-                  })}
-                  className="flex min-h-tap flex-col items-center justify-end gap-1 rounded-lg pt-1"
-                >
-                  <span className={clsx('tnum text-[11px] leading-none', labelled && day.kcal > 0 ? 'muted' : 'invisible')}>
-                    {number(day.kcal)}
-                  </span>
-                  <span className="flex w-full justify-center" style={{ height: HEIGHT }} aria-hidden="true">
-                    <span className="mt-auto w-3/5 max-w-[22px] rounded-t-[4px] chart-burn" style={{ height }} />
-                  </span>
-                  <span className="h-px w-full bg-[rgb(var(--border))]" aria-hidden="true" />
-                  <span className={clsx('text-[11px] leading-none', day.date === todayDate ? 'font-semibold' : 'muted')}>
-                    {weekday(day.date)}
-                  </span>
-                </button>
+                <li key={day.date} className="flex">
+                  <button
+                    type="button"
+                    onClick={() => setActive(active === day.date ? null : day.date)}
+                    aria-pressed={active === day.date}
+                    className="flex min-h-tap w-full flex-col items-center justify-end gap-1 rounded-lg pt-1"
+                  >
+                    <span className="sr-only">
+                      {t('train.burned_day', { day: dayLabel(day.date, 'long'), kcal: number(day.kcal), n: day.workouts })}
+                    </span>
+                    <span
+                      className={clsx('tnum text-[11px] leading-none', labelled && day.kcal > 0 ? 'muted' : 'invisible')}
+                      aria-hidden="true"
+                    >
+                      {number(day.kcal)}
+                    </span>
+                    <span className="flex w-full justify-center" style={{ height: HEIGHT }} aria-hidden="true">
+                      <span className="mt-auto w-3/5 max-w-[22px] rounded-t-[4px] chart-burn" style={{ height }} />
+                    </span>
+                    <span className="h-px w-full bg-[rgb(var(--border))]" aria-hidden="true" />
+                    <span
+                      className={clsx('text-[11px] leading-none', day.date === todayDate ? 'font-semibold' : 'muted')}
+                      aria-hidden="true"
+                    >
+                      {weekday(day.date)}
+                    </span>
+                  </button>
+                </li>
               )
             })}
-          </div>
+          </ul>
         </div>
       )}
     </Card>

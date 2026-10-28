@@ -101,7 +101,7 @@ export function PlanLayout() {
                   aria-hidden="true"
                   className={clsx(
                     'tnum absolute -top-1.5 right-0 min-w-[1.125rem] rounded-pill px-1 text-center text-[10px] font-semibold leading-[1.125rem]',
-                    item.danger ? 'bg-rose-500 text-white' : 'bg-[rgb(var(--accent))] text-ink-950',
+                    item.danger ? 'bg-rose-500 text-white' : 'bg-[rgb(var(--accent))] text-on-accent',
                   )}
                 >
                   {item.badge}

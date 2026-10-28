@@ -23,6 +23,7 @@ import { relativeDay } from '../format'
 import { useCounts, useJournal, useJournalList } from '../queries'
 import { DaySummaryCard } from './DaySummaryCard'
 import { useJournalAutosave, type JournalFields, type SaveStatus } from './useJournalAutosave'
+import { ConflictView } from '@/features/sync/ConflictView'
 
 type Scale = 'rating' | 'mood' | 'energy'
 const SCALES: Scale[] = ['rating', 'mood', 'energy']
@@ -119,6 +120,16 @@ export default function JournalScreen() {
         <>
           <StatusLine status={autosave.status} error={autosave.error} onRetry={autosave.flush} />
 
+          {autosave.conflict && (
+            <ConflictView
+              fields={autosave.conflict.fields}
+              mine={autosave.conflict.mine as Record<string, unknown>}
+              current={autosave.conflict.theirs}
+              onKeepTheirs={() => void autosave.resolve('theirs')}
+              onKeepMine={() => void autosave.resolve('mine')}
+            />
+          )}
+
           <Card className="space-y-5" data-testid="journal-scales">
             {SCALES.map((scale) => (
               <ScaleField key={scale} scale={scale} value={draft[scale]} onChange={(value) => autosave.edit({ [scale]: value })} />
@@ -192,14 +203,22 @@ function StatusLine({ status, error, onRetry }: { status: SaveStatus; error: str
         ? t('journal.status.saved')
         : status === 'queued'
           ? t('journal.status.queued')
-          : status === 'error'
+          : status === 'conflict'
+            ? t('sync.conflict_title')
+            : status === 'error'
             ? t('journal.status.error', { reason: error ?? t('app.error_generic') })
             : t('journal.status.idle')
   return (
     <div
       className={clsx(
         'flex min-h-[1.75rem] items-center gap-2 px-1 text-xs',
-        status === 'error' ? 'text-rose-400' : status === 'saved' ? 'text-[rgb(var(--accent))]' : 'muted',
+        status === 'error'
+          ? 'text-rose-400'
+          : status === 'conflict'
+            ? 'text-amber-300'
+            : status === 'saved'
+              ? 'text-[rgb(var(--accent))]'
+              : 'muted',
       )}
       role="status"
       aria-live="polite"
@@ -272,7 +291,6 @@ function MonthStrip({ date, today, onPick }: { date: string; today: string | und
                 disabled={future}
                 onClick={() => onPick(day)}
                 aria-pressed={selected}
-                aria-label={has ? t('journal.day_with_entry', { day: dayTitle(day) }) : dayTitle(day)}
                 className={clsx(
                   'flex h-14 w-12 flex-col items-center justify-center gap-0.5 rounded-2xl border text-xs transition-colors',
                   selected
@@ -285,8 +303,13 @@ function MonthStrip({ date, today, onPick }: { date: string; today: string | und
                 data-date={day}
                 data-has-entry={has ? 'true' : 'false'}
               >
-                <span className="text-[10px] uppercase leading-none muted">{weekdayShort(day)}</span>
-                <span className="tnum text-sm font-semibold leading-none">{dayNumber(day)}</span>
+                <span className="sr-only">{has ? t('journal.day_with_entry', { day: dayTitle(day) }) : dayTitle(day)}</span>
+                <span className="text-[10px] uppercase leading-none muted" aria-hidden="true">
+                  {weekdayShort(day)}
+                </span>
+                <span className="tnum text-sm font-semibold leading-none" aria-hidden="true">
+                  {dayNumber(day)}
+                </span>
                 <span
                   className={clsx('h-1.5 w-1.5 rounded-full', has ? 'bg-[rgb(var(--accent))]' : 'bg-transparent')}
                   aria-hidden="true"
@@ -330,7 +353,7 @@ function ScaleField({ scale, value, onChange }: { scale: Scale; value: number | 
               className={clsx(
                 'tnum min-h-tap rounded-2xl border text-lg font-semibold transition-colors',
                 active
-                  ? 'border-transparent bg-[rgb(var(--accent))] text-ink-950'
+                  ? 'border-transparent bg-[rgb(var(--accent))] text-on-accent'
                   : filled
                     ? 'border-[rgb(var(--accent))]/40 bg-[rgb(var(--accent))]/10 text-[rgb(var(--accent))]'
                     : 'border-[rgb(var(--border))] bg-[rgb(var(--bg-sunken))] text-[rgb(var(--text-muted))]',

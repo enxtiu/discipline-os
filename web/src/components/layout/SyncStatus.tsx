@@ -1,90 +1,109 @@
 /**
- * Sync indicator: online/offline, queued writes, and a manual "retry now".
- * Sits in the header so its state is always visible but never in the way.
+ * Sync indicator in the header: online/offline, writes waiting to be sent and
+ * an attention dot for writes the server refused or that changed on another
+ * device. Tapping it opens the sync sheet (stage 9) — what waits, what failed
+ * and why, conflicts to settle, «Отправить всё сейчас». The whole 48 px square
+ * is the target; the visible pill stays compact.
  */
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence, MotionConfig, m } from 'framer-motion'
+import clsx from 'clsx'
 
 import { IconCloudCheck, IconRefresh, IconWifiOff } from '@/components/ui/icons'
-import { countPending, flushQueue, onQueueChange } from '@/lib/offlineQueue'
-import clsx from 'clsx'
+import { usePrefersReducedMotion, useQueueState } from '@/features/sync/useQueue'
+
+// The sheet is only needed on a tap: its own chunk, fetched while the app is idle and online
+// (so it opens offline later too; the production service worker precaches every chunk anyway).
+const loadSheet = () => import('@/features/sync/SyncSheet')
+const SyncSheet = lazy(() => loadSheet().then((module) => ({ default: module.SyncSheet })))
 
 export function SyncStatus() {
   const { t } = useTranslation()
-  const [online, setOnline] = useState(() => navigator.onLine)
-  const [pending, setPending] = useState(0)
-  const [flushing, setFlushing] = useState(false)
+  const state = useQueueState()
+  const reduced = usePrefersReducedMotion()
+  const [open, setOpen] = useState(false)
+  const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
-    const unsubscribe = onQueueChange(setPending)
-    const handleOnline = () => setOnline(true)
-    const handleOffline = () => {
-      setOnline(false)
-      void countPending().then(setPending)
-    }
-    window.addEventListener('online', handleOnline)
-    window.addEventListener('offline', handleOffline)
-    return () => {
-      unsubscribe()
-      window.removeEventListener('online', handleOnline)
-      window.removeEventListener('offline', handleOffline)
-    }
+    const idle = window.requestIdleCallback ?? ((callback: () => void) => window.setTimeout(callback, 1500))
+    idle(() => {
+      if (navigator.onLine) void loadSheet().then(() => setMounted(true))
+    })
   }, [])
 
-  const retry = async () => {
-    setFlushing(true)
-    try {
-      await flushQueue()
-    } finally {
-      setFlushing(false)
-    }
-  }
-
-  const offline = !online
+  const offline = !state.online
+  const pending = state.pending
+  const attention = state.failed + state.conflict
   const hasPending = pending > 0
 
-  const label = offline
-    ? t('app.offline')
-    : hasPending
-      ? t('app.sync_pending', { count: pending })
-      : t('app.sync_done')
+  const parts = [
+    offline ? t('app.offline') : hasPending ? t('sync.pill_pending', { count: pending }) : t('app.sync_done'),
+  ]
+  if (offline && hasPending) parts.push(t('sync.pill_pending', { count: pending }))
+  if (attention > 0) parts.push(t('sync.pill_attention', { count: attention }))
+  const label = parts.join(' · ')
 
   return (
-    <button
-      type="button"
-      onClick={hasPending || offline ? retry : undefined}
-      disabled={!hasPending && !offline}
-      className={clsx(
-        'flex min-h-[2.25rem] items-center gap-1.5 rounded-pill border px-3 text-xs font-medium transition-colors',
-        offline
-          ? 'border-amber-400/40 bg-amber-400/10 text-amber-300'
-          : hasPending
-            ? 'border-violet-400/40 bg-violet-400/10 text-violet-300'
-            : 'border-[rgb(var(--border))] muted',
-      )}
-      aria-label={label}
-      title={label}
-    >
-      <AnimatePresence mode="wait" initial={false}>
-        <motion.span
-          key={offline ? 'off' : hasPending ? 'pending' : 'ok'}
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0, scale: 0.8 }}
-          transition={{ duration: 0.15 }}
-          className={clsx('flex items-center gap-1.5', flushing && 'animate-pulse-soft')}
-        >
-          {offline ? (
-            <IconWifiOff size={15} />
-          ) : hasPending ? (
-            <IconRefresh size={15} />
-          ) : (
-            <IconCloudCheck size={15} />
+    <MotionConfig reducedMotion={reduced ? 'always' : 'never'}>
+      <button
+        type="button"
+        onClick={() => {
+          setMounted(true)
+          setOpen(true)
+        }}
+        className="-my-1.5 flex min-h-tap min-w-tap items-center justify-center"
+        aria-label={label}
+        aria-haspopup="dialog"
+        title={label}
+        data-testid="sync-pill"
+        data-online={offline ? 'false' : 'true'}
+        data-pending={pending}
+        data-attention={attention}
+      >
+        <span
+          className={clsx(
+            'relative flex min-h-[2.25rem] items-center gap-1.5 rounded-pill border px-3 text-xs font-medium transition-colors',
+            offline
+              ? 'border-amber-400/40 bg-amber-400/10 text-amber-300'
+              : hasPending
+                ? 'border-violet-400/40 bg-violet-400/10 text-violet-300'
+                : attention > 0
+                  ? 'border-rose-500/40 bg-rose-500/10 text-rose-300'
+                  : 'border-[rgb(var(--border))] muted',
           )}
-          {hasPending && <span className="tnum">{pending}</span>}
-        </motion.span>
-      </AnimatePresence>
-    </button>
+        >
+          <AnimatePresence mode="wait" initial={false}>
+            <m.span
+              key={offline ? 'off' : hasPending ? 'pending' : 'ok'}
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.8 }}
+              transition={{ duration: 0.15 }}
+              className={clsx('flex items-center gap-1.5', state.sending && 'animate-pulse-soft')}
+            >
+              {offline ? <IconWifiOff size={15} /> : hasPending ? <IconRefresh size={15} /> : <IconCloudCheck size={15} />}
+              {hasPending && <span className="tnum" data-testid="sync-pill-count">{pending}</span>}
+            </m.span>
+          </AnimatePresence>
+          {attention > 0 && (
+            <span
+              className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-rose-400 ring-2 ring-[rgb(var(--bg))]"
+              aria-hidden="true"
+              data-testid="sync-pill-dot"
+            />
+          )}
+        </span>
+      </button>
+      {/* the header blurs its backdrop, which would trap a fixed sheet inside it: render at the root */}
+      {mounted &&
+        createPortal(
+          <Suspense fallback={null}>
+            <SyncSheet open={open} onClose={() => setOpen(false)} />
+          </Suspense>,
+          document.body,
+        )}
+    </MotionConfig>
   )
 }
