@@ -42,6 +42,7 @@ export default {
           500: '#8B5CF6',
         },
         amber: {
+          100: token('amber-100'),
           200: token('amber-200'),
           300: token('amber-300'),
           400: token('amber-400'),
@@ -49,6 +50,7 @@ export default {
         },
         rose: {
           200: token('rose-200'),
+          300: token('rose-300'),
           400: token('rose-400'),
           500: '#F43F5E',
         },

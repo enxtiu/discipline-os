@@ -57,6 +57,44 @@ const TARGET_EXCEPTIONS = [
   },
 ]
 
+/** GET /integrations/notion for a connected owner (the shape stage9-notion.mjs uses). */
+function notionFixture() {
+  const now = Date.now()
+  const kind = (name, database, total, extra = {}) => ({
+    kind: name,
+    enabled: true,
+    database,
+    url: database === 'ok' ? `https://app.notion.com/p/${'0123456789abcdef'.repeat(2)}` : null,
+    last_run: database === 'ok' ? { created: 0, updated: 1, trashed: 0, unchanged: total - 1, failed: 0, pending: 0, total, state: 'ok' } : null,
+    ...extra,
+  })
+  return {
+    provider: 'notion',
+    status: 'connected',
+    connected: true,
+    secret_set: true,
+    bot_name: 'DisciplineOS',
+    workspace_name: 'Мой Notion',
+    page: { id: '1f2e3d4c-5b6a-4987-8a1b-2c3d4e5f6a7b', title: 'DisciplineOS', url: 'https://app.notion.com/p/1f2e3d4c5b6a49878a1b2c3d4e5f6a7b' },
+    kinds: [kind('areas', 'ok', 6), kind('projects', 'ok', 4), kind('tasks', 'ok', 57), kind('journal', 'ok', 12, { enabled: false }), kind('days', 'missing', 0)],
+    sync: {
+      state: 'idle',
+      run_id: '01990000-0000-7000-8000-000000000001',
+      started_at: new Date(now - 5 * 60_000).toISOString(),
+      finished_at: new Date(now - 4 * 60_000).toISOString(),
+      last_sync_at: new Date(now - 4 * 60_000).toISOString(),
+      result: 'ok',
+      error: 'notion_database_missing',
+      error_kind: null,
+      totals: { created: 3, updated: 2, trashed: 1, unchanged: 73, failed: 0, pending: 0, total: 79 },
+      requests: 9,
+    },
+    error: null,
+    notion_version: '2026-03-11',
+    interval_minutes: 10,
+  }
+}
+
 function loadAxe() {
   try {
     const require = createRequire(new URL('../../web/package.json', import.meta.url))
@@ -438,7 +476,9 @@ export async function run(ctx) {
   let project = null
 
   const errors = []
+  let offline = false // requests that fail while the context is offline are expected
   const onConsole = (message) => {
+    if (offline) return
     if (message.type() === 'error' && !/favicon|404 \(Not Found\)|Failed to load resource/i.test(message.text())) errors.push(message.text())
   }
   const onPageError = (error) => errors.push(String(error))
@@ -714,20 +754,71 @@ export async function run(ctx) {
       },
       { optional: true },
     )
+    // the connected Notion card: reaching it needs Notion, so GET is answered from a fixture
+    const notionRoute = (route) =>
+      route.request().method() === 'GET' ? route.fulfill({ json: notionFixture() }) : route.fallback()
+    await page.route('**/api/v1/integrations/notion', notionRoute)
+    await audit(
+      'Settings · integrations (connected, fixture)',
+      async () => {
+        await page.goto(`${WEB_URL}/settings/integrations`, { waitUntil: 'networkidle' })
+        if (new URL(page.url()).pathname !== '/settings/integrations') return false
+        return page
+          .locator('[data-testid="notion-card"][data-state="connected"]')
+          .waitFor({ timeout: 8000 })
+          .then(() => true)
+          .catch(() => false)
+      },
+      { optional: true },
+    )
+    await page.unroute('**/api/v1/integrations/notion', notionRoute)
+    const pill = () => page.locator('[data-testid="sync-pill"], header > div > button').first()
+    const openSync = async () => {
+      if (!(await pill().count()) || (await pill().isDisabled())) return false
+      await pill().click()
+      return topDialog()
+        .waitFor({ timeout: 5000 })
+        .then(() => true)
+        .catch(() => false)
+    }
     await audit(
       'sync sheet (header pill)',
       async () => {
         await goto('/today', '[data-testid="burned-today"]')
-        const pill = page.locator('header > div > button').first()
-        if (!(await pill.count()) || (await pill.isDisabled())) return false
-        await pill.click()
-        return topDialog()
-          .waitFor({ timeout: 3000 })
-          .then(() => true)
-          .catch(() => false)
+        return openSync()
       },
       { scope: 'dialog', optional: true },
     )
+    // the same sheet with a write waiting: offline, +250 мл, open the pill
+    let syncWater = false
+    await audit(
+      'sync sheet with a queued write (offline)',
+      async () => {
+        await goto('/today', '[data-testid="burned-today"]')
+        if (!(await page.locator('[data-testid="sync-pill"]').count())) return false
+        offline = true
+        await context.setOffline(true)
+        await page.getByRole('button', { name: /\+250 мл/ }).click()
+        await page.waitForTimeout(800)
+        syncWater = true
+        return openSync()
+      },
+      { scope: 'dialog', optional: true },
+    )
+    if (offline) {
+      await page.keyboard.press('Escape').catch(() => {})
+      await context.setOffline(false)
+      await page.evaluate(() => window.dispatchEvent(new Event('online'))).catch(() => {})
+      await page.waitForTimeout(2500)
+      offline = false
+    }
+    if (syncWater) {
+      // the queued 250 ml reached the server: remove it with the rest of this module's data
+      const logged = (await apiFetch('/v1/nutrition/day')).body?.water ?? []
+      for (const log of Array.isArray(logged) ? logged : []) {
+        if (log?.id && !created.water.includes(log.id) && log.amount_ml === 250) created.water.push(log.id)
+      }
+    }
 
     // onboarding wizard: the four steps, then «Пропустить»
     for (const [index, label] of ['profile', 'body', 'goal', 'limits'].entries()) {
