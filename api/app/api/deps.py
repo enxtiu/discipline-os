@@ -20,6 +20,7 @@ from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import contains_eager
 
 from app.core.errors import Forbidden, Unauthorized
 from app.core.logging import get_logger, user_id_var
@@ -84,18 +85,30 @@ async def get_principal(
     now = utcnow()
 
     # ---- device token ----------------------------------------------------
-    device = (await db.execute(select(Device).where(Device.token_hash == digest))).scalar_one_or_none()
-    if device is not None:
+    # one round trip for the device, its user and their settings (every request
+    # starts here — stage 9 perf): `User.settings` is filled from the join instead of
+    # its own selectin query; the outer join keeps a user without settings
+    found = (
+        await db.execute(
+            select(Device, User)
+            .join(User, User.id == Device.user_id)
+            .outerjoin(User.settings)
+            .options(contains_eager(User.settings))
+            .where(Device.token_hash == digest)
+        )
+    ).one_or_none()
+    if found is not None:
+        device, user = found
+        settings_row = user.settings
         if not device.is_active or device.revoked_at is not None:
             raise Unauthorized("This device has been revoked", code="device_revoked")
-        user = await db.get(User, device.user_id)
-        if user is None or user.status != UserStatus.ACTIVE:
+        if user.status != UserStatus.ACTIVE:
             raise Unauthorized("Account is not active", code="account_inactive")
         await _touch_device(db, device)
         user_id_var.set(str(user.id))
         return Principal(
             user=user,
-            settings_row=await _load_settings(db, user.id),
+            settings_row=settings_row,
             device=device,
             scopes=set(device.scopes or ["*"]),
             kind="device",

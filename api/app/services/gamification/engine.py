@@ -180,7 +180,8 @@ async def sync_user(
     flags: dict[date, DayFlag] = {day: DayFlag(flag.score, flag.credit) for day, flag in stored.items()}
     flags.update({day: DayFlag(computed[day].value, computed[day].credit) for day in writable})
     overall_days = {day for day, flag in flags.items() if flag.credit and flag.score >= score.OVERALL_THRESHOLD}
-    longest = await streaks.stored_longest(db, user_id)
+    stored_streaks = await streaks.stored_rows(db, user_id)
+    longest = {kind: int(row["longest_count"] or 0) for kind, row in stored_streaks.items()}
     states = streaks.compute(history, overall_days, plans, ctx, longest, track=set(computed))
     snapshot = GameSnapshot(ctx=ctx, history=history, computed=computed, flags=flags, plans=plans, streaks=states)
     snapshot.finalised, snapshot.pending_left = len(pending), len(backlog) - len(pending)
@@ -203,7 +204,7 @@ async def sync_user(
         ]
         await xp.sync_days(db, ctx, writable, awards)
     if persist and "streaks" in stages:
-        await streaks.persist(db, ctx, states)
+        await streaks.persist(db, ctx, states, stored_streaks)
         if not snapshot.pending_left:  # milestones from the complete history only (identical results)
             await streaks.award_milestones(db, ctx, states[0])
 

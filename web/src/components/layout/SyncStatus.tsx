@@ -8,7 +8,7 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
-import { AnimatePresence, MotionConfig, motion } from 'framer-motion'
+import { AnimatePresence, MotionConfig, m } from 'framer-motion'
 import clsx from 'clsx'
 
 import { IconCloudCheck, IconRefresh, IconWifiOff } from '@/components/ui/icons'
@@ -75,7 +75,7 @@ export function SyncStatus() {
           )}
         >
           <AnimatePresence mode="wait" initial={false}>
-            <motion.span
+            <m.span
               key={offline ? 'off' : hasPending ? 'pending' : 'ok'}
               initial={{ opacity: 0, scale: 0.8 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -85,7 +85,7 @@ export function SyncStatus() {
             >
               {offline ? <IconWifiOff size={15} /> : hasPending ? <IconRefresh size={15} /> : <IconCloudCheck size={15} />}
               {hasPending && <span className="tnum" data-testid="sync-pill-count">{pending}</span>}
-            </motion.span>
+            </m.span>
           </AnimatePresence>
           {attention > 0 && (
             <span

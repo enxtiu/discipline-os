@@ -15,30 +15,41 @@ import { useTranslation } from 'react-i18next'
 import { AppShell } from '@/components/layout/AppShell'
 import { Spinner } from '@/components/ui'
 import { AuthProvider, useAuth } from '@/features/auth/AuthProvider'
-import { PairingScreen } from '@/features/auth/PairingScreen'
-import { OnboardingWizard } from '@/features/auth/OnboardingWizard'
 import { TodayPage } from '@/features/today/TodayPage'
-import { SettingsPage } from '@/features/settings/SettingsPage'
-import { ProfileSection } from '@/features/settings/ProfileSection'
-import { AppearanceSection } from '@/features/settings/AppearanceSection'
-import { NotificationsSection } from '@/features/settings/NotificationsSection'
-import { DevicesSection } from '@/features/settings/DevicesSection'
-import { TokensSection } from '@/features/settings/TokensSection'
-import { ShortcutSection } from '@/features/settings/ShortcutSection'
-import { DataSection } from '@/features/settings/DataSection'
+import { chunk, whenIdle } from '@/lib/lazy'
+// stage 9: what a paired phone does not need for its first screen loads on demand —
+// pairing and the onboarding wizard are chunks of their own; the settings hub and its
+// sections are one chunk (moving between sections never waits once it is there)
+const PairingScreen = lazy(() => import('@/features/auth/PairingScreen').then((module) => ({ default: module.PairingScreen })))
+const OnboardingWizard = lazy(() =>
+  import('@/features/auth/OnboardingWizard').then((module) => ({ default: module.OnboardingWizard })),
+)
+const settings = chunk(() => import('@/features/settings/sections'))
+const SettingsPage = settings('SettingsPage')
+const ProfileSection = settings('ProfileSection')
+const AppearanceSection = settings('AppearanceSection')
+const NotificationsSection = settings('NotificationsSection')
+const DevicesSection = settings('DevicesSection')
+const TokensSection = settings('TokensSection')
+const ShortcutSection = settings('ShortcutSection')
+const DataSection = settings('DataSection')
 // stage 4: the training screens load on first visit (Today stays light)
 const TrainPage = lazy(() => import('@/features/train/TrainPage').then((m) => ({ default: m.TrainPage })))
 const WorkoutPage = lazy(() => import('@/features/train/WorkoutPage').then((m) => ({ default: m.WorkoutPage })))
 const HealthPage = lazy(() => import('@/features/health/HealthPage').then((m) => ({ default: m.HealthPage })))
 // stage 6: the planner is one lazy chunk with its own nested routes
-const PlanRoutes = lazy(() => import('@/features/plan/PlanRoutes'))
+const plan = chunk(() => import('@/features/plan/PlanRoutes'))
+const PlanRoutes = plan('default')
 // stage 8: the Stats tab (dashboards, achievements) is one lazy chunk with nested routes
 const StatsRoutes = lazy(() => import('@/features/stats/StatsRoutes'))
+// stage 9: the Food tab (and its log, recipe and custom-food sheets) is a chunk of its own;
+// Food's and Plan's chunks load once the app is up and idle (prefetchTabs)
+const food = chunk(() => import('@/features/food/FoodPage'))
+const FoodPage = food('FoodPage')
 // stage 9: Settings → Интеграции (the optional Notion sync) loads on first visit
 const IntegrationsScreen = lazy(() =>
   import('@/features/integrations/IntegrationsScreen').then((m) => ({ default: m.IntegrationsScreen })),
 )
-import { FoodPage } from '@/features/food/FoodPage'
 import { SettingsHeader } from '@/features/settings/SettingsHeader'
 
 export default function App() {
@@ -53,14 +64,20 @@ function Shell() {
   const { status } = useAuth()
 
   if (status === 'loading') return <BootSplash />
-  if (status === 'unauthenticated') return <PairingScreen />
+  if (status === 'unauthenticated') {
+    return (
+      <Suspense fallback={<BootSplash />}>
+        <PairingScreen />
+      </Suspense>
+    )
+  }
 
   return (
     <Routes>
       <Route element={<AuthenticatedLayout />}>
         <Route path="/" element={<Navigate to="/today" replace />} />
         <Route path="/today" element={<TodayPage />} />
-        <Route path="/food" element={<FoodPage />} />
+        <Route path="/food" element={<Lazy><FoodPage /></Lazy>} />
         <Route path="/train" element={<Lazy><TrainPage /></Lazy>} />
         <Route path="/train/workout/:id" element={<Lazy><WorkoutPage /></Lazy>} />
         <Route path="/health" element={<Lazy><HealthPage /></Lazy>} />
@@ -99,11 +116,31 @@ function AuthenticatedLayout() {
   const needsOnboarding =
     !!session && (!session.settings.onboarding_completed || forceOnboarded)
 
+  useEffect(() => (needsOnboarding ? undefined : prefetchTabs()), [needsOnboarding])
+
   if (needsOnboarding) {
-    return <OnboardingWizard onDone={() => setForceOnboarded(false)} />
+    return (
+      <Suspense fallback={<BootSplash />}>
+        <OnboardingWizard onDone={() => setForceOnboarded(false)} />
+      </Suspense>
+    )
   }
 
   return <AppShell />
+}
+
+/**
+ * Food and Plan are the tabs tapped most after Today: their code loads once the first
+ * screen is up and the browser idle (from the service worker's cache once installed), so
+ * the first tap shows the screen at once instead of a spinner while the chunk loads.
+ * Not with Data Saver on. Returns the cancel function.
+ */
+function prefetchTabs(): (() => void) | undefined {
+  if ((navigator as Navigator & { connection?: { saveData?: boolean } }).connection?.saveData) return undefined
+  return whenIdle(() => {
+    food.preload()
+    plan.preload()
+  })
 }
 
 /**
@@ -116,7 +153,9 @@ function SettingsLayout() {
   return (
     <>
       {location.pathname !== '/settings' && <SettingsHeader title={t('settings.title')} />}
-      <Outlet />
+      <Lazy>
+        <Outlet />
+      </Lazy>
     </>
   )
 }

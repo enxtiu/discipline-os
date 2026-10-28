@@ -13,7 +13,7 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 
-import { mutate, onQueueChange, type QueuedMethod, type QueueMeta } from '@/lib/offlineQueue'
+import { mutate, type QueuedMethod, type QueueMeta } from '@/lib/offlineQueue'
 import { planApi, planPaths } from './api'
 import type {
   AreaIn,
@@ -275,17 +275,12 @@ export function invalidatePlanner(queryClient: QueryClient, gone?: readonly unkn
   })
 }
 
-/** Refresh planner screens once queued writes have been sent (mount once per screen tree). */
-export function usePlannerQueueRefresh() {
-  const queryClient = useQueryClient()
-  useEffect(() => {
-    let last = Number.POSITIVE_INFINITY
-    return onQueueChange((count) => {
-      if (last > count) void invalidatePlanner(queryClient)
-      last = count
-    })
-  }, [queryClient])
-}
+/**
+ * Planner screens after queued writes have been sent: since stage 9 the app-wide
+ * refresh does it (lib/queueRefresh.ts) — this hook no longer refetches every
+ * planner query each time the Plan tab mounts.
+ */
+export function usePlannerQueueRefresh(): void {}
 
 function usePlanWrite<TVars, TData>(
   build: (vars: TVars) => WriteRequest,

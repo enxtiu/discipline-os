@@ -7,7 +7,7 @@
  * (lowercase, spaces, missing dash).
  */
 import { useEffect, useRef, useState } from 'react'
-import { motion } from 'framer-motion'
+import { m } from 'framer-motion'
 import { useTranslation } from 'react-i18next'
 
 import { Button, Callout, CheckList, Field, Input } from '@/components/ui'
@@ -57,7 +57,7 @@ export function PairingScreen() {
         }}
       />
 
-      <motion.div
+      <m.div
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
@@ -147,7 +147,7 @@ export function PairingScreen() {
           </button>
 
           {showHelp && (
-            <motion.div
+            <m.div
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}
               className="overflow-hidden"
@@ -160,10 +160,10 @@ export function PairingScreen() {
                   </span>
                 </Callout>
               </div>
-            </motion.div>
+            </m.div>
           )}
         </div>
-      </motion.div>
+      </m.div>
 
       <footer className="relative z-10 mx-auto mt-10 w-full max-w-md text-center text-xs muted">
         <p className="flex items-center justify-center gap-1.5">

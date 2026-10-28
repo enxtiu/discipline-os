@@ -1,0 +1,9 @@
+/** The settings hub and its sections: one lazy chunk (stage 9), loaded with the first of them opened. */
+export { SettingsPage } from './SettingsPage'
+export { ProfileSection } from './ProfileSection'
+export { AppearanceSection } from './AppearanceSection'
+export { NotificationsSection } from './NotificationsSection'
+export { DevicesSection } from './DevicesSection'
+export { TokensSection } from './TokensSection'
+export { ShortcutSection } from './ShortcutSection'
+export { DataSection } from './DataSection'

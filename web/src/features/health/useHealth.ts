@@ -6,12 +6,11 @@
  * metro, sent when the network is back. A weigh-in also moves the profile
  * weight (and so the targets), hence the session refresh.
  */
-import { useEffect } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { endpoints } from '@/api/client'
 import type { HealthDay, SleepEntry, SleepIn, StepsIn, WeightEntry, WeightIn } from '@/api/types'
-import { mutate, onQueueChange } from '@/lib/offlineQueue'
+import { mutate } from '@/lib/offlineQueue'
 import { queryKeys } from '@/lib/queryClient'
 
 export function useHealthToday() {
@@ -46,20 +45,12 @@ function useInvalidateHealth(alsoSession = false) {
   }
 }
 
-/** Refresh health numbers once queued entries have been sent. */
-export function useHealthQueueRefresh() {
-  const queryClient = useQueryClient()
-  useEffect(() => {
-    let last = Number.POSITIVE_INFINITY
-    return onQueueChange((count) => {
-      if (last > count) {
-        void queryClient.invalidateQueries({ queryKey: queryKeys.healthData })
-        void queryClient.invalidateQueries({ queryKey: queryKeys.session })
-      }
-      last = count
-    })
-  }, [queryClient])
-}
+/**
+ * Health numbers after queued entries have been sent: since stage 9 the app-wide
+ * refresh does it (lib/queueRefresh.ts, health data and the session included) —
+ * this hook no longer refetches health and the session on every mount.
+ */
+export function useHealthQueueRefresh(): void {}
 
 type Saved<T> = { queued: true } | { queued: false; data: T }
 

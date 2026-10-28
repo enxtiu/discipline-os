@@ -8,10 +8,10 @@
  * stage 5 (`GET /v1/health/today`), the planner card and the running timer since
  * stage 6, gamification in stage 8.
  */
-import { useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { motion } from 'framer-motion'
+import { m } from 'framer-motion'
 
 import { Button, Callout, Card, EmptyState, ProgressBar, Skeleton } from '@/components/ui'
 import { ProgressRing } from '@/components/ui/ProgressRing'
@@ -32,7 +32,6 @@ import { number, time, today } from '@/lib/format'
 import { errorMessage } from '@/lib/errors'
 import { useAddWater, useDayView, useDeleteMeal, useDeleteWater, useRecipes } from '@/features/food/useNutrition'
 import { planToast } from '@/features/plan/tasks/toast'
-import { LogSheet } from '@/features/food/LogSheet'
 import { PhotoTrigger, useAiCapture } from '@/features/ai/AiCapture'
 import { MealPhoto } from '@/features/ai/MealPhoto'
 import { TrainingTodayCard } from '@/features/train/TrainingTodayCard'
@@ -43,6 +42,11 @@ import { useHealthQueueRefresh, useHealthToday } from '@/features/health/useHeal
 import { PlanTodayCard } from '@/features/plan/PlanTodayCard'
 import { TimerBar } from '@/features/plan/timer/TimerBar'
 import { DayScoreCard } from '@/features/game/DayScoreCard'
+import { useOnceTrue } from '@/lib/lazy'
+
+// stage 9: the recipe log sheet loads on first use (a pinned recipe). The health sheets
+// stay: mounted with Today, they read their series with it and open prefilled.
+const LogSheet = lazy(() => import('@/features/food/LogSheet').then((module) => ({ default: module.LogSheet })))
 
 const MEAL_ORDER: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack', 'other']
 
@@ -79,6 +83,7 @@ export function TodayPage() {
     }
   }, [action, setParams])
   const [logRecipe, setLogRecipe] = useState<Recipe | null>(null)
+  const logSheetUsed = useOnceTrue(logRecipe !== null)
   const pinned = (recipes.data?.items ?? []).filter((recipe) => recipe.is_pinned)
 
   const day = dayQuery.data
@@ -389,10 +394,14 @@ export function TodayPage() {
         {today()} · {number(progressPercent)}%
       </p>
 
-      <LogSheet
-        target={logRecipe ? { kind: 'recipe', recipe: logRecipe } : null}
-        onClose={() => setLogRecipe(null)}
-      />
+      {logSheetUsed && (
+        <Suspense fallback={null}>
+          <LogSheet
+            target={logRecipe ? { kind: 'recipe', recipe: logRecipe } : null}
+            onClose={() => setLogRecipe(null)}
+          />
+        </Suspense>
+      )}
       <StepsSheet open={healthSheet === 'steps'} onClose={() => setHealthSheet(null)} />
       <WeightSheet open={healthSheet === 'weight'} onClose={() => setHealthSheet(null)} />
       <SleepSheet open={healthSheet === 'sleep'} onClose={() => setHealthSheet(null)} />
@@ -412,7 +421,7 @@ function MiniStat({
   accent?: boolean
 }) {
   return (
-    <motion.div
+    <m.div
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       className="surface-sunken px-3 py-2.5 text-center"
@@ -422,7 +431,7 @@ function MiniStat({
         {value}
         {unit && <span className="ml-1 text-[11px] font-normal muted">{unit}</span>}
       </p>
-    </motion.div>
+    </m.div>
   )
 }
 
