@@ -1157,7 +1157,7 @@
     "title": "Настройки",
     "sections": {
       "profile": "Профиль и цели",
-      "appearance": "Внешний вид",
+      "appearance": "Язык и регион",
       "notifications": "Уведомления",
       "devices": "Устройства",
       "tokens": "API-токены",
@@ -1169,9 +1169,10 @@
     "language": "Язык",
     "language_ru": "Русский",
     "language_en": "English",
-    "theme": "Тема",
     "theme_dark": "Тёмная",
     "theme_light": "Светлая",
+    "theme_link": "Тема оформления",
+    "theme_link_hint": "{{theme}} — цвета, наклейки, крупный текст",
     "timezone": "Часовой пояс",
     "timezone_auto": "Определять автоматически",
     "timezone_detected": "Ваше время: {{time}} ({{tz}})",
@@ -1383,6 +1384,53 @@
     "data_restore_lead": "Резервная копия восстанавливается на сервере командой:",
     "data_restore_readme": "Как запустить её в Docker, как проверить архив до записи и в какой аккаунт можно восстанавливать — в README, раздел «Backups and restore».",
     "integrations_hint": "Notion — односторонняя копия"
+  },
+  "look": {
+    "title": "Оформление",
+    "preview_title": "Так будет выглядеть",
+    "preview_of": "из {{kcal}} ккал",
+    "preview_left": "Осталось {{kcal}} ккал",
+    "skin_title": "Тема",
+    "skins": {
+      "forge": "Кузница",
+      "clarity": "Ясность",
+      "pulse": "Пульс",
+      "notebook": "Блокнот",
+      "ios": "Родной iOS",
+      "stickers": "Наклейки",
+      "evolution": "Эволюция",
+      "gentle": "Бережный",
+      "glass": "Стекло"
+    },
+    "soon": "Скоро",
+    "mode_title": "Режим",
+    "mode": {
+      "light": "Светлая",
+      "dark": "Тёмная",
+      "system": "Как в системе"
+    },
+    "ground_title": "Набор цветов",
+    "ground": {
+      "lilac": "Сирень",
+      "mint": "Мята",
+      "peach": "Персик",
+      "lemonade": "Лимонад"
+    },
+    "ground_night": "В тёмном режиме — ночной набор",
+    "tilt": "Наклон наклеек",
+    "tilt_hint": "Значки чуть повёрнуты; с «Меньше анимации» — ровно",
+    "shadow_title": "Тени",
+    "shadow": {
+      "hard": "Жёсткие",
+      "soft": "Мягкие"
+    },
+    "global_title": "Для всех тем",
+    "large_text": "Крупный текст",
+    "large_text_hint": "Текст и отступы на восьмую крупнее",
+    "reduce_motion": "Меньше анимации",
+    "reduce_motion_hint": "Без скольжения, пружин и наклона",
+    "reduce_motion_system": "Уже включено в настройках устройства",
+    "device_note": "Оформление хранится на этом устройстве."
   },
   "common": {
     "g": "г",

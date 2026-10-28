@@ -1157,7 +1157,7 @@
     "title": "Settings",
     "sections": {
       "profile": "Profile & goals",
-      "appearance": "Appearance",
+      "appearance": "Language & region",
       "notifications": "Notifications",
       "devices": "Devices",
       "tokens": "API tokens",
@@ -1169,9 +1169,10 @@
     "language": "Language",
     "language_ru": "Русский",
     "language_en": "English",
-    "theme": "Theme",
     "theme_dark": "Dark",
     "theme_light": "Light",
+    "theme_link": "Theme",
+    "theme_link_hint": "{{theme}} — colours, stickers, large text",
     "timezone": "Timezone",
     "timezone_auto": "Detect automatically",
     "timezone_detected": "Your time: {{time}} ({{tz}})",
@@ -1383,6 +1384,53 @@
     "data_restore_lead": "A backup is restored on the server with:",
     "data_restore_readme": "How to run it in Docker, how to check an archive before anything is written and which account it can go into — see the README, section «Backups and restore».",
     "integrations_hint": "Notion — a one-way copy"
+  },
+  "look": {
+    "title": "Appearance",
+    "preview_title": "This is how it will look",
+    "preview_of": "of {{kcal}} kcal",
+    "preview_left": "{{kcal}} kcal left",
+    "skin_title": "Theme",
+    "skins": {
+      "forge": "Forge",
+      "clarity": "Clarity",
+      "pulse": "Pulse",
+      "notebook": "Notebook",
+      "ios": "Native iOS",
+      "stickers": "Stickers",
+      "evolution": "Evolution",
+      "gentle": "Gentle",
+      "glass": "Glass"
+    },
+    "soon": "Soon",
+    "mode_title": "Mode",
+    "mode": {
+      "light": "Light",
+      "dark": "Dark",
+      "system": "System"
+    },
+    "ground_title": "Colour set",
+    "ground": {
+      "lilac": "Lilac",
+      "mint": "Mint",
+      "peach": "Peach",
+      "lemonade": "Lemonade"
+    },
+    "ground_night": "Dark mode uses the night set",
+    "tilt": "Tilted stickers",
+    "tilt_hint": "Badges lean a little; straight with Reduce motion",
+    "shadow_title": "Shadows",
+    "shadow": {
+      "hard": "Hard",
+      "soft": "Soft"
+    },
+    "global_title": "For every theme",
+    "large_text": "Large text",
+    "large_text_hint": "Text and spacing one eighth larger",
+    "reduce_motion": "Reduce motion",
+    "reduce_motion_hint": "No sliding, springs or tilt",
+    "reduce_motion_system": "Already on in the device settings",
+    "device_note": "Appearance is stored on this device."
   },
   "common": {
     "g": "g",

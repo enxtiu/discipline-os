@@ -1,19 +1,24 @@
 /**
- * Appearance: language, theme, timezone, week start, units.
- * All four are stored server-side (so a second device picks them up); the
- * theme is per device (stage 10: lib/appearance.ts, applied before the first paint).
+ * Language and region: language, timezone, week start, units — stored server-side
+ * (so a second device picks them up).
+ *
+ * Stage 10: the theme moved to «Оформление» (/settings/theme, ThemeSection); the light /
+ * dark / system mode is kept here as well (the same per-device setting, lib/appearance.ts),
+ * with a way to the theme screen.
  */
+import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { Badge, Callout, Card, Field, Rows, Row, SegmentedControl, Select, SkeletonCard, Toggle } from '@/components/ui'
+import { IconChevronRight } from '@/components/ui/icons'
 import { endpoints } from '@/api/client'
 import type { SettingsUpdate } from '@/api/types'
 import { queryKeys } from '@/lib/queryClient'
 import { useToast } from '@/components/ui/Toast'
 import { errorMessage } from '@/lib/errors'
 import { detectedTimezone } from '@/lib/device'
-import { setAppearance, useAppearance } from '@/lib/appearance'
+import { setAppearance, useAppearance, type Mode } from '@/lib/appearance'
 import { time, fromApiTime, toApiTime } from '@/lib/format'
 import i18n, { type Language } from '@/i18n'
 import { useAuth } from '@/features/auth/AuthProvider'
@@ -79,17 +84,28 @@ export function AppearanceSection() {
           />
         </Field>
 
-        <Field label={t('settings.theme')}>
-          <SegmentedControl
-            value={appearance.mode === 'light' ? 'light' : 'dark'}
+        <Field label={t('look.mode_title')}>
+          <SegmentedControl<Mode>
+            value={appearance.mode}
             onChange={(mode) => setAppearance({ mode })}
             options={[
               { value: 'dark', label: t('settings.theme_dark') },
               { value: 'light', label: t('settings.theme_light') },
+              { value: 'system', label: t('look.mode.system') },
             ]}
           />
         </Field>
       </Card>
+
+      <Link to="/settings/theme" className="block" data-testid="appearance-to-theme">
+        <Rows>
+          <Row
+            label={t('settings.theme_link')}
+            hint={t('settings.theme_link_hint', { theme: t(`look.skins.${appearance.skin}`) })}
+            trailing={<IconChevronRight size={18} className="text-[rgb(var(--text-muted))]" />}
+          />
+        </Rows>
+      </Link>
 
       <Card className="space-y-4">
         <Field

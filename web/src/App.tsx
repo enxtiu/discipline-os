@@ -28,6 +28,7 @@ const settings = chunk(() => import('@/features/settings/sections'))
 const SettingsPage = settings('SettingsPage')
 const ProfileSection = settings('ProfileSection')
 const AppearanceSection = settings('AppearanceSection')
+const ThemeSection = settings('ThemeSection')
 const NotificationsSection = settings('NotificationsSection')
 const DevicesSection = settings('DevicesSection')
 const TokensSection = settings('TokensSection')
@@ -88,6 +89,7 @@ function Shell() {
           <Route index element={<SettingsPage />} />
           <Route path="profile" element={<ProfileSection />} />
           <Route path="appearance" element={<AppearanceSection />} />
+          <Route path="theme" element={<ThemeSection />} />
           <Route path="notifications" element={<NotificationsSection />} />
           <Route path="devices" element={<DevicesSection />} />
           <Route path="tokens" element={<TokensSection />} />

@@ -2,6 +2,7 @@
 export { SettingsPage } from './SettingsPage'
 export { ProfileSection } from './ProfileSection'
 export { AppearanceSection } from './AppearanceSection'
+export { ThemeSection } from './ThemeSection'
 export { NotificationsSection } from './NotificationsSection'
 export { DevicesSection } from './DevicesSection'
 export { TokensSection } from './TokensSection'
