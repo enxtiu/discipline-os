@@ -316,7 +316,7 @@ export function FoodPage() {
                   <Card key={recipe.id} className="flex items-center gap-2 py-2 pr-2">
                     <button
                       type="button"
-                      className="min-w-0 flex-1 py-1 text-left"
+                      className="min-h-tap min-w-0 flex-1 py-1 text-left"
                       onClick={() => setTarget({ kind: 'recipe', recipe })}
                     >
                       <p className="truncate text-sm font-semibold">{recipe.name}</p>

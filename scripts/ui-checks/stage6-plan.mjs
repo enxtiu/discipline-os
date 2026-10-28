@@ -215,7 +215,10 @@ export async function run(ctx) {
     const upcoming = (await api(`${P}/views/upcoming?days=3`)).body
     check(
       (await virtual.count()) === 1 &&
-        Number(await virtual.evaluate((el) => getComputedStyle(el).opacity)) < 1 &&
+        // dimmed by its faded dashed circle and muted title (stage 9: row opacity took the text under 4.5:1)
+        (await virtual.evaluate(
+          (el) => Number(getComputedStyle(el.querySelector('[aria-hidden="true"]') ?? el).opacity) < 1 || Number(getComputedStyle(el).opacity) < 1,
+        )) &&
         !!upcoming?.days?.find((entry) => entry.date === day(1))?.occurrences?.some((item) => item.task_id === daily.id),
       'upcoming shows tomorrow’s repeat of a daily task as a dimmed virtual row',
     )

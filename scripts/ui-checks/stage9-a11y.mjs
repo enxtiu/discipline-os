@@ -296,7 +296,11 @@ export async function run(ctx) {
           const size = parseFloat(getComputedStyle(el).fontSize)
           if (size < 16) tinyFields.push({ selector: window.__a11yDescribe(el), name: window.__a11yName(el), size: `${size}px` })
         }
-        return { small, excepted, tinyFields, overridden, unnamedGraphics }
+        // nothing widens the page (mobile Safari would zoom the whole screen out)
+        const pageWidth = document.documentElement.scrollWidth
+        const viewportWidth = document.documentElement.clientWidth
+        const widened = pageWidth > viewportWidth + 1 ? `${pageWidth} px > ${viewportWidth} px` : null
+        return { small, excepted, tinyFields, overridden, unnamedGraphics, widened }
       },
       { scope, min: MIN_TARGET, exceptions: TARGET_EXCEPTIONS },
     )
@@ -342,6 +346,7 @@ export async function run(ctx) {
             measured.tinyFields.slice(0, 4).map((entry) => `${entry.selector} ${entry.size}`).join(' | '),
           )
         }
+        if (measured.widened) bad(`a11y ${name}: nothing makes the page wider than the screen`, measured.widened)
         if (measured.unnamedGraphics.length) {
           bad(
             `a11y ${name}: every chart or drawing has a text alternative`,
