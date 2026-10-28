@@ -49,6 +49,41 @@
     <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="theme-color" content="#0B1220" />
     <meta name="color-scheme" content="dark light" />
+    <script>
+      // Stage 10: the appearance before anything paints (no flash of the wrong theme) — the
+      // same rules as src/lib/appearance.ts, which applies them again once the app runs; keep
+      // the two in step. The mode is in dsos.theme (stage 1), the rest in dsos.appearance.
+      ;(function () {
+        try {
+          var root = document.documentElement
+          var media = function (query) {
+            return window.matchMedia ? window.matchMedia(query).matches : null
+          }
+          var pick = function (value, list, fallback) {
+            return list.indexOf(value) >= 0 ? value : fallback
+          }
+          var stored = {}
+          try {
+            stored = JSON.parse(localStorage.getItem('dsos.appearance') || '{}') || {}
+          } catch (error) {}
+          var mode = pick(localStorage.getItem('dsos.theme'), ['light', 'dark', 'system'], 'dark')
+          var theme = mode === 'system' ? (media('(prefers-color-scheme: dark)') === false ? 'light' : 'dark') : mode
+          var skin = pick(stored.skin, ['evolution', 'stickers'], 'evolution')
+          var ground = pick(stored.ground, ['lilac', 'mint', 'peach', 'lemonade'], 'lilac')
+          root.setAttribute('data-theme', theme)
+          root.classList.toggle('dark', theme === 'dark')
+          root.setAttribute('data-skin', skin)
+          root.setAttribute('data-ground', ground)
+          root.setAttribute('data-tilt', stored.tilt === false ? 'off' : 'on')
+          root.setAttribute('data-shadow', stored.shadow === 'soft' ? 'soft' : 'hard')
+          root.setAttribute('data-text', stored.largeText === true ? 'large' : 'normal')
+          root.setAttribute('data-motion', stored.reduceMotion === true || media('(prefers-reduced-motion: reduce)') ? 'reduce' : 'full')
+          var grounds = { lilac: '#E8EAFB', mint: '#DBF1E5', peach: '#FBE6DC', lemonade: '#F0EFD2' }
+          var color = skin === 'stickers' ? (theme === 'dark' ? '#17161F' : grounds[ground]) : theme === 'dark' ? '#0B1220' : '#F6F8FC'
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', color)
+        } catch (error) {}
+      })()
+    </script>
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -57,15 +92,36 @@
     <link rel="icon" href="/icons/favicon.svg" type="image/svg+xml" />
     <link rel="mask-icon" href="/icons/icon-mono.svg" color="#38E0C8" />
 
-    <!-- Avoid a white flash before the bundle paints -->
+    <!-- Avoid a white flash before the bundle paints. Stage 10: the page colour of the theme
+         and mode set above; :where() keeps these rules weaker than the app's own styles. -->
     <style>
-      html,
-      body {
+      :where(html, body) {
         margin: 0;
         background: #0b1220;
         color: #e8eef7;
         font-family:
           -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
+      }
+      :where(html[data-theme='light'], html[data-theme='light'] body) {
+        background: #f6f8fc;
+        color: #111a2b;
+      }
+      :where(html[data-skin='stickers'][data-theme='dark'], html[data-skin='stickers'][data-theme='dark'] body) {
+        background: #17161f;
+        color: #f5f3ff;
+      }
+      :where(html[data-skin='stickers'][data-theme='light'], html[data-skin='stickers'][data-theme='light'] body) {
+        background: #e8eafb;
+        color: #111111;
+      }
+      :where(html[data-skin='stickers'][data-theme='light'][data-ground='mint'], html[data-skin='stickers'][data-theme='light'][data-ground='mint'] body) {
+        background: #dbf1e5;
+      }
+      :where(html[data-skin='stickers'][data-theme='light'][data-ground='peach'], html[data-skin='stickers'][data-theme='light'][data-ground='peach'] body) {
+        background: #fbe6dc;
+      }
+      :where(html[data-skin='stickers'][data-theme='light'][data-ground='lemonade'], html[data-skin='stickers'][data-theme='light'][data-ground='lemonade'] body) {
+        background: #f0efd2;
       }
       #boot {
         position: fixed;

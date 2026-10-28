@@ -6,7 +6,8 @@
  * list grouped by type, and the "burned is not budget" card (workouts since
  * stage 4, from `GET /v1/training/today`), steps, weight and sleep since
  * stage 5 (`GET /v1/health/today`), the planner card and the running timer since
- * stage 6, gamification in stage 8.
+ * stage 6, gamification in stage 8. Stage 10: the status of the day (score, streak,
+ * level and XP) under the calories, and category colours from the theme's tokens.
  */
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -14,7 +15,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { m } from 'framer-motion'
 
 import { Button, Callout, Card, EmptyState, ProgressBar, Skeleton } from '@/components/ui'
-import { ProgressRing } from '@/components/ui/ProgressRing'
+import { ProgressRing, type Category } from '@/components/ui/ProgressRing'
 import {
   IconCamera,
   IconDroplet,
@@ -42,6 +43,9 @@ import { useHealthQueueRefresh, useHealthToday } from '@/features/health/useHeal
 import { PlanTodayCard } from '@/features/plan/PlanTodayCard'
 import { TimerBar } from '@/features/plan/timer/TimerBar'
 import { DayScoreCard } from '@/features/game/DayScoreCard'
+import { useSkinTraits } from '@/lib/appearance'
+import { CalorieSticker, MacroBars } from './parts'
+import { TodayStatus } from '@/features/game/TodayStatus'
 import { useOnceTrue } from '@/lib/lazy'
 
 // stage 9: the recipe log sheet loads on first use (a pinned recipe). The health sheets
@@ -63,6 +67,7 @@ export function TodayPage() {
   const deleteWater = useDeleteWater()
   const deleteMeal = useDeleteMeal()
   const capture = useAiCapture()
+  const traits = useSkinTraits()
   const recipes = useRecipes()
   const training = useTrainingToday()
   const burnedKcal = Math.round(training.data?.burned_kcal ?? 0)
@@ -137,51 +142,100 @@ export function TodayPage() {
       onError: (error) => toast.error(errorMessage(error)),
     })
 
+  // water and steps: inside the macros card, or two tiles of their own (SkinTraits.waterSteps)
+  const waterBlock = (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5 text-sm">
+        <span className="flex items-center gap-1.5">
+          <span className="text-[rgb(var(--cat-water))]">
+            <IconDroplet size={16} />
+          </span>
+          {t('today.water')}
+        </span>
+        <span className="tnum shrink-0 text-right leading-tight muted">
+          {number(waterMl)} / {number(targets?.target_water_ml ?? 0)}&nbsp;{t('common.ml')}
+        </span>
+      </div>
+      <ProgressBar value={waterMl} max={targets?.target_water_ml ?? 1} tone="water" />
+      {waterPending && (
+        <p className="text-[11px] text-violet-300" data-testid="water-pending">
+          {t('sync.pending_mark')}
+        </p>
+      )}
+      <Button size="sm" variant="secondary" loading={addWater.isPending} onClick={quickWater}>
+        {t('today.quick_water', { ml: 250 })}
+      </Button>
+    </div>
+  )
+  const stepsBlock = (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5 text-sm">
+        <span className="flex items-center gap-1.5">
+          <span className="text-violet-300">
+            <IconFootprints size={16} />
+          </span>
+          {t('today.steps')}
+        </span>
+        <span className="tnum shrink-0 text-right leading-tight muted" data-testid="steps-today">
+          {number(steps)} / {number(targetSteps)}
+        </span>
+      </div>
+      <ProgressBar value={steps} max={targetSteps || 1} tone="steps" />
+      <Button size="sm" variant="secondary" className="min-h-tap" onClick={() => setHealthSheet('steps')}>
+        {t('health.steps_enter')}
+      </Button>
+    </div>
+  )
+
   return (
     <div className="space-y-5">
       <h1 className="sr-only">{t('today.title')}</h1>
       <TimerBar variant="today" />
 
-      <section className="flex flex-col items-center gap-4">
-        {dayQuery.isLoading ? (
-          <Skeleton className="h-[196px] w-[196px] rounded-full" />
-        ) : (
-          <ProgressRing
-            value={eaten.kcal}
-            max={targetKcal ?? 0}
-            size={196}
-            thickness={14}
-            tone={progressPercent > 100 ? 'warn' : 'accent'}
-            label={hasTargets ? number(eaten.kcal) : '—'}
-            sublabel={t('today.kcal')}
-            name={t('today.kcal')}
-            valueText={
-              hasTargets
-                ? t('a11y.value_of', { value: number(eaten.kcal), target: number(targetKcal), unit: t('common.kcal') })
-                : t('a11y.value_unit', { value: number(eaten.kcal), unit: t('common.kcal') })
-            }
-          >
-            {hasTargets ? (
-              <span className="mt-1 text-[11px] muted">
-                / {number(targetKcal)} {t('common.kcal')}
-              </span>
-            ) : (
-              <span className="mt-1 text-[11px] muted">{t('today.no_target')}</span>
-            )}
-          </ProgressRing>
-        )}
+      {traits.calorieHero === 'sticker' ? (
+        <CalorieSticker eaten={eaten.kcal} target={targetKcal} loading={dayQuery.isLoading} />
+      ) : (
+        <section className="flex flex-col items-center gap-4">
+          {dayQuery.isLoading ? (
+            <Skeleton className="h-[196px] w-[196px] rounded-full" />
+          ) : (
+            <ProgressRing
+              value={eaten.kcal}
+              max={targetKcal ?? 0}
+              size={196}
+              thickness={14}
+              tone={progressPercent > 100 ? 'warn' : 'kcal'}
+              label={hasTargets ? number(eaten.kcal) : '—'}
+              sublabel={t('today.kcal')}
+              name={t('today.kcal')}
+              valueText={
+                hasTargets
+                  ? t('a11y.value_of', { value: number(eaten.kcal), target: number(targetKcal), unit: t('common.kcal') })
+                  : t('a11y.value_unit', { value: number(eaten.kcal), unit: t('common.kcal') })
+              }
+            >
+              {hasTargets ? (
+                <span className="mt-1 text-[11px] muted">
+                  / {number(targetKcal)} {t('common.kcal')}
+                </span>
+              ) : (
+                <span className="mt-1 text-[11px] muted">{t('today.no_target')}</span>
+              )}
+            </ProgressRing>
+          )}
 
-        <div className="grid w-full grid-cols-3 gap-3 text-center">
-          <MiniStat
-            label={t('today.remaining')}
-            value={remaining !== null ? number(remaining) : '—'}
-            unit={t('common.kcal')}
-            accent
-          />
-          <MiniStat label={t('today.eaten')} value={number(eaten.kcal)} unit={t('common.kcal')} />
-          <MiniStat label={t('today.target')} value={hasTargets ? number(targetKcal) : '—'} unit={t('common.kcal')} />
-        </div>
-      </section>
+          <div className="grid w-full grid-cols-3 gap-3 text-center">
+            <MiniStat
+              label={t('today.remaining')}
+              value={remaining !== null ? number(remaining) : '—'}
+              unit={t('common.kcal')}
+              accent
+            />
+            <MiniStat label={t('today.eaten')} value={number(eaten.kcal)} unit={t('common.kcal')} />
+            <MiniStat label={t('today.target')} value={hasTargets ? number(targetKcal) : '—'} unit={t('common.kcal')} />
+          </div>
+        </section>
+      )}
 
       {!hasTargets && (
         <Callout tone="warn" title={t('today.no_target')}>
@@ -192,57 +246,49 @@ export function TodayPage() {
         </Callout>
       )}
 
+      <TodayStatus />
+
       {hasTargets && (
         <Card className="space-y-4">
-          <div className="grid grid-cols-4 gap-3">
-            <MacroRing title={t('today.protein')} value={eaten.protein_g} max={targets?.target_protein_g ?? 0} tone="violet" unit={t('common.g')} />
-            <MacroRing title={t('today.fat')} value={eaten.fat_g} max={targets?.target_fat_g ?? 0} tone="warn" unit={t('common.g')} />
-            <MacroRing title={t('today.carbs')} value={eaten.carbs_g} max={targets?.target_carbs_g ?? 0} tone="accent" unit={t('common.g')} />
-            <MacroRing title={t('today.fiber')} value={eaten.fiber_g} max={targets?.target_fiber_g ?? 0} tone="accent" unit={t('common.g')} />
-          </div>
-          <div className="divider" />
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5 text-sm">
-                <span className="flex items-center gap-1.5">
-                  <span className="text-aqua-400">
-                    <IconDroplet size={16} />
-                  </span>
-                  {t('today.water')}
-                </span>
-                <span className="tnum shrink-0 text-right leading-tight muted">
-                  {number(waterMl)} / {number(targets?.target_water_ml ?? 0)}&nbsp;{t('common.ml')}
-                </span>
-              </div>
-              <ProgressBar value={waterMl} max={targets?.target_water_ml ?? 1} />
-              {waterPending && (
-                <p className="text-[11px] text-violet-300" data-testid="water-pending">
-                  {t('sync.pending_mark')}
-                </p>
-              )}
-              <Button size="sm" variant="secondary" loading={addWater.isPending} onClick={quickWater}>
-                {t('today.quick_water', { ml: 250 })}
-              </Button>
+          {traits.macros === 'bars' ? (
+            <MacroBars
+              unit={t('common.g')}
+              items={[
+                { key: 'protein', title: t('today.protein'), value: eaten.protein_g, max: targets?.target_protein_g ?? 0 },
+                { key: 'fat', title: t('today.fat'), value: eaten.fat_g, max: targets?.target_fat_g ?? 0 },
+                { key: 'carbs', title: t('today.carbs'), value: eaten.carbs_g, max: targets?.target_carbs_g ?? 0 },
+                { key: 'fibre', title: t('today.fiber'), value: eaten.fiber_g, max: targets?.target_fiber_g ?? 0 },
+              ]}
+            />
+          ) : (
+            <div className="grid grid-cols-4 gap-3">
+              <MacroRing title={t('today.protein')} value={eaten.protein_g} max={targets?.target_protein_g ?? 0} tone="protein" unit={t('common.g')} />
+              <MacroRing title={t('today.fat')} value={eaten.fat_g} max={targets?.target_fat_g ?? 0} tone="fat" unit={t('common.g')} />
+              <MacroRing title={t('today.carbs')} value={eaten.carbs_g} max={targets?.target_carbs_g ?? 0} tone="carbs" unit={t('common.g')} />
+              <MacroRing title={t('today.fiber')} value={eaten.fiber_g} max={targets?.target_fiber_g ?? 0} tone="fibre" unit={t('common.g')} />
             </div>
-            <div className="space-y-2">
-              <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5 text-sm">
-                <span className="flex items-center gap-1.5">
-                  <span className="text-violet-300">
-                    <IconFootprints size={16} />
-                  </span>
-                  {t('today.steps')}
-                </span>
-                <span className="tnum shrink-0 text-right leading-tight muted" data-testid="steps-today">
-                  {number(steps)} / {number(targetSteps)}
-                </span>
+          )}
+          {traits.waterSteps === 'inline' && (
+            <>
+              <div className="divider" />
+              <div className="grid grid-cols-2 gap-4">
+                {waterBlock}
+                {stepsBlock}
               </div>
-              <ProgressBar value={steps} max={targetSteps || 1} tone="violet" />
-              <Button size="sm" variant="secondary" className="min-h-tap" onClick={() => setHealthSheet('steps')}>
-                {t('health.steps_enter')}
-              </Button>
-            </div>
-          </div>
+            </>
+          )}
         </Card>
+      )}
+
+      {hasTargets && traits.waterSteps === 'tiles' && (
+        <div className="grid grid-cols-2 gap-3.5" data-testid="water-steps-tiles">
+          <section className="card sk-tile sk-ws flex min-w-0 flex-col px-3 pb-3 pt-2.5" data-cat="water" aria-label={t('today.water')}>
+            {waterBlock}
+          </section>
+          <section className="card sk-tile sk-ws flex min-w-0 flex-col px-3 pb-3 pt-2.5" data-cat="steps" aria-label={t('today.steps')}>
+            {stepsBlock}
+          </section>
+        </div>
       )}
 
       <Card className="space-y-3">
@@ -452,7 +498,7 @@ function MacroRing({
   title: string
   value: number
   max: number
-  tone: 'accent' | 'violet' | 'warn'
+  tone: Category
   unit: string
 }) {
   const { t } = useTranslation()

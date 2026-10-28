@@ -32,6 +32,7 @@ os.environ["LOG_LEVEL"] = "WARNING"
 os.environ["AUTH_RATE_LIMIT_PER_MINUTE"] = "10000"  # limits are tested explicitly
 os.environ["AI_PROVIDER"] = "fake"
 os.environ["OFF_LIVE_LOOKUP"] = "false"  # never reach the internet; OFF tests mock the transport
+os.environ["STREAK_FREEZES_ENABLED"] = "false"  # the owner's "no freezes" rule; the freeze tests opt in (freezes_on)
 
 import httpx  # noqa: E402
 import sqlalchemy as sa  # noqa: E402
@@ -127,6 +128,17 @@ async def db():
 # --------------------------------------------------------------------------- #
 # Domain helpers
 # --------------------------------------------------------------------------- #
+@pytest.fixture
+def freezes_on(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The opt-in streak-freeze rule (``STREAK_FREEZES_ENABLED=true``). The default, the
+    owner's "all by the hard rule", is off: a missed day/week breaks the streak. Tests of
+    the freeze mechanics ask for this fixture; request it before ``owner`` when the
+    account itself must start with the freeze token."""
+    from app.core.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "streak_freezes_enabled", True)
+
+
 @pytest.fixture
 async def owner() -> Any:
     """The owner user (created the same way the CLI does it)."""

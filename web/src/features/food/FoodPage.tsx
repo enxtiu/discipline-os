@@ -120,11 +120,11 @@ export function FoodPage() {
     <div className="space-y-5">
       <h1 className="sr-only">{t('food.title')}</h1>
       <div className="grid grid-cols-3 gap-2" role="group" aria-label={t('ai.capture_row')}>
-        <PhotoTrigger className="btn-secondary btn-sm min-h-tap cursor-pointer flex-col gap-1 py-2 text-xs">
+        <PhotoTrigger className="sk-ai btn-secondary btn-sm min-h-tap cursor-pointer flex-col gap-1 py-2 text-xs">
           <IconCamera size={20} className="text-[rgb(var(--accent))]" />
           {t('food.photo')}
         </PhotoTrigger>
-        <button type="button" onClick={capture.openText} className="btn-secondary btn-sm min-h-tap flex-col gap-1 py-2 text-xs">
+        <button type="button" onClick={capture.openText} className="sk-ai btn-secondary btn-sm min-h-tap flex-col gap-1 py-2 text-xs">
           <IconText size={20} className="text-[rgb(var(--accent))]" />
           {t('food.text')}
         </button>

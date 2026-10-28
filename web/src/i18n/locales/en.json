@@ -174,6 +174,7 @@
     "plan": "Plan",
     "stats": "Stats",
     "quick_add": "Quick add",
+    "quick_add_short": "Add",
     "settings": "Settings"
   },
   "auth": {
@@ -272,6 +273,8 @@
     "remaining": "Remaining",
     "eaten": "Eaten",
     "target": "Target",
+    "of_kcal": "of {{kcal}} kcal",
+    "left_kcal": "{{kcal}} kcal left",
     "over": "Over",
     "no_target": "No target yet",
     "setup_targets": "Add your body parameters",
@@ -1134,30 +1137,42 @@
       "xp_day": "that day",
       "xp_summary": "XP, {{period}}: {{xp}} XP in total.",
       "calendar_title": "Streak calendar",
-      "calendar_sub": "Days that counted (score {{min}} or more) and days a freeze saved",
+      "calendar_sub": "Days that counted (score from {{min}}); a missed day resets the streak",
       "counted": "Counted",
-      "freezes": "Freezes",
       "calendar_hint": "Tap a day to see it",
       "cell": {
         "overall": "counted for the streak",
-        "freeze": "a freeze saved the streak",
         "missed": "did not count",
         "future": "still ahead"
       },
-      "calendar_summary": "Streak calendar, {{period}}: {{n}} days counted, {{f}} freezes.",
+      "calendar_summary": "Streak calendar, {{period}}: {{n}} days counted.",
       "legend_counted": "counted",
-      "legend_freeze": "freeze",
       "legend_missed": "did not count",
       "to_achievements": "Streaks, levels and achievements",
       "legend_provisional": "today, provisional"
     },
-    "of_m": "of {{m}}"
+    "of_m": "of {{m}}",
+    "plaque": {
+      "level_sr": "Level {{level}}",
+      "bar_label": "XP to level {{level}}",
+      "bar_label_top": "XP: top level",
+      "bar_value": "{{value}} of {{max}} XP",
+      "to_next": "{{value}} / {{max}} XP to {{level}} · {{title}}",
+      "left": "{{xp}} XP to go",
+      "week": "This week",
+      "today": "Today",
+      "plus_xp": "+{{xp}} XP"
+    },
+    "week_stickers": {
+      "title": "Stickers of the week",
+      "count": "{{count}} this week"
+    }
   },
   "settings": {
     "title": "Settings",
     "sections": {
       "profile": "Profile & goals",
-      "appearance": "Appearance",
+      "appearance": "Language & region",
       "notifications": "Notifications",
       "devices": "Devices",
       "tokens": "API tokens",
@@ -1169,9 +1184,10 @@
     "language": "Language",
     "language_ru": "Русский",
     "language_en": "English",
-    "theme": "Theme",
     "theme_dark": "Dark",
     "theme_light": "Light",
+    "theme_link": "Theme",
+    "theme_link_hint": "{{theme}} — colours, stickers, large text",
     "timezone": "Timezone",
     "timezone_auto": "Detect automatically",
     "timezone_detected": "Your time: {{time}} ({{tz}})",
@@ -1383,6 +1399,52 @@
     "data_restore_lead": "A backup is restored on the server with:",
     "data_restore_readme": "How to run it in Docker, how to check an archive before anything is written and which account it can go into — see the README, section «Backups and restore».",
     "integrations_hint": "Notion — a one-way copy"
+  },
+  "look": {
+    "title": "Appearance",
+    "preview_title": "This is how it will look",
+    "skin_title": "Theme",
+    "skins": {
+      "forge": "Forge",
+      "clarity": "Clarity",
+      "pulse": "Pulse",
+      "notebook": "Notebook",
+      "ios": "Native iOS",
+      "stickers": "Stickers",
+      "evolution": "Evolution",
+      "gentle": "Gentle",
+      "glass": "Glass"
+    },
+    "soon": "Soon",
+    "mode_title": "Mode",
+    "mode": {
+      "light": "Light",
+      "dark": "Dark",
+      "system": "System"
+    },
+    "params_title": "Stickers — theme settings",
+    "ground_title": "Colour set",
+    "ground": {
+      "lilac": "Lilac",
+      "mint": "Mint",
+      "peach": "Peach",
+      "lemonade": "Lemonade"
+    },
+    "ground_night": "Dark mode uses the night set",
+    "tilt": "Tilted stickers",
+    "tilt_hint": "Badges lean a little, up to ±3°",
+    "shadow_title": "Shadows",
+    "shadow": {
+      "hard": "Hard",
+      "soft": "Soft"
+    },
+    "global_title": "For every theme",
+    "large_text": "Large text",
+    "large_text_hint": "Text and spacing one eighth larger",
+    "reduce_motion": "Reduce motion",
+    "reduce_motion_hint": "No sliding, springs or tilt",
+    "reduce_motion_system": "Already on in the device settings",
+    "device_note": "Appearance is stored on this device."
   },
   "common": {
     "g": "g",
@@ -1847,6 +1909,7 @@
       "discipline": "Discipline"
     },
     "level_short": "lvl {{level}}",
+    "level_title": "Lv {{level}} · {{title}}",
     "level_of": "Level {{level}} of {{max}}",
     "xp_today": "+{{xp}} XP today",
     "xp_progress": "{{total}} / {{next}} XP",
@@ -1885,17 +1948,14 @@
         "workout": "do this week's planned workouts"
       },
       "at_risk_title": "Not counted yet today",
-      "at_risk_freeze": "Miss it and a freeze is used — the streak goes on.",
-      "at_risk_no_freeze": "no freezes left",
       "longest": "Best {{length}}",
       "today_met": "Today counts",
       "today_pending": "Not yet today",
       "week_progress": "This week: {{done}}, needed {{required}}",
       "week_rest": "A planned rest week — the streak goes on",
-      "freeze": "Freezes: {{count}} of {{max}}",
       "next_milestone": "{{days}} days in a row — +{{xp}} XP",
-      "freeze_rule": "Freeze: +{{perWeek}} every week, {{max}} at most. A missed day (a week for workouts) uses one by itself, and the streak goes on.",
-      "workout_rule": "Workouts count by the week: a week counts when you do as many workouts as planned (3 without a plan). A planned rest week does not break the streak — rest days never do."
+      "workout_rule": "Workouts count by the week: a week counts when you do as many workouts as planned (3 without a plan). A planned rest week does not break the streak — rest days never do.",
+      "reset_rule": "A missed day (a week for workouts) resets the streak."
     },
     "quests_today": "Today's quests",
     "quests_daily": "Today",
@@ -2032,7 +2092,13 @@
       "burned_note": "Burned calories never become food budget.",
       "window_note": "Today's and yesterday's XP is recalculated: delete an entry and its XP goes too. Quest, achievement and streak rewards stay for good."
     },
-    "quest_needs_food": "Counts once food at or above the safe floor is logged for the day"
+    "quest_needs_food": "Counts once food at or above the safe floor is logged for the day",
+    "status": {
+      "title": "Today's status",
+      "streak": "Streak",
+      "xp_total": "{{xp}} XP",
+      "reset_note": "A missed day resets the streak"
+    }
   },
   "integrations": {
     "title": "Integrations",

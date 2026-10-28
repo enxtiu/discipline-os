@@ -20,6 +20,7 @@ import { AnimatePresence, m } from 'framer-motion'
 import clsx from 'clsx'
 import { useTranslation } from 'react-i18next'
 import { IconCheck, IconClose, IconInfo } from './icons'
+import type { Category } from './ProgressRing'
 
 // --------------------------------------------------------------------------- //
 // Layout
@@ -621,7 +622,7 @@ export function Sheet({
       {open && (
         <>
           <m.div
-            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-[2px]"
+            className="sk-scrim fixed inset-0 z-50 bg-black/60 backdrop-blur-[2px]"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -635,7 +636,7 @@ export function Sheet({
             aria-labelledby={title ? titleId : undefined}
             tabIndex={-1}
             className={clsx(
-              'fixed inset-x-0 bottom-0 z-50 flex flex-col rounded-t-3xl border border-b-0 border-[rgb(var(--border))] bg-[rgb(var(--bg-elevated))] focus:outline-none',
+              'sk-sheet fixed inset-x-0 bottom-0 z-50 flex flex-col rounded-t-3xl border border-b-0 border-[rgb(var(--border))] bg-[rgb(var(--bg-elevated))] focus:outline-none',
               size === 'tall' ? 'max-h-[92dvh]' : 'max-h-[85dvh]',
             )}
             initial={{ y: '100%' }}
@@ -650,7 +651,7 @@ export function Sheet({
             }}
           >
             <div className="flex items-center justify-between gap-3 px-5 pt-4" aria-hidden="true">
-              <div className="mx-auto h-1.5 w-10 rounded-pill bg-[rgb(var(--border))]" />
+              <div className="sk-sheet-handle mx-auto h-1.5 w-10 rounded-pill bg-[rgb(var(--border))]" />
             </div>
             {title && (
               <header className="flex items-center justify-between gap-3 px-5 pb-2 pt-3">
@@ -704,16 +705,29 @@ export function ProgressBar({
 }: {
   value: number
   max: number
-  tone?: 'accent' | 'violet' | 'warn'
+  tone?: 'accent' | 'violet' | 'warn' | Category
   className?: string
   label?: string
   valueText?: string
 }) {
   const ratio = max > 0 ? Math.max(0, Math.min(1, value / max)) : 0
-  const tones = {
+  // stage 10: a category bar takes the theme's `--cat-*` fill and the glow of the stage-8 tone
+  // it replaced (literal classes: Tailwind purges built ones); the `sk-*` hooks let a theme
+  // restyle the track and the fill (styles/skins/*.css)
+  const tones: Record<NonNullable<typeof tone>, string> = {
     accent: 'bg-aqua-400 shadow-[0_0_12px_rgb(56_224_200/.6)]',
     violet: 'bg-violet-400 shadow-[0_0_12px_rgb(139_92_246/.6)]',
     warn: 'bg-amber-400 shadow-[0_0_12px_rgb(251_191_36/.6)]',
+    kcal: 'bg-[rgb(var(--cat-kcal))] shadow-[0_0_12px_rgb(56_224_200/.6)]',
+    protein: 'bg-[rgb(var(--cat-protein))] shadow-[0_0_12px_rgb(139_92_246/.6)]',
+    fat: 'bg-[rgb(var(--cat-fat))] shadow-[0_0_12px_rgb(251_191_36/.6)]',
+    carbs: 'bg-[rgb(var(--cat-carbs))] shadow-[0_0_12px_rgb(56_224_200/.6)]',
+    fibre: 'bg-[rgb(var(--cat-fibre))] shadow-[0_0_12px_rgb(56_224_200/.6)]',
+    water: 'bg-[rgb(var(--cat-water))] shadow-[0_0_12px_rgb(56_224_200/.6)]',
+    steps: 'bg-[rgb(var(--cat-steps))] shadow-[0_0_12px_rgb(139_92_246/.6)]',
+    streak: 'bg-[rgb(var(--cat-streak))] shadow-[0_0_12px_rgb(251_191_36/.6)]',
+    score: 'bg-[rgb(var(--cat-score))] shadow-[0_0_12px_rgb(56_224_200/.6)]',
+    xp: 'bg-[rgb(var(--cat-xp))] shadow-[0_0_12px_rgb(139_92_246/.6)]',
   }
   const semantics = label
     ? {
@@ -727,11 +741,12 @@ export function ProgressBar({
     : { 'aria-hidden': true }
   return (
     <div
-      className={clsx('h-2 w-full overflow-hidden rounded-pill bg-[rgb(var(--bg-sunken))]', className)}
+      className={clsx('sk-bar h-2 w-full overflow-hidden rounded-pill bg-[rgb(var(--bg-sunken))]', className)}
+      data-tone={tone}
       {...semantics}
     >
       <m.div
-        className={clsx('h-full rounded-pill', tones[tone])}
+        className={clsx('sk-bar-fill h-full rounded-pill', tones[tone])}
         initial={{ width: 0 }}
         animate={{ width: `${ratio * 100}%` }}
         transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}

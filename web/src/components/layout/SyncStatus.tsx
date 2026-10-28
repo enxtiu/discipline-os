@@ -53,7 +53,7 @@ export function SyncStatus() {
           setMounted(true)
           setOpen(true)
         }}
-        className="-my-1.5 flex min-h-tap min-w-tap items-center justify-center"
+        className="sk-sync -my-1.5 flex min-h-tap min-w-tap items-center justify-center"
         aria-label={label}
         aria-haspopup="dialog"
         title={label}

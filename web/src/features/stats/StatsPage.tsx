@@ -8,6 +8,9 @@
  * the anchor. Each section loads on its own and has its own skeleton, error
  * with retry and empty state; while another period loads, the previous one
  * stays on screen, dimmed.
+ *
+ * Stage 10: the level plaque (level, XP to the next one, XP this week and today, the
+ * streak) sits at the top, above the period switch — it is not scoped by the period.
  */
 import type { ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
@@ -17,6 +20,9 @@ import type { UseQueryResult } from '@tanstack/react-query'
 import { IconTrophy } from '@/features/game/icons'
 import { useAuth } from '@/features/auth/AuthProvider'
 import { addDays } from '@/lib/format'
+import { useSkinTraits } from '@/lib/appearance'
+import { LevelPlaque } from './LevelPlaque'
+import { WeekStickers } from './WeekStickers'
 import { PERIODS, PeriodSwitcher } from './PeriodSwitcher'
 import { CardError, CardSkeleton } from './parts'
 import { useStats, useStatsAutoRefresh } from './queries'
@@ -64,6 +70,7 @@ export default function StatsPage() {
   }
 
   const weekStart = session?.settings.week_start ?? 1
+  const traits = useSkinTraits()
 
   return (
     <div className="space-y-5 pb-2" data-testid="stats-page" data-period={period} data-loading={loading || undefined}>
@@ -74,6 +81,8 @@ export default function StatsPage() {
           <span>{t('stats.achievements')}</span>
         </Link>
       </header>
+
+      <LevelPlaque />
 
       <PeriodSwitcher
         period={period}
@@ -108,6 +117,8 @@ export default function StatsPage() {
           {(data, dimmed) => <NutritionSection stats={data} dimmed={dimmed} />}
         </Loaded>
       </Section>
+      {/* stage 10: a theme may show the week's new achievements as stickers here (after the calories) */}
+      {traits.weekStickers && <WeekStickers />}
       <Section id="activity" title={t('stats.section.activity')}>
         <Loaded query={activity} section="activity">
           {(data, dimmed) => <ActivitySection stats={data} dimmed={dimmed} />}

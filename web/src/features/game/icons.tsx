@@ -261,16 +261,6 @@ export function IconFlameLit({ lit, ...props }: IconProps & { lit?: boolean }) {
   )
 }
 
-/** Freeze token. */
-export function IconSnowflake(props: IconProps) {
-  return (
-    <Base {...props}>
-      <path d="M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9" />
-      <path d="m9.5 4.5 2.5 2 2.5-2M9.5 19.5l2.5-2 2.5 2M4.6 10.6l3.1-.6-1-3M19.4 13.4l-3.1.6 1 3M6.7 17l1-3-3.1-.6M17.3 7l-1 3 3.1.6" />
-    </Base>
-  )
-}
-
 export function IconTrophy(props: IconProps) {
   return <GameIcon icon="trophy" {...props} />
 }

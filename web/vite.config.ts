@@ -74,6 +74,9 @@ export default defineConfig({
         // with importScripts("sw-push.js"), so push / notificationclick live in the same SW
         importScripts: ['sw-push.js'],
         globPatterns: ['**/*.{js,css,html,svg,png,woff2,webmanifest}'],
+        // stage 10: the stickers theme's Rubik files are fetched only when that theme is on
+        // (then cached by the woff2 rule below), never by every install
+        globIgnores: ['**/rubik-*.woff2'],
         navigateFallback: '/index.html',
         // never cache API traffic — the app has its own offline queue
         navigateFallbackDenylist: [/^\/api/],

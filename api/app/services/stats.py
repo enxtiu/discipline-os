@@ -50,7 +50,7 @@ from app.models import (
 )
 from app.services import day_metrics, training
 from app.services.day_metrics import WeekPlan, required_workouts
-from app.services.gamification import score, xp
+from app.services.gamification import score, streaks, xp
 from app.services.gamification.context import GameContext
 from app.services.planner.containers import OPEN_PROJECT, entry_seconds
 from app.services.planner.containers import week_start_for as _week_start_for
@@ -596,7 +596,10 @@ async def progress(db: AsyncSession, ctx: GameContext, span: Span) -> ProgressSe
 
 
 async def _freeze_days(db: AsyncSession, user_id: uuid.UUID) -> set[date]:
-    """Days a freeze token saved the overall streak (``freeze_used_dates``)."""
+    """Days a freeze token saved the overall streak (``freeze_used_dates``). None while
+    freezes are off, whatever an older row (before the switch, a restored backup) still holds."""
+    if not streaks.freezes_enabled():
+        return set()
     raw = await db.scalar(
         select(Streak.freeze_used_dates).where(Streak.user_id == user_id, Streak.kind == StreakKind.OVERALL)
     )

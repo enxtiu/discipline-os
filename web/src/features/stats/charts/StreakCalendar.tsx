@@ -1,31 +1,28 @@
 /**
  * The overall-streak calendar: which days counted (daily score ≥ 60 with
- * credit) and which a freeze token saved — as a month calendar for a week or
- * a month, as a week-column grid for a quarter or a year. Tap (or drag across)
- * a day to read it below the grid; colour is never the only signal: freeze
- * days carry a snowflake where the cells are large enough, and the readout and
- * the legend say it in words.
+ * credit) — as a month calendar for a week or a month, as a week-column grid
+ * for a quarter or a year. Tap (or drag across) a day to read it below the
+ * grid; colour is never the only signal: the readout and the legend say it in
+ * words. Stage 10: no freezes (a missed day ends the streak).
  */
 import { useMemo, useState, type PointerEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import clsx from 'clsx'
 
-import { IconSnowflake } from '@/features/game/icons'
 import { addDays } from '@/lib/format'
 import { monthNarrow, monthShort, shortDay, weekday, weekdayShort } from '../format'
 import type { Period, StreakDay } from '../types'
 
-type CellState = 'overall' | 'freeze' | 'missed' | 'future'
+// stage 10: no freezes — a day counts for the streak or it does not
+type CellState = 'overall' | 'missed' | 'future'
 
 function stateOf(day: StreakDay, today: string): CellState {
-  if (day.freeze) return 'freeze'
   if (day.overall) return 'overall'
   return day.date > today ? 'future' : 'missed'
 }
 
 const CELL: Record<CellState, string> = {
-  overall: 'bg-[rgb(var(--accent))] text-on-accent',
-  freeze: 'bg-[rgb(var(--chart-sleep))] text-on-accent [[data-theme=light]_&]:text-white',
+  overall: 'bg-[rgb(var(--chart-food))] text-[rgb(var(--on-chart-food))]',
   missed: 'bg-[rgb(var(--bg-sunken))] text-[rgb(var(--text-muted))] border border-[rgb(var(--border))]',
   future: 'border border-dashed border-[rgb(var(--border))] text-[rgb(var(--text-muted))]',
 }
@@ -143,7 +140,7 @@ export function StreakCalendar({
                         day.date === selected && 'ring-2 ring-[rgb(var(--text))]',
                       )}
                     >
-                      {day.freeze ? <IconSnowflake size={14} /> : Number(day.date.slice(8, 10))}
+                      {Number(day.date.slice(8, 10))}
                     </span>
                   ) : (
                     <span key={column} className="h-9" />

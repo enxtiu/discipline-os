@@ -7,12 +7,17 @@
  * Height matches `.tabbar` + `pb-tabbar` in the stylesheet so no page content
  * hides behind it (the floating button included), and it respects the iOS
  * home-indicator inset.
+ *
+ * Stage 10: a theme may draw the quick add differently (`SkinTraits.addButton` =
+ * 'sticker': five tabs in a row and a «＋ Записать» sticker floating above the bar at
+ * the right — fixed with the bar, over the scrolling page; `pb-tabbar` clears it).
  */
 import { NavLink, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import clsx from 'clsx'
 import { m } from 'framer-motion'
 
+import { useSkinTraits } from '@/lib/appearance'
 import {
   IconFood,
   IconPlan,
@@ -32,6 +37,30 @@ const TABS = [
 export function BottomTabBar({ onQuickAdd }: { onQuickAdd: () => void }) {
   const { t } = useTranslation()
   const location = useLocation()
+  const { addButton } = useSkinTraits()
+
+  if (addButton === 'sticker') {
+    return (
+      <nav className="tabbar" aria-label={t('a11y.nav_main')}>
+        <div className="relative mx-auto flex max-w-lg items-stretch px-2">
+          {[...TABS.slice(0, 2), { to: '/stats', labelKey: 'stats', Icon: IconStats } as const, ...TABS.slice(2)].map((tab) => (
+            <TabButton key={tab.to} {...tab} active={location.pathname.startsWith(tab.to)} />
+          ))}
+          <m.button
+            type="button"
+            whileTap={{ scale: 0.97 }}
+            onClick={onQuickAdd}
+            aria-haspopup="dialog"
+            className="sk-add absolute bottom-[calc(100%+16px)] right-4 flex h-[52px] items-center gap-1.5 pl-3 pr-[18px]"
+            data-testid="quick-add-button"
+          >
+            <IconPlus size={22} strokeWidth={2.6} />
+            <span>{t('nav.quick_add_short')}</span>
+          </m.button>
+        </div>
+      </nav>
+    )
+  }
 
   // Two tabs on the left, the quick-add in the middle, two on the right.
   const left = TABS.slice(0, 2)
@@ -51,7 +80,9 @@ export function BottomTabBar({ onQuickAdd }: { onQuickAdd: () => void }) {
             whileTap={{ scale: 0.92 }}
             onClick={onQuickAdd}
             aria-label={t('nav.quick_add')}
+            aria-haspopup="dialog"
             className="absolute -top-12 z-10 flex h-14 w-14 items-center justify-center rounded-full bg-[rgb(var(--accent))] text-on-accent shadow-glow"
+            data-testid="quick-add-button"
           >
             <IconPlus size={26} />
           </m.button>

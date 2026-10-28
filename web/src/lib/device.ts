@@ -10,6 +10,7 @@ import { apiUrl } from './url'
 export const TOKEN_KEY = 'dsos.device_token'
 export const DEVICE_META_KEY = 'dsos.device_meta'
 export const FINGERPRINT_KEY = 'dsos.fingerprint'
+/** The light / dark / system mode (stage 10: the rest of the appearance is in lib/appearance.ts). */
 export const THEME_KEY = 'dsos.theme'
 export const OFFLINE_QUEUE_KEY = 'dsos.offline_queue'
 
@@ -184,32 +185,7 @@ export function detectedLanguage(): 'ru' | 'en' {
   return value === 'en' ? 'en' : 'ru'
 }
 
-// --------------------------------------------------------------------------- //
-// Theme
-// --------------------------------------------------------------------------- //
-export type Theme = 'dark' | 'light'
-
-export function storedTheme(): Theme {
-  try {
-    const value = window.localStorage.getItem(THEME_KEY)
-    return value === 'light' ? 'light' : 'dark'
-  } catch {
-    return 'dark'
-  }
-}
-
-export function applyTheme(theme: Theme): void {
-  const root = document.documentElement
-  root.dataset.theme = theme
-  root.classList.toggle('dark', theme === 'dark')
-  try {
-    window.localStorage.setItem(THEME_KEY, theme)
-  } catch {
-    /* ignore */
-  }
-  const meta = document.querySelector('meta[name="theme-color"]')
-  if (meta) meta.setAttribute('content', theme === 'dark' ? '#0B1220' : '#F6F8FC')
-}
+// Theme, mode and the other appearance settings (stage 10): see ./appearance.ts
 
 export function apiBase(): string {
   return apiUrl('')

@@ -762,7 +762,7 @@ export async function run(ctx) {
       return waitDialog()
     }, { scope: 'dialog' })
     await audit('Settings', async () => goto('/settings', 'main h1'))
-    for (const section of ['profile', 'appearance', 'notifications', 'data', 'devices', 'tokens', 'shortcut']) {
+    for (const section of ['profile', 'appearance', 'theme', 'notifications', 'data', 'devices', 'tokens', 'shortcut']) {
       await audit(`Settings · ${section}`, async () => goto(`/settings/${section}`, 'main'))
     }
     await audit(

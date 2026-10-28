@@ -526,6 +526,7 @@ async def test_store_never_overwrites_a_final_row(owner, db) -> None:
 # --------------------------------------------------------------------------- #
 # M1 — finished days/weeks keep the targets/plan of their time
 # --------------------------------------------------------------------------- #
+@pytest.mark.usefixtures("freezes_on")  # "a freeze token saves it" is the opt-in rule (stage 10)
 async def test_a_weigh_in_never_rejudges_finished_days(authed: httpx.AsyncClient, owner, db) -> None:
     """Adapted from probe R1. Auto targets follow the weight: 80 kg → 2640 ml, 85 kg →
     2800 ml. Eleven days of 2700 ml (with food: water counts with nutrition credit, H1).
@@ -810,13 +811,17 @@ async def test_a_request_finalises_at_most_sixty_pending_days_oldest_first(owner
     assert len(calls) <= engine.PENDING_PER_RUN + 2
 
 
-async def test_chunked_backfill_gives_exactly_the_rows_of_one_big_run(owner, db) -> None:
+@pytest.mark.parametrize("freezes", [True, False], ids=["freezes", "hard"])
+async def test_chunked_backfill_gives_exactly_the_rows_of_one_big_run(owner, db, monkeypatch, freezes) -> None:
     """The jobs finish a backlog in chunks of 60 days (oldest first, each its own
     transaction): scores, XP, streaks, badges and quests come out identical to finalising
-    everything at once (the pre-review behaviour)."""
+    everything at once (the pre-review behaviour) — with the opt-in freeze tokens (spent
+    on the gaps) and without them (the default: a gap breaks the streak)."""
+    from app.core.config import get_settings
     from app.db import SessionLocal
     from app.services.gamification import engine
 
+    monkeypatch.setattr(get_settings(), "streak_freezes_enabled", freezes)
     uid = owner.id
     await configure(db, uid)
     await populate(db, uid, TODAY, 200)
@@ -826,7 +831,8 @@ async def test_chunked_backfill_gives_exactly_the_rows_of_one_big_run(owner, db)
     assert whole is not None and (whole.finalised, whole.pending_left) == (198, 0)
     at_once = await derived_state(db, uid)
     assert any(key.startswith("streak:overall:") for key in at_once["xp"])  # milestones were reached
-    assert any(state[5] for state in at_once["streaks"].values())  # freeze tokens were spent
+    assert any(state[5] for state in at_once["streaks"].values()) is freezes  # tokens are spent only when opted in
+    assert freezes or not any(state[4] for state in at_once["streaks"].values())  # and none are ever held otherwise
 
     await wipe_derived(db, uid)
     snapshot, finalised = await engine.sync_fully(uid, NOON)
