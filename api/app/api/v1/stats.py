@@ -10,6 +10,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 
 from app.api.deps import CurrentPrincipal, DbSession, require_device
+from app.api.v1.gamification import Sync as GameSync
 from app.api.v1.planner import sane_day
 from app.api.v1.presenters import (
     activity_stats_out,
@@ -81,7 +82,12 @@ async def planner(
     return planner_stats_out(await stats.planner(db, ctx, span))
 
 
-@router.get("/progress", response_model=ProgressStatsOut, summary="Daily scores, XP per day, streak calendar")
+@router.get(
+    "/progress",
+    response_model=ProgressStatsOut,
+    summary="Daily scores, XP per day, streak calendar",
+    dependencies=GameSync,  # runs the engine with writes: the gamification GETs' per-user budget
+)
 async def progress(
     principal: CurrentPrincipal, db: DbSession, period: Period = "week", anchor: Anchor = None
 ) -> ProgressStatsOut:

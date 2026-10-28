@@ -1,6 +1,12 @@
 """Gamification (stage 8): the daily score and rings, XP and levels, streaks, quests,
 achievements. Device principal only; every number is computed by the server in the
-user's timezone (today and yesterday are recomputed on read)."""
+user's timezone (today and yesterday are recomputed on read).
+
+Rate limits per user: the POSTs (``WRITES_PER_MINUTE``) and the GETs that run the
+engine with writes under the per-user lock — ``/today``, ``/profile``, ``/xp``,
+``/scores`` and ``/stats/progress`` (``SYNCS_PER_MINUTE``, one shared budget) — so a
+client stuck in a loop cannot keep the lock busy; 429 ``rate_limited`` with
+``Retry-After`` beyond."""
 
 from __future__ import annotations
 
@@ -50,6 +56,7 @@ router = APIRouter(prefix="/gamification", tags=["gamification"], dependencies=[
 
 RANGE_DAYS = 366
 WRITES_PER_MINUTE = 120
+SYNCS_PER_MINUTE = 120  # GETs that run the engine with writes (shared with /stats/progress)
 EARLIEST = date(2000, 1, 1)
 LATEST = date(2100, 12, 31)
 UserQuestId = Annotated[uuid.UUID, Path(alias="user_quest_id", description="id of the user quest (UserQuestOut.id)")]
@@ -62,6 +69,17 @@ async def _write_limit(principal: CurrentPrincipal) -> None:
 
 
 Write = [Depends(_write_limit)]
+
+
+async def sync_limit(principal: CurrentPrincipal) -> None:
+    """Per user, like the POSTs: each of these GETs runs the engine with writes under the
+    per-user lock — a client loop must not keep it busy."""
+    allowed, retry_after = await limiter.hit(f"gamification-sync:{principal.user_id}", SYNCS_PER_MINUTE)
+    if not allowed:
+        raise RateLimited(retry_after, "Too many requests, please slow down")
+
+
+Sync = [Depends(sync_limit)]
 
 
 def _range(first: date, last: date) -> None:
@@ -77,7 +95,9 @@ async def _snapshot(principal: CurrentPrincipal, db, *, stages=engine.STAGES) ->
     return snapshot
 
 
-@router.get("/today", response_model=GamificationTodayOut, summary="Today: score, rings, XP, streaks, quests")
+@router.get(
+    "/today", response_model=GamificationTodayOut, summary="Today: score, rings, XP, streaks, quests", dependencies=Sync
+)
 async def today(principal: CurrentPrincipal, db: DbSession) -> GamificationTodayOut:
     snapshot = await _snapshot(principal, db)
     ctx, today_score = snapshot.ctx, snapshot.today_score
@@ -93,7 +113,12 @@ async def today(principal: CurrentPrincipal, db: DbSession) -> GamificationToday
     )
 
 
-@router.get("/profile", response_model=GamificationProfileOut, summary="XP, levels, streaks, achievements, totals")
+@router.get(
+    "/profile",
+    response_model=GamificationProfileOut,
+    summary="XP, levels, streaks, achievements, totals",
+    dependencies=Sync,
+)
 async def profile(principal: CurrentPrincipal, db: DbSession) -> GamificationProfileOut:
     snapshot = await _snapshot(principal, db)
     ctx, metrics = snapshot.ctx, snapshot.metrics or {}
@@ -120,7 +145,7 @@ async def profile(principal: CurrentPrincipal, db: DbSession) -> GamificationPro
     )
 
 
-@router.get("/xp", response_model=XpHistoryOut, summary="XP per day with its events (≤ 366 days)")
+@router.get("/xp", response_model=XpHistoryOut, summary="XP per day with its events (≤ 366 days)", dependencies=Sync)
 async def xp_history(
     principal: CurrentPrincipal,
     db: DbSession,
@@ -143,7 +168,12 @@ async def xp_history(
     return XpHistoryOut(items=items)
 
 
-@router.get("/scores", response_model=ScoreHistoryOut, summary="Daily scores with their breakdown (≤ 366 days)")
+@router.get(
+    "/scores",
+    response_model=ScoreHistoryOut,
+    summary="Daily scores with their breakdown (≤ 366 days)",
+    dependencies=Sync,
+)
 async def score_history(
     principal: CurrentPrincipal,
     db: DbSession,

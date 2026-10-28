@@ -1852,7 +1852,7 @@
       "about": {
         "overall": "Days scoring 60 or more — with food logged at or above the safe floor",
         "meal_logging": "Days with at least one meal logged",
-        "water": "Days on your water target",
+        "water": "Days on your water target — with food logged at or above the safe floor",
         "steps": "Days on your step target",
         "tasks": "Days with at least one task done",
         "review": "Days with a daily review",
@@ -1861,7 +1861,7 @@
       "action": {
         "overall": "the day counts once it scores 60",
         "meal_logging": "log a meal",
-        "water": "reach your water target",
+        "water": "reach your water target and log your food",
         "steps": "reach your step target",
         "tasks": "complete at least one task",
         "review": "write today's review",
@@ -2004,7 +2004,7 @@
         "review": "Reviews and check-ins",
         "bonus": "Bonuses"
       },
-      "nutrition": "meal logged +{{meal}} (up to {{meals}} a day — for logging, never for restricting) · protein target +{{protein}}* · fiber target +{{fiber}}* · water target +{{water}} · calories in the zone +{{kcal}} per finished day",
+      "nutrition": "meal logged +{{meal}} (up to {{meals}} a day — for logging, never for restricting) · protein target +{{protein}}* · fiber target +{{fiber}}* · water target +{{water}}* · calories in the zone +{{kcal}} per finished day",
       "movement": "step target +{{steps}} · workout +{{workout}} (up to {{workouts}} a day) · personal record +{{record}} (up to {{records}} a day)",
       "planner": "task P1 +{{p1}} · P2 +{{p2}} · P3 +{{p3}} · P4 +{{p4}}, subtask +{{subtask}} (up to {{cap}} a day) · project completed +{{project}} · timer +1 per {{minutes}} min (up to {{timerCap}} a day)",
       "review": "daily review +{{review}} · sleep logged +{{sleep}} · weigh-in +{{weight}}",
@@ -2014,7 +2014,8 @@
       "floor_note": "* Only when the day's intake is at or above the safe floor. Eating below the floor or not logging never brings XP, score points or streaks.",
       "burned_note": "Burned calories never become food budget.",
       "window_note": "Today's and yesterday's XP is recalculated: delete an entry and its XP goes too. Quest, achievement and streak rewards stay for good."
-    }
+    },
+    "quest_needs_food": "Counts once food at or above the safe floor is logged for the day"
   },
   "integrations": {
     "title": "Integrations",

@@ -5,7 +5,7 @@ mixes two "nows", two days or two sets of targets."""
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, time, timedelta
 
 from sqlalchemy import select
@@ -15,7 +15,15 @@ from app.core.config import get_settings
 from app.core.tz import ensure_utc, get_zone, utcnow
 from app.models import User, UserSettings, UserStatus
 from app.schemas.gamification import read_score_weights, read_xp_multipliers
-from app.services.day_metrics import KcalZone, kcal_zone, safe_floor_kcal, sql_timezone, week_start_for
+from app.services.day_metrics import (
+    DayMetrics,
+    KcalZone,
+    kcal_zone,
+    nutrition_credit,
+    safe_floor_kcal,
+    sql_timezone,
+    week_start_for,
+)
 from app.services.settings_service import current_targets
 
 
@@ -34,6 +42,45 @@ def _positive(value: int | float | None) -> int | None:
     return int(value) if value is not None and value > 0 else None
 
 
+@dataclass(slots=True, frozen=True)
+class DayRules:
+    """What one day is judged against: its targets, the safe floor and the calorie zone.
+    The open window (today, yesterday) uses the current ones; a finished day the ones it
+    was finalised with (``GameContext.rules_for``). Every day-level verdict of stage 8 —
+    XP, streaks, achievement day counts, quests, the /stats adherence — goes through these
+    predicates, so they can never disagree."""
+
+    targets: Targets
+    floor: int
+    zone: KcalZone
+
+    def credit(self, m: DayMetrics) -> bool:
+        """Nutrition credit: a meal logged and intake at or above the safe floor."""
+        return nutrition_credit(m, self.floor)
+
+    def protein_met(self, m: DayMetrics) -> bool:
+        target = self.targets.protein_g
+        return bool(target) and self.credit(m) and m.protein_g >= (target or 0)
+
+    def fiber_met(self, m: DayMetrics) -> bool:
+        target = self.targets.fiber_g
+        return bool(target) and self.credit(m) and m.fiber_g >= (target or 0)
+
+    def water_met(self, m: DayMetrics) -> bool:
+        """Water at the target counts only with nutrition credit: a day of water and no
+        food (or food below the floor) earns no water XP, streak, quest or badge."""
+        target = self.targets.water_ml
+        return bool(target) and self.credit(m) and m.water_ml >= (target or 0)
+
+    def steps_met(self, m: DayMetrics) -> bool:
+        target = self.targets.steps
+        return bool(target) and m.steps is not None and m.steps >= (target or 0)
+
+    def in_zone(self, m: DayMetrics) -> bool:
+        """A logged day inside the calorie zone (the zone never starts below the floor)."""
+        return m.meals >= 1 and self.zone.contains(m.kcal)
+
+
 @dataclass(slots=True)
 class GameContext:
     user_id: uuid.UUID
@@ -46,6 +93,20 @@ class GameContext:
     zone: KcalZone
     score_weights: dict[str, float]
     multipliers: dict[str, float]
+    # finished days → the targets they were finalised with (loaded by the engine and the
+    # readers that judge finished days); every other day uses the current targets
+    frozen: dict[date, DayRules] = field(default_factory=dict)
+
+    @property
+    def rules(self) -> DayRules:
+        """The current targets, floor and zone (today, yesterday, the current week)."""
+        return DayRules(self.targets, self.floor, self.zone)
+
+    def rules_for(self, day: date) -> DayRules:
+        """What ``day`` is judged against: its frozen targets once it is final, else the
+        current ones."""
+        frozen = self.frozen.get(day)
+        return frozen if frozen is not None else self.rules
 
     @property
     def local_now(self) -> datetime:

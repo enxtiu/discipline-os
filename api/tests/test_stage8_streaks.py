@@ -332,7 +332,8 @@ async def test_planner_adds_the_streak_slot_only_when_there_is_a_streak(pushing,
     await run(db, user_id, morning, ("days", "streaks"))  # the job stores the streak rows
     await plan_daily_reminders(morning)
     rows = {row.dedupe_key: row for row in (await db.scalars(select(Reminder).where(Reminder.user_id == user_id)))}
-    assert rows["streak:2026-07-15"].remind_at == local(TODAY, 20)
+    # the first minute from 18:00 outside the quiet hours (none here) — review 8
+    assert rows["streak:2026-07-15"].remind_at == local(TODAY, 18)
     assert rows["streak:2026-07-15"].kind == ReminderKind.STREAK
 
 
