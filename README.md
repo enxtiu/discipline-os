@@ -201,8 +201,9 @@ All of them live in `.env` (copy from `.env.example`; never commit the real one)
 | `DOMAIN` | — | Public hostname; Caddy obtains the Let's Encrypt certificate for it |
 | `ACME_EMAIL` | — | Contact address for certificate expiry notices. Optional — empty or unset, Caddy starts without it |
 | `COMPOSE_PROJECT_NAME` | `disciplineos` | Compose project name |
-| `API_IMAGE` / `WEB_IMAGE` | `ghcr.io/OWNER/…:latest` | Image coordinates; CI rewrites the tag per release |
-| `VITE_APP_VERSION` | `prod` | Baked into the bundle and shown in Settings → Data |
+| `API_IMAGE` / `WEB_IMAGE` | `disciplineos-api:local` / `disciplineos-web:local` | Image coordinates. A bare name is built on the server; `ghcr.io/OWNER/…:latest` (what `install.sh` writes when you give it a GitHub owner) is pulled, and CI rewrites its tag per release |
+| `BUILD_LOCAL` | unset | Read by `install.sh` / `update.sh` only: `1` builds the images on the server even for registry names, `0` always pulls; unset follows `API_IMAGE`. Set it in the environment or as `BUILD_LOCAL=1` in `.env` |
+| `VITE_APP_VERSION` | `prod` | Baked into the bundle and shown in Settings → Data. The scripts set it to `sha-<commit>` when they build |
 
 ### Database
 
@@ -523,7 +524,9 @@ send-time condition.
 
 Any small Debian/Ubuntu box with 1 vCPU / 1 GB RAM / 20 GB disk is plenty
 (`caddy` + `api` + `postgres`). Point an `A` record for `DOMAIN` at the server
-before the first run so Let's Encrypt can validate it.
+before the first run so Let's Encrypt can validate it. Building the images on the
+server (below) wants about 2 GB of memory for the web bundle: on a 1 GB box add a
+swap file first (`fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile`).
 
 ### 2. Bootstrap
 
@@ -538,7 +541,7 @@ into a `chmod 600 .env`, pulls the images, starts the stack, runs migrations and
 creates the owner. It is idempotent — re-run it any time. Questions it asks (domain, an
 optional Let's Encrypt e-mail, the GitHub owner of the images, a backup repository) can be
 answered up front in the environment, an empty value included:
-`DOMAIN=dsos.example.com ACME_EMAIL= GHCR_OWNER=owner bash install.sh`.
+`DOMAIN=dsos.example.com ACME_EMAIL= GHCR_OWNER= bash install.sh`.
 
 **Docker that is already on the box stays as it is.** On a bare host the script adds Docker's
 apt repository and installs `docker-ce`. If Docker is already installed — Docker's packages,
@@ -549,6 +552,13 @@ and `docker-buildx-plugin`; `docker-compose-plugin` does not exist in Ubuntu's o
 repositories, and Ubuntu's `docker-buildx` would pull `docker.io` in next to `docker-ce`).
 For an engine it cannot place (a snap, a static binary) it stops and tells you what is
 missing rather than guess.
+
+**Images: pull or build.** Name a GitHub owner and the published images are pulled from GHCR.
+Leave the owner empty — or run `BUILD_LOCAL=1 bash install.sh` — and the images are built
+on the server from the cloned commit (`docker compose build`, a few minutes the first time;
+`API_IMAGE`/`WEB_IMAGE` stay `disciplineos-*:local`, the web bundle is labelled
+`sha-<commit>` in Settings → Data). No registry, no CI needed. Later runs follow whatever
+`.env` says (see `BUILD_LOCAL` above).
 
 If the GHCR packages are private, give the server a token:
 
@@ -585,6 +595,21 @@ cd /opt/disciplineos
 API_IMAGE=ghcr.io/owner/disciplineos-api:sha-<previous> ...
 ./deploy/update.sh latest               # back to the newest published image
 ```
+
+With the images built on the server (no GHCR, `API_IMAGE=disciplineos-api:local`) the same
+script does the whole deploy — `git pull`, `docker compose build`, recreate, health gate:
+
+```bash
+cd /opt/disciplineos
+./deploy/update.sh                      # build the checked-out commit as sha-<12>, switch to it
+./deploy/update.sh sha-1a2b3c4d5e6f    # a release still on this box: no build, switch back to it
+docker image ls disciplineos-api        # the builds that are kept (the newest 3; KEEP_LOCAL_BUILDS)
+```
+
+The build runs while the old release keeps serving, and only a finished build is switched
+to; if it does not become healthy the previous images come back (they are still tagged on
+the box), exactly as for pulled images. A failed build changes nothing. `BUILD_LOCAL=1`
+builds even when `.env` names registry images, `BUILD_LOCAL=0` always pulls.
 
 ### 5. Monitoring
 
