@@ -16,7 +16,7 @@ from app.db import get_db, ping, search_ready
 from app.schemas.common import HealthOut, VersionOut
 from app.schemas.meta import AppConfigOut, I18nMessageOut
 from app.services.meta_i18n import I18N_ENUM_LABELS
-from app.services.scheduler import scheduler_status
+from app.services.scheduler import scheduler_health
 from app.services.tokens import scope_catalog
 
 log = get_logger(__name__)
@@ -44,7 +44,7 @@ async def health(db: AsyncSession = Depends(get_db, scope="function")) -> Health
         time_utc=utcnow(),
         database=db_ok,
         fuzzy_search=fuzzy,
-        scheduler=scheduler_status(),
+        scheduler=await scheduler_health(db if db_ok else None),
     )
 
 

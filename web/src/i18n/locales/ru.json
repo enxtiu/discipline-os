@@ -299,7 +299,29 @@
     "burned_workouts": "Тренировки",
     "burned_steps": "Шаги",
     "burned_activity": "Активность (Здоровье)",
-    "burned_overlap": "Активная энергия из «Здоровья» уже включает тренировки с часов — эти два числа не складываются."
+    "burned_overlap": "Активная энергия из «Здоровья» уже включает тренировки с часов — эти два числа не складываются.",
+    "plan_title": "План дня",
+    "plan_logged": "записано",
+    "plan_next": "Далее",
+    "plan_missing": "пока не записан",
+    "plan_add": "Добавить",
+    "plan_add_breakfast": "Добавить завтрак",
+    "plan_add_lunch": "Добавить обед",
+    "plan_add_dinner": "Добавить ужин",
+    "repeat_title": "Повторить",
+    "repeat_hint": "запись в одно касание",
+    "repeat_group": "Повторить в одно касание",
+    "repeat_aria": "Записать снова: {{name}}, {{kcal}} ккал",
+    "repeat_undone": "Отменено: {{name}}",
+    "insight_title": "Наблюдение",
+    "insight_protein": "Белка больше, чем в среднем за 4 недели",
+    "insight_protein_yesterday": "Вчера белка было больше, чем в среднем за 4 недели",
+    "insight_fiber": "Клетчатки больше, чем в среднем за 4 недели",
+    "insight_fiber_yesterday": "Вчера клетчатки было больше, чем в среднем за 4 недели",
+    "insight_water": "Воды больше, чем в среднем за 4 недели",
+    "insight_water_yesterday": "Вчера воды было больше, чем в среднем за 4 недели",
+    "insight_steps": "Шагов больше, чем в среднем за 4 недели",
+    "insight_steps_yesterday": "Вчера шагов было больше, чем в среднем за 4 недели"
   },
   "food": {
     "title": "Питание",
@@ -2173,5 +2195,33 @@
       "disconnect_confirm": "Отключить",
       "disconnected_toast": "Notion отключён. Данные в Notion остались."
     }
+  },
+  "board": {
+    "day_group": "Выбор дня",
+    "day_prev": "Предыдущий день",
+    "day_next": "Следующий день",
+    "day_today": "сегодня",
+    "totals": "Итог дня: калории и БЖУ",
+    "add_to": {
+      "breakfast": "Добавить в завтрак",
+      "lunch": "Добавить в обед",
+      "dinner": "Добавить в ужин",
+      "snack": "Добавить в перекус",
+      "other": "Добавить в «Другое»"
+    },
+    "ai": "ИИ",
+    "recents_title": "Недавнее · запись в одно касание",
+    "recent_again": "Записать снова:",
+    "plan_tag": "по плану: {{name}}",
+    "plan_label": "Сегодня по плану",
+    "exercises": "Упражнения",
+    "sets_reps": "{{sets}}×{{reps}}",
+    "sets_reps_kg": "{{sets}}×{{reps}} · {{kg}} кг",
+    "week_range": "{{from}} – {{to}}",
+    "left": "Осталось {{kcal}}",
+    "plaque_week": "+{{xp}} XP за неделю",
+    "plaque_today": "+{{xp}} XP сегодня",
+    "plaque_to": "до {{level}} · {{title}}",
+    "plaque_today_short": "+{{xp}} сегодня"
   }
 }

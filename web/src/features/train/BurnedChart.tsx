@@ -33,15 +33,15 @@ export function BurnedChart({ data, loading }: { data: Burned | undefined; loadi
 
   return (
     <Card className="space-y-3" data-testid="burned-chart">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="flex items-center gap-1.5 text-sm font-semibold">
+      <div className="sk-burn-head flex items-start justify-between gap-3">
+        <div className="sk-burn-left min-w-0">
+          <p className="sk-burn-title flex items-center gap-1.5 text-sm font-semibold">
             <IconFlame size={16} className="text-amber-400" />
             {t('train.burned_week')}
           </p>
-          <p className="mt-0.5 text-xs muted">{t('train.burned_not_budget')}</p>
+          <p className="sk-burn-note mt-0.5 text-xs muted">{t('train.burned_not_budget')}</p>
         </div>
-        <div className="shrink-0 text-right">
+        <div className="sk-burn-total shrink-0 text-right">
           <p className="tnum text-lg font-semibold">{number(data?.total_kcal ?? 0)}</p>
           <p className="text-xs muted">
             {t('common.kcal')}, {t('train.avg_per_day', { kcal: number(data?.average_kcal ?? 0) })}

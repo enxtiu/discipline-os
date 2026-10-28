@@ -7,7 +7,7 @@
  * and the whole shell respects iOS safe-area insets.
  */
 import { useState, type ReactNode } from 'react'
-import { Outlet, useNavigate } from 'react-router-dom'
+import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 
 import { IconSettings } from '@/components/ui/icons'
@@ -20,6 +20,8 @@ import { AiCaptureProvider } from '@/features/ai/AiCapture'
 import { TaskSheetHost } from '@/features/plan/tasks/TaskSheetHost'
 import { useNotificationBridge } from '@/features/notifications/useNotificationBridge'
 import { useDocumentTitle } from '@/lib/useDocumentTitle'
+import { useSkinTraits } from '@/lib/appearance'
+import { HeaderSlotContext, tabTitleKey } from './headerSlot'
 
 export function AppShell() {
   const { t } = useTranslation()
@@ -31,35 +33,56 @@ export function AppShell() {
 
   const greeting = greetingKey()
   const name = session?.user.display_name ?? ''
+  // stage 10 (a theme trait): the tab's title and the page's own buttons in the header row
+  const { headerTitle } = useSkinTraits()
+  const { pathname } = useLocation()
+  const [slot, setSlot] = useState<HTMLElement | null>(null)
+  const titleKey = headerTitle ? tabTitleKey(pathname) : null
+  const bareHeader = headerTitle && pathname.startsWith('/settings/')
 
   return (
     <AiCaptureProvider>
       <div className="flex min-h-[100dvh] flex-col">
         <header className="sk-header sticky top-0 z-30 border-b border-[rgb(var(--border))]/70 bg-[rgb(var(--bg))]/85 backdrop-blur-xl">
           <div className="safe-top mx-auto flex max-w-lg items-center gap-3 px-4 pb-2.5">
-            <div className="min-w-0 flex-1">
-              <button
-                type="button"
-                onClick={() => navigate('/today')}
-                className="block max-w-full truncate text-left"
-              >
-                <span className="sk-greeting block truncate text-[13px] muted">{t(greeting)}</span>
-                <span className="sk-name block truncate text-[15px] font-semibold">{name}</span>
-              </button>
-            </div>
-            <SyncStatus />
-            <IconButton
-              label={t('nav.settings')}
-              icon={<IconSettings size={20} />}
-              onClick={() => navigate('/settings')}
-              variant="secondary"
-              className="rounded-xl"
-            />
+            {bareHeader ? null : (
+              <>
+                {titleKey ? (
+                  <>
+                    <p className="sk-title min-w-0 flex-1 truncate" aria-hidden="true" data-testid="header-title" data-tab={titleKey}>
+                      {t(titleKey)}
+                    </p>
+                    <div ref={setSlot} className="sk-actions flex shrink-0 items-center gap-2" />
+                  </>
+                ) : (
+                  <div className="min-w-0 flex-1">
+                    <button
+                      type="button"
+                      onClick={() => navigate('/today')}
+                      className="block max-w-full truncate text-left"
+                    >
+                      <span className="sk-greeting block truncate text-[13px] muted">{t(greeting)}</span>
+                      <span className="sk-name block truncate text-[15px] font-semibold">{name}</span>
+                    </button>
+                  </div>
+                )}
+                <SyncStatus />
+                <IconButton
+                  label={t('nav.settings')}
+                  icon={<IconSettings size={20} />}
+                  onClick={() => navigate('/settings')}
+                  variant="secondary"
+                  className="rounded-xl"
+                />
+              </>
+            )}
           </div>
         </header>
 
         <main className="mx-auto w-full max-w-lg flex-1 px-4 pt-4 pb-tabbar">
-          <Outlet />
+          <HeaderSlotContext.Provider value={slot}>
+            <Outlet />
+          </HeaderSlotContext.Provider>
         </main>
 
         <BottomTabBar onQuickAdd={() => setQuickAddOpen(true)} />

@@ -65,9 +65,13 @@ jobs:
           [[ "\$HOURS" -le ${LIMIT} ]] || { echo "::error::the newest backup is \${HOURS}h old"; exit 1; }
           KEY="\${AGE_IDENTITY_FILE:-/root/.config/age/dsos.key}"
           if [[ -r "\$KEY" ]]; then
-            age --decrypt -i "\$KEY" "\$NEWEST" 2>/dev/null | head -c 5 | grep -q PGDMP \
-              && echo "archive header verified (PGDMP)" \
-              || { echo "::error::the archive does not decrypt to a pg_dump payload"; exit 1; }
+            # head closes the pipe after 5 bytes and age dies of SIGPIPE: with pipefail
+            # (set above) that would fail a good archive, so only grep's verdict counts here
+            if ( set +o pipefail; age --decrypt -i "\$KEY" "\$NEWEST" 2>/dev/null | head -c 5 | grep -q '^PGDMP' ); then
+              echo "archive header verified (PGDMP)"
+            else
+              echo "::error::the archive does not decrypt to a pg_dump payload"; exit 1
+            fi
           else
             echo "::warning::could not verify the header — \$KEY is not readable by this user"
           fi

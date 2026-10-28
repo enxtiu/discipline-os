@@ -1,0 +1,3 @@
+# ACME account e-mail (Let's Encrypt expiry notices) — optional.
+# docker/caddy-entrypoint.sh rewrites this file at every container start: `email "<address>"`
+# when ACME_EMAIL holds an address, only this comment otherwise. Caddy works without one.

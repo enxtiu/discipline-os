@@ -1,6 +1,7 @@
 /* stage 10: themes («Настройки → Оформление»): each one re-skins the tokens and the shared
    classes below under :root[data-skin='…'] (lib/appearance.ts sets the attributes) */
 @import './skins/stickers.css';
+@import './skins/stickers-polish.css';
 
 @tailwind base;
 @tailwind components;

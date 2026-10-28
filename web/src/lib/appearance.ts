@@ -232,11 +232,16 @@ export interface SkinTraits {
   addButton: 'round' | 'sticker'
   /** Статистика: the achievements earned this week as a strip of stickers */
   weekStickers: boolean
+  /** the tab's title (and the page's own actions) sit in the shell header row beside sync and settings */
+  headerTitle: boolean
+  /** the content blocks the boards add around a screen: Питание's day switch and totals, the ИИ tags,
+   *  the Plan's priority stickers, the quick add's recents and plan tag, Тренировки's exercise list */
+  boardContent: boolean
 }
 
 export const SKIN_TRAITS: Record<Skin, SkinTraits> = {
-  evolution: { calorieHero: 'ring', macros: 'rings', waterSteps: 'inline', levelMedal: false, addButton: 'round', weekStickers: false },
-  stickers: { calorieHero: 'sticker', macros: 'bars', waterSteps: 'tiles', levelMedal: true, addButton: 'sticker', weekStickers: true },
+  evolution: { calorieHero: 'ring', macros: 'rings', waterSteps: 'inline', levelMedal: false, addButton: 'round', weekStickers: false, headerTitle: false, boardContent: false },
+  stickers: { calorieHero: 'sticker', macros: 'bars', waterSteps: 'tiles', levelMedal: true, addButton: 'sticker', weekStickers: true, headerTitle: true, boardContent: true },
 }
 
 // --------------------------------------------------------------------------- //

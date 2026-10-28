@@ -117,7 +117,7 @@ export function Tiles({ items }: { items: Tile[] }) {
   return (
     <dl className={clsx('grid gap-2', items.length === 3 ? 'grid-cols-3' : 'grid-cols-2')}>
       {items.map((item) => (
-        <div key={item.label} className="surface-sunken min-w-0 px-2.5 py-2" data-testid={item.testId}>
+        <div key={item.label} className="sk-stat surface-sunken min-w-0 px-2.5 py-2" data-testid={item.testId}>
           <dt className="truncate text-xs muted">{item.label}</dt>
           <dd className="mt-0.5 flex min-w-0 items-baseline gap-1 leading-tight">
             <span className="tnum truncate text-[17px] font-semibold" data-testid={item.testId ? `${item.testId}-value` : undefined}>

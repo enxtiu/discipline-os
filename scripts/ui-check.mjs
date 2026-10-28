@@ -49,14 +49,19 @@ const check = (condition, label, detail = '') => (condition ? ok(label, detail) 
 // barcode scanner see a real EAN-13 through Chromium's fake camera.
 const FAKE_CAMERA = process.env.FAKE_CAMERA && existsSync(process.env.FAKE_CAMERA) ? process.env.FAKE_CAMERA : ''
 const BARCODE = process.env.BARCODE ?? '4607001234562'
+// CHROMIUM_NO_DEV_SHM=1: Chromium keeps its shared memory in /tmp instead of /dev/shm (where a
+// container counts it against the memory limit — the dev server's pages got it OOM-killed)
 const browser = await chromium.launch({
-  args: FAKE_CAMERA
-    ? [
-        '--use-fake-ui-for-media-stream',
-        '--use-fake-device-for-media-stream',
-        `--use-file-for-fake-video-capture=${FAKE_CAMERA}`,
-      ]
-    : [],
+  args: [
+    ...(process.env.CHROMIUM_NO_DEV_SHM ? ['--disable-dev-shm-usage'] : []),
+    ...(FAKE_CAMERA
+      ? [
+          '--use-fake-ui-for-media-stream',
+          '--use-fake-device-for-media-stream',
+          `--use-file-for-fake-video-capture=${FAKE_CAMERA}`,
+        ]
+      : []),
+  ],
 })
 const context = await browser.newContext({
   ...iPhone,
@@ -878,7 +883,7 @@ try {
   // Stage 6+: feature checks live in scripts/ui-checks/<module>.mjs, one module
   // per workstream, each exporting `run(ctx)` with the helpers below.
   // stage9-a11y stays last: it audits every screen with the data the earlier modules leave
-  // (stage10-themes leaves the appearance as it found it: «Эволюция», dark)
+  // (stage10-themes and stage10-today leave the appearance as they found it: «Эволюция», dark)
   for (const module of [
     'stage6-plan',
     'stage6-calendar',
@@ -888,6 +893,7 @@ try {
     'stage9-offline',
     'stage9-notion',
     'stage10-themes',
+    'stage10-today',
     'stage9-a11y',
   ]) {
     const { run } = await import(`./ui-checks/${module}.mjs`)

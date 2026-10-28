@@ -199,10 +199,11 @@ All of them live in `.env` (copy from `.env.example`; never commit the real one)
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `DOMAIN` | — | Public hostname; Caddy obtains the Let's Encrypt certificate for it |
-| `ACME_EMAIL` | — | Contact address for certificate expiry notices |
+| `ACME_EMAIL` | — | Contact address for certificate expiry notices. Optional — empty or unset, Caddy starts without it |
 | `COMPOSE_PROJECT_NAME` | `disciplineos` | Compose project name |
-| `API_IMAGE` / `WEB_IMAGE` | `ghcr.io/OWNER/…:latest` | Image coordinates; CI rewrites the tag per release |
-| `VITE_APP_VERSION` | `prod` | Baked into the bundle and shown in Settings → Data |
+| `API_IMAGE` / `WEB_IMAGE` | `disciplineos-api:local` / `disciplineos-web:local` | Image coordinates. A bare name is built on the server; `ghcr.io/OWNER/…:latest` (what `install.sh` writes when you give it a GitHub owner) is pulled, and CI rewrites its tag per release |
+| `BUILD_LOCAL` | unset | Read by `install.sh` / `update.sh` only: `1` builds the images on the server even for registry names, `0` always pulls; unset follows `API_IMAGE`. Set it in the environment or as `BUILD_LOCAL=1` in `.env` |
+| `VITE_APP_VERSION` | `prod` | Baked into the bundle and shown in Settings → Data. The scripts set it to `sha-<commit>` when they build |
 
 ### Database
 
@@ -240,6 +241,15 @@ Stage 7 adds two jobs (no settings): `dispatch_notifications` every minute and
 `plan_daily_reminders` every 15 minutes (see [Web push on iPhone](#web-push-on-iphone)).
 With `SCHEDULER_ENABLED=false` nothing is delivered — `POST /api/v1/push/test` still works.
 
+The API image starts two uvicorn workers; only one of them owns the scheduler (the one that
+takes a PostgreSQL advisory lock, held on a connection of its own for as long as it runs). So
+that `GET /api/v1/meta/health` tells the same truth from whichever worker answers, the owner
+also publishes its jobs and next runs (the `scheduler_heartbeat` job, every minute, into
+`app_meta`) and the others read the lock from `pg_locks`. The `scheduler` object has `running`
+and `jobs` (as before — now those of the whole deployment, not just of the answering worker)
+and `enabled`, `owner` (this worker runs it), `lock_held`, `started_at`,
+`heartbeat_age_seconds` and `stale` (it runs but has not published for three minutes).
+
 ### AI (stage 3) and push (stage 7)
 
 `AI_PROVIDER` (`openai` \| `anthropic` \| `google` \| `openrouter` \| `fake` —
@@ -260,7 +270,7 @@ is looked up once on Open Food Facts and cached);
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `VAPID_PUBLIC_KEY` | empty | base64url P-256 public key; the browser subscribes with it (`GET /api/v1/push/config`) |
-| `VAPID_PRIVATE_KEY` | empty | The matching private key as one-line PEM (`\n` escaped) — signs every push (RFC 8292). Secret |
+| `VAPID_PRIVATE_KEY` | empty | The matching private key as one-line PEM (`\n` escaped) **in single quotes**, exactly as `vapid-keys` prints it — signs every push (RFC 8292). Secret |
 | `VAPID_SUBJECT` | `mailto:admin@example.com` | Your contact for the push services: `mailto:you@domain` or `https://…` |
 | `PUSH_EXTRA_HOSTS` | empty | More push-service hosts to allow (comma-separated, `*.example.com` for subdomains) — see below |
 
@@ -277,7 +287,19 @@ next send (`last_error=endpoint_not_allowed`), and redirects are never followed.
 most 2048 bytes.
 
 Generate the pair once and keep it: `docker compose exec api python -m app.cli vapid-keys`
-prints both lines ready for `.env`; restart the API. Push is **on** only when both keys
+prints both lines ready for `.env`; restart the API. Paste them exactly as printed — the
+private key stays inside its **single quotes**: the PEM has spaces, and `.env` is also
+sourced by bash (`deploy/backup/backup.sh`, `restore.sh`, `deploy/healthcheck.sh`), where
+an unquoted value fails with `PRIVATE: command not found`. Single quotes are literal for
+bash, the API's `.env` reader and docker compose alike (double quotes are not: compose
+would turn the `\n` into line breaks). A key pasted unquoted from an older `vapid-keys`
+is repaired in place with
+
+```bash
+sed -i -E "/^VAPID_PRIVATE_KEY=[^']/ s/^(VAPID_PRIVATE_KEY=)(.*)$/\1'\2'/" .env
+```
+
+Push is **on** only when both keys
 are set (`features.push_notifications` in `/api/v1/meta/app-config`); without them the
 app says so in Settings → Уведомления instead of offering a button that cannot work.
 Changing the keys later orphans every browser subscription — each device has to tap
@@ -508,7 +530,9 @@ send-time condition.
 
 Any small Debian/Ubuntu box with 1 vCPU / 1 GB RAM / 20 GB disk is plenty
 (`caddy` + `api` + `postgres`). Point an `A` record for `DOMAIN` at the server
-before the first run so Let's Encrypt can validate it.
+before the first run so Let's Encrypt can validate it. Building the images on the
+server (below) wants about 2 GB of memory for the web bundle: on a 1 GB box add a
+swap file first (`fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile`).
 
 ### 2. Bootstrap
 
@@ -517,10 +541,30 @@ ssh root@your-server
 bash <(curl -fsSL https://raw.githubusercontent.com/OWNER/discipline-os/main/deploy/install.sh)
 ```
 
-`deploy/install.sh` installs Docker + the compose plugin + `age`, opens
-22/80/443, clones the repository into `/opt/disciplineos`, generates the secrets
+`deploy/install.sh` makes sure Docker, the compose plugin, buildx and `age` are there,
+opens 22/80/443, clones the repository into `/opt/disciplineos`, generates the secrets
 into a `chmod 600 .env`, pulls the images, starts the stack, runs migrations and
-creates the owner. It is idempotent — re-run it any time.
+creates the owner. It is idempotent — re-run it any time. Questions it asks (domain, an
+optional Let's Encrypt e-mail, the GitHub owner of the images, a backup repository) can be
+answered up front in the environment, an empty value included:
+`DOMAIN=dsos.example.com ACME_EMAIL= GHCR_OWNER= bash install.sh`.
+
+**Docker that is already on the box stays as it is.** On a bare host the script adds Docker's
+apt repository and installs `docker-ce`. If Docker is already installed — Docker's packages,
+Ubuntu's `docker.io`, a VPN container running on it — nothing is replaced, upgraded or
+restarted: only a missing CLI plugin is installed, from the family the engine came from
+(`docker.io`: `docker-compose-v2` and `docker-buildx`; `docker-ce`: `docker-compose-plugin`
+and `docker-buildx-plugin`; `docker-compose-plugin` does not exist in Ubuntu's own
+repositories, and Ubuntu's `docker-buildx` would pull `docker.io` in next to `docker-ce`).
+For an engine it cannot place (a snap, a static binary) it stops and tells you what is
+missing rather than guess.
+
+**Images: pull or build.** Name a GitHub owner and the published images are pulled from GHCR.
+Leave the owner empty — or run `BUILD_LOCAL=1 bash install.sh` — and the images are built
+on the server from the cloned commit (`docker compose build`, a few minutes the first time;
+`API_IMAGE`/`WEB_IMAGE` stay `disciplineos-*:local`, the web bundle is labelled
+`sha-<commit>` in Settings → Data). No registry, no CI needed. Later runs follow whatever
+`.env` says (see `BUILD_LOCAL` above).
 
 If the GHCR packages are private, give the server a token:
 
@@ -558,16 +602,33 @@ API_IMAGE=ghcr.io/owner/disciplineos-api:sha-<previous> ...
 ./deploy/update.sh latest               # back to the newest published image
 ```
 
+With the images built on the server (no GHCR, `API_IMAGE=disciplineos-api:local`) the same
+script does the whole deploy — `git pull`, `docker compose build`, recreate, health gate:
+
+```bash
+cd /opt/disciplineos
+./deploy/update.sh                      # build the checked-out commit as sha-<12>, switch to it
+./deploy/update.sh sha-1a2b3c4d5e6f    # a release still on this box: no build, switch back to it
+docker image ls disciplineos-api        # the builds that are kept (the newest 3; KEEP_LOCAL_BUILDS)
+```
+
+The build runs while the old release keeps serving, and only a finished build is switched
+to; if it does not become healthy the previous images come back (they are still tagged on
+the box), exactly as for pulled images. A failed build changes nothing. `BUILD_LOCAL=1`
+builds even when `.env` names registry images, `BUILD_LOCAL=0` always pulls.
+
 ### 5. Monitoring
 
 ```bash
 */5 * * * * /opt/disciplineos/deploy/healthcheck.sh >> /var/log/dsos-health.log 2>&1
 ```
 
-Checks the public health endpoint, that the scheduler actually holds a scheduled
-run (a *paused* APScheduler job is silent otherwise), container state, database
-reachability, disk space, TLS expiry and backup age. Exit code 1 on any failure;
-set `ALERT_WEBHOOK_URL` in the environment to POST a JSON alert.
+Checks the public health endpoint, the scheduler (running somewhere, every job holding a
+scheduled run — a *paused* APScheduler job is silent otherwise —, a fresh heartbeat and its
+lock held; the answer is the same from each of the API's workers), container state, database
+reachability, disk space, TLS expiry and the age of the newest nightly backup
+(`<BACKUP_LOCAL_DIR>/<stamp>/dsos-<stamp>.dump.age`). Exit code 1 on any failure, with the
+reason on a `✗` line; set `ALERT_WEBHOOK_URL` in the environment to POST a JSON alert.
 
 ---
 
@@ -889,7 +950,10 @@ health endpoint reports `fuzzy_search: true/false`.
 **A scheduled job never fires.** APScheduler jobs created with
 `next_run_time=None` are *paused*. `/api/v1/meta/health` lists each job with its
 `next_run_time` — it must never be `null`. `deploy/healthcheck.sh` fails loudly
-if it is.
+if it is. The same object says whether the scheduler runs at all: `running: false` with
+`lock_held: false` means no worker holds the scheduler lock (the API is down or its
+owner died — `docker compose restart api`), `stale: true` that the owner holds the lock
+but has not published for three minutes (stuck, or it cannot write to the database).
 
 **The pairing code is rejected.** Codes are single-use and live 15 minutes
 (`PAIRING_CODE_TTL_MINUTES`). Print a new one with `make pair`. An expired or
@@ -898,6 +962,12 @@ indistinguishable from a code that never existed.
 
 **"Device limit reached (2/2)".** Revoke an old device in Settings → Devices, or
 raise `MAX_DEVICES_DEFAULT` in `.env` and restart the API.
+
+**`docker-compose-plugin` / `docker-buildx-plugin` «Unable to locate package», or «BuildKit is
+enabled but the buildx component is missing».** The server's Docker comes from Ubuntu's
+`docker.io`: its packages are `docker-compose-v2` and `docker-buildx`
+(`apt-get install --no-install-recommends docker-compose-v2 docker-buildx` — the recommends
+would pull in `docker.io` again), and `deploy/install.sh` installs the right ones by itself.
 
 **Caddy cannot obtain a certificate.** The `A` record must already point at the
 server and port 80 must be reachable (Let's Encrypt HTTP-01). Check

@@ -339,7 +339,8 @@ async def test_container_base_scoping(authed: httpx.AsyncClient) -> None:
 # Time entries
 # --------------------------------------------------------------------------- #
 async def test_time_entry_base(authed: httpx.AsyncClient) -> None:
-    day = (today() - timedelta(days=1)).isoformat()
+    # two days back: an overnight entry from yesterday would end in the future before 01:15
+    day = (today() - timedelta(days=2)).isoformat()
     task = await make_task(authed, "отчёт")
     entry = (
         await authed.post(

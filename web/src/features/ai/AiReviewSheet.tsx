@@ -18,6 +18,7 @@ import { useToast } from '@/components/ui/Toast'
 import type { AiAnalysis, AiItem, Food, MatchMethod, MealItemIn, MealType } from '@/api/types'
 import { number } from '@/lib/format'
 import { errorMessage } from '@/lib/errors'
+import { guessMealType } from '@/features/food/mealType'
 import { useCreateFood, useFoodSearch, useLogMeal } from '@/features/food/useNutrition'
 
 const MEAL_TYPES: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack', 'other']
@@ -85,14 +86,6 @@ function toDraft(item: AiItem): DraftItem {
     alternatives: item.alternatives ?? [],
     sliderMax: sliderMaxFor(item.estimated_grams),
   }
-}
-
-function guessMealType(): MealType {
-  const hour = new Date().getHours()
-  if (hour < 11) return 'breakfast'
-  if (hour < 16) return 'lunch'
-  if (hour < 22) return 'dinner'
-  return 'snack'
 }
 
 export function AiReviewSheet({

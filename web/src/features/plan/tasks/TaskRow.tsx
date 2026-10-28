@@ -12,7 +12,8 @@ import clsx from 'clsx'
 import { IconCheck, IconClock } from '@/components/ui/icons'
 import { openTask } from '../events'
 import { usePendingTaskIds } from '../pending'
-import { blockLabel, dueLabel, formatMinutes, PRIORITY_STYLES, relativeDay } from '../format'
+import { useSkinTraits } from '@/lib/appearance'
+import { blockLabel, dueLabel, formatMinutes, PRIORITY_STYLES, priorityLabel, relativeDay } from '../format'
 import { IconBellSmall, IconCalendar, IconRepeat, IconSubtasks, IconTimer } from '../icons'
 import type { Occurrence, Priority, Ref, Task } from '../types'
 import { ColorDot } from './ColorDot'
@@ -114,6 +115,7 @@ export interface TaskRowProps {
 
 export function TaskRow({ task, today, day, showContainer = true, children }: TaskRowProps) {
   const { t } = useTranslation()
+  const { boardContent } = useSkinTraits()
   const { toggle, busy } = useCompleteToggle(today)
   const waiting = usePendingTaskIds().has(task.id)
   const closed = isClosed(task)
@@ -206,6 +208,13 @@ export function TaskRow({ task, today, day, showContainer = true, children }: Ta
             </span>
           )}
         </button>
+        {/* stage 10 (a theme trait): the priority as a small sticker at the right (Ffin-Plan) */}
+        {boardContent && !closed && task.priority < 4 && (
+          <span className={clsx('sk-prio self-center', task.priority === 2 ? 'sk-tilt-r' : 'sk-tilt-l')} data-p={task.priority} data-testid="task-prio">
+            <span className="sr-only">{t('task.priority_n', { label: priorityLabel(task.priority) })}: </span>
+            <span aria-hidden="true">{priorityLabel(task.priority)}</span>
+          </span>
+        )}
       </div>
       {children && <div className="-mt-1 pb-3 pl-12 pr-3">{children}</div>}
     </div>

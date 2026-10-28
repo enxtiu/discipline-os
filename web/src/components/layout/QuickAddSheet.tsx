@@ -12,6 +12,10 @@ import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 
 import { Sheet, Badge } from '@/components/ui'
+import { useSkinTraits } from '@/lib/appearance'
+import { useRecents } from '@/features/food/useNutrition'
+import { recentChoices, useRelog } from '@/features/food/useRelog'
+import { useTrainingToday } from '@/features/train/useTraining'
 import { PhotoTrigger, useAiCapture } from '@/features/ai/AiCapture'
 import { quickAdd } from '@/features/plan/events'
 import {
@@ -25,6 +29,7 @@ import {
   IconTrain,
   IconSearch,
 } from '@/components/ui/icons'
+import { number } from '@/lib/format'
 
 interface Action {
   key: string
@@ -51,12 +56,13 @@ const ACTIONS: Action[] = [
 
 export function QuickAddSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { t } = useTranslation()
+  const { boardContent } = useSkinTraits() // stage 10: the ИИ tags, the plan tag, the recents
   const navigate = useNavigate()
   const capture = useAiCapture()
 
   // literal classes (Tailwind purges built ones); sk-qa* are hooks for the themes
   const tileClass = (action: Action) =>
-    `flex min-h-[5.5rem] cursor-pointer flex-col items-start justify-between gap-2 rounded-2xl border p-4 text-left transition-transform active:scale-[.97] ${
+    `sk-qa-${action.key} relative flex min-h-[5.5rem] cursor-pointer flex-col items-start justify-between gap-2 rounded-2xl border p-4 text-left transition-transform active:scale-[.97] ${
       action.primary
         ? 'sk-qa sk-qa-primary border-aqua-400/40 bg-aqua-400/10 text-aqua-200'
         : 'sk-qa border-[rgb(var(--border))] bg-[rgb(var(--bg-sunken))]'
@@ -69,6 +75,12 @@ export function QuickAddSheet({ open, onClose }: { open: boolean; onClose: () =>
         <span className="text-sm font-medium leading-tight">
           {t(action.labelKey)}
         </span>
+        {boardContent && action.primary && (
+          <span className={`sk-ai-tag sk-ai-tag-${action.key}`} aria-hidden="true">
+            {t('board.ai')}
+          </span>
+        )}
+        {boardContent && action.key === 'workout' && <PlanTag />}
         {action.stage && action.stage > 6 && (
           <Badge tone="violet" className="shrink-0">
             {action.stage}
@@ -80,7 +92,7 @@ export function QuickAddSheet({ open, onClose }: { open: boolean; onClose: () =>
 
   return (
     <Sheet open={open} onClose={onClose} title={t('nav.quick_add')}>
-      <div className="grid grid-cols-2 gap-3 pb-2">
+      <div className="sk-qa-grid grid grid-cols-2 gap-3 pb-2">
         {ACTIONS.map((action) =>
           // the camera opens straight from this tap (iOS needs a direct gesture)
           action.key === 'photo' ? (
@@ -106,6 +118,53 @@ export function QuickAddSheet({ open, onClose }: { open: boolean; onClose: () =>
           ),
         )}
       </div>
+      {boardContent && <QuickRecents onDone={onClose} />}
     </Sheet>
+  )
+}
+
+/** The planned workout's name on the «Начать тренировку» tile («по плану: ноги»). */
+function PlanTag() {
+  const { t } = useTranslation()
+  const today = useTrainingToday()
+  const name = today.data?.plan.template?.name
+  if (!name) return null
+  return <span className="sk-qa-tag">{t('board.plan_tag', { name: name.toLowerCase() })}</span>
+}
+
+/** «Недавнее · запись в одно касание»: the last foods, logged again with their last grams. */
+function QuickRecents({ onDone }: { onDone: () => void }) {
+  const { t, i18n } = useTranslation()
+  const recents = useRecents()
+  const relog = useRelog()
+  const choices = recentChoices(recents.data?.items, i18n.language).slice(0, 3)
+  if (choices.length === 0) return null
+  return (
+    <section className="sk-recent-block" aria-labelledby="qa-recents">
+      <h3 id="qa-recents" className="sk-recent-title">
+        {t('board.recents_title')}
+      </h3>
+      <div className="sk-recent-grid">
+        {choices.map((choice) => (
+          <button
+            key={choice.recent.id}
+            type="button"
+            className="sk-recent"
+            onClick={() => relog(choice, onDone)}
+          >
+            <span className="sr-only">{t('board.recent_again')} </span>
+            <span className="sk-recent-name">{choice.name}</span>
+            <span className="sk-recent-foot">
+              <span className="tnum">
+                {number(choice.kcal)} {t('common.kcal')}
+              </span>
+              <span aria-hidden="true" className="sk-recent-plus">
+                <IconPlus size={12} strokeWidth={3} />
+              </span>
+            </span>
+          </button>
+        ))}
+      </div>
+    </section>
   )
 }

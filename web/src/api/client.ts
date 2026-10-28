@@ -330,6 +330,9 @@ export const endpoints = {
   weightSeries: (days = 90) => api.get<import('./types').WeightSeries>('/v1/health/weight', { query: { days } }),
   sleepSeries: (days = 14) => api.get<import('./types').SleepSeries>('/v1/health/sleep', { query: { days } }),
 
+  // ---- stage 10: the one calm insight of «Сегодня» (null = nothing to say) ------
+  todayInsight: () => api.get<import('./types').TodayInsight>('/v1/insights/today'),
+
   tokens: () => api.get<import('./types').ApiTokenList>('/v1/tokens'),
   createToken: (payload: import('./types').ApiTokenCreate) =>
     api.post<import('./types').ApiTokenIssued>('/v1/tokens', payload),

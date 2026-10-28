@@ -299,7 +299,29 @@
     "burned_workouts": "Workouts",
     "burned_steps": "Steps",
     "burned_activity": "Activity (Health)",
-    "burned_overlap": "Active energy from Apple Health already includes workouts recorded by the watch — don’t add the two numbers up."
+    "burned_overlap": "Active energy from Apple Health already includes workouts recorded by the watch — don’t add the two numbers up.",
+    "plan_title": "Day plan",
+    "plan_logged": "logged",
+    "plan_next": "Next",
+    "plan_missing": "not logged yet",
+    "plan_add": "Add",
+    "plan_add_breakfast": "Add breakfast",
+    "plan_add_lunch": "Add lunch",
+    "plan_add_dinner": "Add dinner",
+    "repeat_title": "Log again",
+    "repeat_hint": "one tap logs it",
+    "repeat_group": "Log again in one tap",
+    "repeat_aria": "Log again: {{name}}, {{kcal}} kcal",
+    "repeat_undone": "Undone: {{name}}",
+    "insight_title": "Insight",
+    "insight_protein": "More protein than your 4-week average",
+    "insight_protein_yesterday": "Yesterday: more protein than your 4-week average",
+    "insight_fiber": "More fiber than your 4-week average",
+    "insight_fiber_yesterday": "Yesterday: more fiber than your 4-week average",
+    "insight_water": "More water than your 4-week average",
+    "insight_water_yesterday": "Yesterday: more water than your 4-week average",
+    "insight_steps": "More steps than your 4-week average",
+    "insight_steps_yesterday": "Yesterday: more steps than your 4-week average"
   },
   "food": {
     "title": "Food",
@@ -2173,5 +2195,33 @@
       "disconnect_confirm": "Disconnect",
       "disconnected_toast": "Notion disconnected. Your data in Notion stays."
     }
+  },
+  "board": {
+    "day_group": "Choose a day",
+    "day_prev": "Previous day",
+    "day_next": "Next day",
+    "day_today": "today",
+    "totals": "Day total: calories and macros",
+    "add_to": {
+      "breakfast": "Add to breakfast",
+      "lunch": "Add to lunch",
+      "dinner": "Add to dinner",
+      "snack": "Add to snack",
+      "other": "Add to Other"
+    },
+    "ai": "AI",
+    "recents_title": "Recent · log in one tap",
+    "recent_again": "Log again:",
+    "plan_tag": "planned: {{name}}",
+    "plan_label": "Planned for today",
+    "exercises": "Exercises",
+    "sets_reps": "{{sets}}×{{reps}}",
+    "sets_reps_kg": "{{sets}}×{{reps}} · {{kg}} kg",
+    "week_range": "{{from}} – {{to}}",
+    "left": "{{kcal}} left",
+    "plaque_week": "+{{xp}} XP this week",
+    "plaque_today": "+{{xp}} XP today",
+    "plaque_to": "to {{level}} · {{title}}",
+    "plaque_today_short": "+{{xp}} today"
   }
 }

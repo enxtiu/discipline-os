@@ -20,6 +20,9 @@
  *  - axe-core (WCAG 2.1 A/AA, serious + critical = 0) and the 48 px target rule on
  *    «Оформление» (dark and light) and on the stickers skin's Сегодня, Питание, Статистика,
  *    Тренировки, План and the quick-add sheet, in Сирень (light) and Ночь (dark).
+ *  - The polish against the final boards (Ffin-*): the tab's title and the page's buttons in
+ *    the header row, Питание's day switch / day totals / meal cards / ИИ tags, the quick add's
+ *    order, plan tag and recents, the Plan's priority stickers, Статистика's plaque form.
  *  - «Крупный текст» in both themes: no screen wider than the 390 px screen.
  *  - Screenshots s10-*.png at 390 × 844 in $SHOTS.
  */
@@ -82,7 +85,7 @@ export async function run(ctx) {
   const axe = loadAxe()
   const totals = { audits: 0, blocking: 0, moderate: 0, minor: 0 }
   const report = []
-  const created = { meals: [], water: [], steps: null }
+  const created = { meals: [], water: [], steps: null, tasks: [] }
 
   const apiFetch = (path, init = {}) =>
     page.evaluate(
@@ -602,6 +605,173 @@ export async function run(ctx) {
     await goto('/plan', '[data-testid="plan-today"]')
     await audit('Наклейки · План (Сирень)', null, 's10-15-stickers-plan-lilac')
 
+    // -------------------------------------------------------------------- //
+    // 3b. The polish against the final boards (Ffin-*), «Наклейки» in Сирень
+    // -------------------------------------------------------------------- //
+    const prio = await apiFetch('/v1/planner/tasks', { method: 'POST', body: JSON.stringify({ id: randomUUID(), title: 'Задача с приоритетом (ui-check s10)', priority: 1, due_date: T }) })
+    if (prio.status === 201 || prio.status === 200) created.tasks.push(prio.body?.id)
+    const headerOf = () =>
+      page.evaluate(() => {
+        const header = document.querySelector('header.sk-header')
+        const title = header?.querySelector('[data-testid="header-title"]')
+        const h1 = document.querySelector('main h1')
+        const sr = h1 ? getComputedStyle(h1) : null
+        return {
+          title: title?.textContent?.trim() ?? null,
+          h1: h1?.textContent?.trim() ?? null,
+          h1Hidden: !!sr && sr.position === 'absolute' && sr.width === '1px',
+          actions: [...(header?.querySelectorAll('.sk-actions button, .sk-actions a') ?? [])].map((el) => el.getAttribute('aria-label') ?? el.textContent?.trim()),
+          sync: !!header?.querySelector('[data-testid="sync-pill"]'),
+          settings: !!header?.querySelector('button[aria-label="Настройки"]'),
+          fontSize: title ? getComputedStyle(title).fontSize : null,
+          row: header ? Math.round(header.getBoundingClientRect().height) : null,
+        }
+      })
+    for (const [path, ready, name, actions] of [
+      ['/food', 'input[placeholder*="Поиск"]', 'Питание', 0],
+      ['/train', '[data-testid="week-strip"]', 'Тренировки', 0],
+      ['/stats', '[data-testid="level-plaque"]', 'Статистика', 1],
+      ['/plan', '[data-testid="plan-today"]', 'План', 2],
+    ]) {
+      await goto(path, ready)
+      const head = await headerOf()
+      check(
+        head.title === name && head.h1?.includes(name) && head.h1Hidden && head.sync && head.settings && head.actions.length === actions,
+        `Наклейки · ${name}: the title shares the header row with sync, settings${actions ? ` and the page's ${actions} button(s)` : ''}; the h1 stays for screen readers`,
+        JSON.stringify(head),
+      )
+    }
+    // Питание: the day switch, the day total, the meal cards, the ИИ tags
+    await goto('/food', 'input[placeholder*="Поиск"]')
+    const dayApi = (await apiFetch('/v1/nutrition/day')).body
+    const food = await page.evaluate(() => {
+      const digits = (text) => Number((text ?? '').replace(/\D/g, ''))
+      const label = document.querySelector('[data-testid="day-switch"] time')
+      return {
+        label: label?.textContent ?? '',
+        today: /сегодня/.test(document.querySelector('[data-testid="day-switch"]')?.textContent ?? ''),
+        next: document.querySelector('[data-testid="day-switch"] button[aria-label="Следующий день"]')?.disabled,
+        total: digits(document.querySelector('[data-testid="day-totals-value"]')?.textContent),
+        bars: document.querySelectorAll('[data-testid="day-totals"] [role="progressbar"]').length,
+        cards: [...document.querySelectorAll('[data-testid="meal-card"]')].map((card) => card.querySelector('h2')?.firstChild?.textContent?.trim()),
+        rows: document.querySelectorAll('[data-testid="meal-row"]').length,
+        add: document.querySelectorAll('.sk-meal-add').length,
+        tags: [...document.querySelectorAll('.sk-capture .sk-ai-tag')].map((tag) => tag.textContent),
+        capture: [...document.querySelectorAll('.sk-capture > *')].map((el) => Math.round(el.getBoundingClientRect().height)),
+      }
+    })
+    const types = new Set((dayApi.meals ?? []).map((meal) => meal.meal_type))
+    check(
+      /^[А-Яа-я]{2}, \d{1,2} [а-я]+$/.test(food.label) && food.today && food.next === true && food.total === Math.round(dayApi.totals.kcal) && food.bars === 5 &&
+        food.cards.length === types.size && food.rows === (dayApi.meals ?? []).length && food.add === food.cards.length,
+      'Наклейки · Питание: the day switch («Ср, 28 октября» · сегодня), the day total = GET /nutrition/day, a card per meal type with «＋»',
+      JSON.stringify({ label: food.label, total: food.total, cards: food.cards, api: Math.round(dayApi.totals.kcal) }),
+    )
+    check(
+      food.tags.length === 2 && food.tags.every((tag) => tag === 'ИИ') && food.capture.length === 3 && food.capture.every((height) => height === 48),
+      'Наклейки · Питание: Фото and Текст carry the «ИИ» tag; the three ways to log are one 48 px row',
+      JSON.stringify({ tags: food.tags, capture: food.capture }),
+    )
+    await page.locator('[data-testid="day-switch"] button[aria-label="Предыдущий день"]').click()
+    await page.waitForFunction((was) => document.querySelector('[data-testid="day-switch"] time')?.getAttribute('datetime') !== was, await page.locator('[data-testid="day-switch"] time').getAttribute('datetime'), { timeout: 8000 }).catch(() => {})
+    await settle(500)
+    const yesterday = await page.evaluate(() => ({
+      today: /сегодня/.test(document.querySelector('[data-testid="day-switch"]')?.textContent ?? ''),
+      next: document.querySelector('[data-testid="day-switch"] button[aria-label="Следующий день"]')?.disabled,
+      add: document.querySelectorAll('.sk-meal-add').length,
+    }))
+    check(
+      !yesterday.today && yesterday.next === false && yesterday.add === 0,
+      'Наклейки · Питание: «Предыдущий день» shows the day before (no «сегодня», «Следующий день» enabled, no «＋» on a past day)',
+      JSON.stringify(yesterday),
+    )
+    await page.locator('[data-testid="day-switch"] button[aria-label="Следующий день"]').click()
+    await settle(400)
+    // the quick add: the board's order, the tags, the plan tag, the recents
+    await goto('/today', '[data-testid="calorie-sticker"]')
+    await page.locator('[data-testid="quick-add-button"]').click()
+    await page.locator('[role="dialog"]').last().waitFor({ timeout: 8000 })
+    await settle(700)
+    const sheet = await page.evaluate(() => {
+      const dialog = [...document.querySelectorAll('[role="dialog"]')].pop()
+      const grid = dialog.querySelector('.sk-qa-grid')
+      const tiles = [...grid.children].map((el) => {
+        const rect = el.getBoundingClientRect()
+        return { name: (el.querySelector('span.text-sm')?.textContent ?? el.textContent ?? '').trim().slice(0, 24), top: Math.round(rect.top), left: Math.round(rect.left), width: Math.round(rect.width) }
+      })
+      const recents = [...dialog.querySelectorAll('.sk-recent')].map((el) => (el.textContent ?? '').replace(/\s+/g, ' ').trim())
+      return { tiles, tags: [...dialog.querySelectorAll('.sk-ai-tag')].length, planTag: dialog.querySelector('.sk-qa-tag')?.textContent ?? null, recents, role: dialog.getAttribute('aria-modal') }
+    })
+    const order = sheet.tiles.slice().sort((a, b) => a.top - b.top || a.left - b.left).map((tile) => tile.name)
+    check(
+      order.join('|') === ['Фото', 'Текст', 'Штрих-код', 'Поиск', 'Добавить воду', 'Шаги', 'Начать тренировку', 'Новая задача', 'Итоги дня'].join('|') &&
+        sheet.tiles.find((tile) => /Начать/.test(tile.name))?.width > 300 && sheet.tags === 2 && sheet.role === 'true',
+      'Наклейки · быстрое добавление: a dialog; the board\'s order (Фото, Текст, Штрих-код, Поиск, вода, шаги, тренировка on its own row, задача, итоги), two «ИИ» tags',
+      order.join(' | '),
+    )
+    ok('Наклейки · быстрое добавление: the plan tag and «Недавнее»', `${sheet.planTag ?? 'no plan today — no tag'}; ${sheet.recents.length} recent(s)`)
+    check(sheet.recents.length <= 3 && sheet.recents.every((label) => /^Записать снова: .+\d ккал$/.test(label)), 'Наклейки · быстрое добавление: at most three recents, named «Записать снова: …» with its kcal', sheet.recents.join(' | '))
+    await audit('Наклейки · быстрое добавление с «Недавнее» (Сирень)', 'dialog', 's10-16-stickers-add-recents-lilac')
+    await page.keyboard.press('Escape')
+    await page.waitForTimeout(400)
+    // the Plan: priority stickers (the P1 task made above) and the group counts
+    await goto('/plan', '[data-testid="plan-today"]')
+    const plan = await page.evaluate(() => ({
+      prio: [...document.querySelectorAll('[data-testid="task-prio"]')].map((el) => el.textContent?.replace(/\s+/g, ' ').trim()),
+      counts: [...document.querySelectorAll('.sk-count')].length,
+      date: getComputedStyle(document.querySelector('.sk-datehead')).fontSize,
+    }))
+    check(
+      plan.prio.length > 0 && plan.prio.every((text) => /Приоритет P[123]: P[123]/.test(text)) && plan.counts > 0 && plan.date === '18px',
+      'Наклейки · План: priority stickers P1–P3 at the right of a task (named for screen readers), counts as stickers, the day heading 18 px',
+      JSON.stringify(plan),
+    )
+    // Статистика: the plaque's form (medal, week and today stickers, streak sticker, the big bar)
+    await goto('/stats', '[data-testid="level-plaque"]')
+    const form = await page.evaluate(() => {
+      const root = document.querySelector('[data-testid="level-plaque"]')
+      const box = (sel) => root.querySelector(sel)?.getBoundingClientRect()
+      const card = root.getBoundingClientRect()
+      const streak = box('[data-testid="plaque-streak"]')
+      const medal = box('.sk-medal')
+      const bar = box('[role="progressbar"]')
+      return {
+        medalOverhang: medal ? Math.round(card.top - medal.top) : null,
+        streakCorner: streak ? Math.round(card.right - streak.right) : null,
+        streakTop: streak ? Math.round(streak.top - card.top) : null,
+        barHeight: bar ? Math.round(bar.height) : null,
+        label: root.querySelector('.sk-bar-text')?.textContent?.replace(/\s+/g, ' ') ?? null,
+        week: root.querySelector('[data-testid="plaque-week"]')?.textContent?.replace(/\s+/g, ' ').trim(),
+        achv: !!document.querySelector('header.sk-header .sk-actions [data-testid="stats-achievements-link"]'),
+        flat: getComputedStyle(document.querySelector('.sk-stat') ?? document.body).borderTopWidth,
+      }
+    })
+    check(
+      form.medalOverhang > 0 && form.streakCorner <= 14 && form.streakTop <= 10 && form.barHeight === 22 && /\d+ \/ \d+ XP/.test(form.label ?? '') && /за неделю/.test(form.week ?? '') && form.achv && form.flat === '0px',
+      'Наклейки · Статистика: the plaque as the board — the medal over the corner, the streak sticker top right, the week\'s XP sticker, a 22 px bar with its numbers, «Достижения» in the header, flat figures',
+      JSON.stringify(form),
+    )
+    // Тренировки: the week strip cell sizes (the board: 58 px), Оформление's header row
+    await goto('/train', '[data-testid="week-strip"]')
+    const train = await page.evaluate(() => ({
+      cells: [...document.querySelectorAll('[data-testid="week-strip"] .sk-day')].map((el) => Math.round(el.getBoundingClientRect().height)),
+      list: document.querySelectorAll('[data-testid="plan-exercises"] li').length,
+      range: document.querySelector('.sk-week-range')?.textContent ?? null,
+    }))
+    check(train.cells.length === 7 && train.cells.every((height) => height === 58) && !!train.range, 'Наклейки · Тренировки: seven 58 px day cells and the week\'s date range', JSON.stringify(train))
+    ok('Наклейки · Тренировки: the planned workout\'s exercise list', train.list ? `${train.list} exercise(s)` : 'nothing planned today in this database — the list steps aside')
+    await goto('/settings/theme', '[data-testid="theme-gallery"]')
+    const themeHead = await page.evaluate(() => {
+      const back = document.querySelector('.sk-sh .btn-secondary')?.getBoundingClientRect()
+      const title = document.querySelector('.sk-settings-title')?.getBoundingClientRect()
+      return { back: back ? [Math.round(back.width), Math.round(back.height)] : null, sameRow: !!back && !!title && Math.abs(back.top + back.height / 2 - (title.top + title.height / 2)) < 6, header: !!document.querySelector('header.sk-header [data-testid="sync-pill"]') }
+    })
+    check(
+      themeHead.back?.join('×') === '48×48' && themeHead.sameRow && !themeHead.header,
+      'Наклейки · Оформление: the back button (48 px) and the title share one row, as the board',
+      JSON.stringify(themeHead),
+    )
+
     await appearance('dark', { skin: 'stickers', ground: 'lilac', tilt: true, shadow: 'hard' })
     await goto('/today', '[data-testid="calorie-sticker"]')
     state = await attrs()
@@ -657,6 +827,7 @@ export async function run(ctx) {
     await appearance('dark', null).catch(() => {})
     const removed = []
     for (const id of created.meals) removed.push((await apiFetch(`/v1/nutrition/meals/${id}`, { method: 'DELETE' }).catch(() => ({ status: 0 }))).status)
+    for (const id of created.tasks) removed.push((await apiFetch(`/v1/planner/tasks/${id}`, { method: 'DELETE' }).catch(() => ({ status: 0 }))).status)
     for (const id of created.water) removed.push((await apiFetch(`/v1/nutrition/water/${id}`, { method: 'DELETE' }).catch(() => ({ status: 0 }))).status)
     if (created.steps) removed.push((await apiFetch(`/v1/health/steps/${created.steps}`, { method: 'DELETE' }).catch(() => ({ status: 0 }))).status)
     const reset = await page.evaluate(() => [window.localStorage.getItem('dsos.theme'), window.localStorage.getItem('dsos.appearance')]).catch(() => ['?', '?'])
