@@ -842,6 +842,45 @@ export async function run(ctx) {
     })
 
     // ---------------------------------------------------------------------- //
+    // 1c. zoom: pinch-zoom is allowed (axe meta-viewport above); the layout reflows at
+    //     320 px (WCAG 1.4.10, = 400 % of a 1280 px window) and works at 200 % of a
+    //     1280 × 800 window (640 × 400) without sideways scrolling
+    // ---------------------------------------------------------------------- //
+    const viewport = page.viewportSize()
+    for (const size of [
+      { width: 320, height: 568, label: '320 px (reflow)' },
+      { width: 640, height: 400, label: '200 % zoom of a 1280 × 800 window' },
+    ]) {
+      const overflow = []
+      try {
+        await page.setViewportSize({ width: size.width, height: size.height })
+        for (const path of ['/today', '/food', '/train', '/plan', '/plan/calendar?view=week', '/stats', '/settings/profile']) {
+          await goto(path, 'main')
+          await settle(400)
+          await inject()
+          const wide = await page.evaluate(() => {
+            const root = document.scrollingElement ?? document.documentElement
+            if (root.scrollWidth <= window.innerWidth + 1) return null
+            // the widest element that sticks out (not a deliberate horizontal scroller)
+            let worst = null
+            for (const el of document.querySelectorAll('main *, header *, nav *')) {
+              const rect = el.getBoundingClientRect()
+              if (rect.right > window.innerWidth + 1 && !el.closest('.scroll-x, [data-scroll-x]') && (!worst || rect.right > worst.right)) {
+                worst = { right: Math.round(rect.right), selector: window.__a11yDescribe?.(el) ?? el.tagName }
+              }
+            }
+            return { scrollWidth: root.scrollWidth, worst }
+          })
+          if (wide) overflow.push(`${path}: ${wide.scrollWidth} px (${wide.worst?.selector ?? '?'})`)
+        }
+        check(overflow.length === 0, `zoom: no sideways scrolling at ${size.label}`, overflow.slice(0, 4).join(' | '))
+      } catch (error) {
+        bad(`zoom: ${size.label}`, String(error?.message ?? error).split('\n')[0])
+      }
+    }
+    await page.setViewportSize(viewport ?? { width: 390, height: 844 })
+
+    // ---------------------------------------------------------------------- //
     // 2. keyboard pass
     // ---------------------------------------------------------------------- //
     console.log('\n9b. keyboard')
