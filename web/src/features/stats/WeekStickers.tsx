@@ -1,7 +1,9 @@
 /**
  * Статистика → «Наклейки недели» (stage 10, a theme trait: `SkinTraits.weekStickers`):
  * the achievements unlocked during the current week as a strip of stickers, with
- * empty places to fill (up to five shown). Only when there is at least one.
+ * empty places to fill (five places; with more, the newest five). Only when there is
+ * at least one. Stickers that do not fit one row wrap to the next (never wider than
+ * the screen).
  *
  * `GET /gamification/profile` (achievements with `unlocked_at`) and the current week's
  * range from the server (the progress series' `from` / `to`, the request the dashboards
@@ -30,6 +32,27 @@ const CATEGORY_TONE: Record<AchievementCategory, string> = {
   special: 'kcal',
 }
 
+/**
+ * A name on two lines of about the same length («Первая\nтренировка», «10 000\nшагов»), as
+ * the boards set them: the sticker is then as narrow as its longer line. Presentation only —
+ * the text stays the same words (a line break is white space to a screen reader).
+ */
+function twoLines(name: string): string {
+  const words = name.split(' ')
+  let best = name
+  let longest = Infinity
+  for (let cut = 1; cut < words.length; cut += 1) {
+    const first = words.slice(0, cut).join(' ')
+    const second = words.slice(cut).join(' ')
+    const length = Math.max(first.length, second.length)
+    if (length < longest) {
+      longest = length
+      best = `${first}\n${second}`
+    }
+  }
+  return best
+}
+
 function localDay(iso: string, timeZone: string | undefined): string | null {
   try {
     return new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(iso))
@@ -47,13 +70,16 @@ export function WeekStickers() {
 
   const { from, to } = week.data
   const tz = session?.settings.timezone
-  const earned = profile.data.achievements.filter((item) => {
-    if (!item.unlocked || !item.unlocked_at) return false
-    const day = localDay(item.unlocked_at, tz)
-    return day != null && day >= from && day <= to
-  })
+  const earned = profile.data.achievements
+    .filter((item) => {
+      if (!item.unlocked || !item.unlocked_at) return false
+      const day = localDay(item.unlocked_at, tz)
+      return day != null && day >= from && day <= to
+    })
+    // in the order they were earned (a sticker book fills from the left); the newest five
+    .sort((a, b) => (a.unlocked_at ?? '').localeCompare(b.unlocked_at ?? ''))
   if (!earned.length) return null
-  const shown = earned.slice(0, SLOTS)
+  const shown = earned.slice(-SLOTS)
 
   return (
     <section className="space-y-2" aria-labelledby="week-stickers-title" data-testid="week-stickers" data-count={earned.length}>
@@ -71,7 +97,7 @@ export function WeekStickers() {
             data-cat={CATEGORY_TONE[item.category]}
             data-testid="week-sticker"
           >
-            {achievementName(item)}
+            {twoLines(achievementName(item))}
           </li>
         ))}
         {Array.from({ length: SLOTS - shown.length }).map((_, index) => (

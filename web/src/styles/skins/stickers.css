@@ -896,15 +896,21 @@ html[data-skin='stickers'] {
   border-color: #111111;
 }
 
-/* «Наклейки недели»: die-cut stickers in a strip, dashed empty places after them */
+/* «Наклейки недели»: die-cut stickers in a strip, dashed empty places after them. A name
+   comes in two balanced lines (WeekStickers), so a sticker is as narrow as its longer line;
+   what does not fit one row wraps to the next — never wider than the screen. */
 :root[data-skin='stickers'] .sk-sticker-book {
   min-height: 3.5rem;
+  flex-wrap: wrap;
+  row-gap: 10px;
 }
 :root[data-skin='stickers'] .sk-sticker {
   display: flex;
   flex: none;
   max-width: 7.5rem;
   min-height: 50px;
+  white-space: pre-line;
+  overflow-wrap: break-word;
   align-items: center;
   padding: 4px 10px;
   border: 2px solid #111111;
@@ -932,7 +938,8 @@ html[data-skin='stickers'] {
   background-color: rgb(var(--sk-lavender));
 }
 :root[data-skin='stickers'] .sk-sticker-slot {
-  min-width: 40px;
+  min-width: 32px;
+  max-width: 4rem;
   height: 50px;
   flex: 1 1 0;
   border: 2px dashed rgb(var(--text-muted));
