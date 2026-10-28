@@ -563,7 +563,18 @@ function useSheetFocus(open: boolean, dialog: React.RefObject<HTMLElement>, onCl
       const root = dialog.current
       const active = document.activeElement
       const focusWasInside = !active || active === document.body || (!!root && root.contains(active))
-      if (returnTo?.isConnected && focusWasInside) returnTo.focus({ preventScroll: true })
+      if (!focusWasInside) return
+      if (returnTo?.isConnected) {
+        returnTo.focus({ preventScroll: true })
+      } else {
+        // the opener is gone (the sheet replaced it, e.g. «Запустить таймер» → the timer
+        // bar): continue from the page content rather than from the top of the document
+        const main = document.querySelector('main')
+        if (main) {
+          if (!main.hasAttribute('tabindex')) main.setAttribute('tabindex', '-1')
+          main.focus({ preventScroll: true })
+        }
+      }
     }
   }, [open, dialog])
 }

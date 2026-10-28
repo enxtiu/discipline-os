@@ -113,6 +113,11 @@
     border-radius: 6px;
   }
 
+  /* <main> takes focus (tabindex -1) when a sheet closes and its opener is gone */
+  main:focus {
+    outline: none;
+  }
+
   /* WebKit drops list semantics (VoiceOver «список, 7 объектов») from a list styled
      list-style: none, as Tailwind's preflight does; an invisible marker keeps them.
      Utilities (list-disc, list-decimal, list-none) still win. */
