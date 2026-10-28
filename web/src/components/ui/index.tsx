@@ -16,7 +16,7 @@ import {
   type ReactNode,
   type SelectHTMLAttributes,
 } from 'react'
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence, m } from 'framer-motion'
 import clsx from 'clsx'
 import { useTranslation } from 'react-i18next'
 import { IconCheck, IconClose, IconInfo } from './icons'
@@ -423,7 +423,7 @@ export function Toggle({
         )}
         aria-hidden="true"
       >
-        <motion.span
+        <m.span
           layout
           transition={{ type: 'spring', stiffness: 700, damping: 34 }}
           className={clsx(
@@ -620,7 +620,7 @@ export function Sheet({
     <AnimatePresence>
       {open && (
         <>
-          <motion.div
+          <m.div
             className="fixed inset-0 z-50 bg-black/60 backdrop-blur-[2px]"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -628,7 +628,7 @@ export function Sheet({
             onClick={onClose}
             aria-hidden="true"
           />
-          <motion.div
+          <m.div
             ref={dialogRef}
             role="dialog"
             aria-modal="true"
@@ -677,7 +677,7 @@ export function Sheet({
                 {footer}
               </footer>
             )}
-          </motion.div>
+          </m.div>
         </>
       )}
     </AnimatePresence>
@@ -730,7 +730,7 @@ export function ProgressBar({
       className={clsx('h-2 w-full overflow-hidden rounded-pill bg-[rgb(var(--bg-sunken))]', className)}
       {...semantics}
     >
-      <motion.div
+      <m.div
         className={clsx('h-full rounded-pill', tones[tone])}
         initial={{ width: 0 }}
         animate={{ width: `${ratio * 100}%` }}

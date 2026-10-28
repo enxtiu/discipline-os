@@ -19,13 +19,17 @@ import { useToast } from '@/components/ui/Toast'
 import type { AiAnalysis, Food } from '@/api/types'
 import { errorMessage } from '@/lib/errors'
 import { useAuth } from '@/features/auth/AuthProvider'
-import { CustomFoodSheet } from '@/features/food/CustomFoodSheet'
-import { LogSheet } from '@/features/food/LogSheet'
-import { AiReviewSheet } from './AiReviewSheet'
+import { useOnceTrue } from '@/lib/lazy'
 import { useAnalyzePhoto, useAppConfig, useParseText } from './useAi'
 
 // zxing is ~400 KB: load it only when the scanner opens
 const BarcodeScannerSheet = lazy(() => import('@/features/food/BarcodeScannerSheet'))
+// stage 9: the review, log and custom-food sheets load on first use as well
+const AiReviewSheet = lazy(() => import('./AiReviewSheet').then((module) => ({ default: module.AiReviewSheet })))
+const LogSheet = lazy(() => import('@/features/food/LogSheet').then((module) => ({ default: module.LogSheet })))
+const CustomFoodSheet = lazy(() =>
+  import('@/features/food/CustomFoodSheet').then((module) => ({ default: module.CustomFoodSheet })),
+)
 
 export const PHOTO_INPUT_ID = 'ai-photo-input'
 
@@ -63,6 +67,9 @@ export function AiCaptureProvider({ children }: { children: ReactNode }) {
   const [unknownCode, setUnknownCode] = useState<string | null>(null)
 
   const aiAvailable = config.data ? Boolean(config.data.features?.ai_meal_photo) : true
+  const reviewUsed = useOnceTrue(analysis !== null)
+  const logUsed = useOnceTrue(scanned !== null)
+  const customFoodUsed = useOnceTrue(unknownCode !== null)
 
   const onPhoto = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -147,7 +154,11 @@ export function AiCaptureProvider({ children }: { children: ReactNode }) {
         </div>
       </Sheet>
 
-      <AiReviewSheet analysis={analysis} onClose={() => setAnalysis(null)} />
+      {reviewUsed && (
+        <Suspense fallback={null}>
+          <AiReviewSheet analysis={analysis} onClose={() => setAnalysis(null)} />
+        </Suspense>
+      )}
 
       {scanOpen && (
         <Suspense fallback={null}>
@@ -165,17 +176,25 @@ export function AiCaptureProvider({ children }: { children: ReactNode }) {
           />
         </Suspense>
       )}
-      <LogSheet
-        target={scanned ? { kind: 'food', food: scanned } : null}
-        onClose={() => setScanned(null)}
-        source="barcode"
-      />
-      <CustomFoodSheet
-        open={unknownCode !== null}
-        barcode={unknownCode ?? undefined}
-        onClose={() => setUnknownCode(null)}
-        onCreated={(food) => setScanned(food)}
-      />
+      {logUsed && (
+        <Suspense fallback={null}>
+          <LogSheet
+            target={scanned ? { kind: 'food', food: scanned } : null}
+            onClose={() => setScanned(null)}
+            source="barcode"
+          />
+        </Suspense>
+      )}
+      {customFoodUsed && (
+        <Suspense fallback={null}>
+          <CustomFoodSheet
+            open={unknownCode !== null}
+            barcode={unknownCode ?? undefined}
+            onClose={() => setUnknownCode(null)}
+            onCreated={(food) => setScanned(food)}
+          />
+        </Suspense>
+      )}
     </AiCaptureContext.Provider>
   )
 }

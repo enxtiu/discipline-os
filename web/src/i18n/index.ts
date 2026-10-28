@@ -7,13 +7,17 @@
  *   3. `ru`.
  * Once the device is paired, the server-side `settings.language` wins (the
  * settings screen writes both).
+ *
+ * Stage 9 (performance): only the active language is downloaded. Each locale is
+ * its own chunk, read through a tiny i18next backend; `main.tsx` renders once
+ * `i18nReady` has settled (no flash of keys), and `changeLanguage` loads the other
+ * locale before it switches (i18next waits for the backend). index.html preloads
+ * the chunk the device is about to ask for (`localePreload` in vite.config.ts), so
+ * it downloads in parallel with the app code.
  */
-import i18n from 'i18next'
+import i18n, { type BackendModule } from 'i18next'
 import { initReactI18next } from 'react-i18next'
 import LanguageDetector from 'i18next-browser-languagedetector'
-
-import en from './locales/en.json'
-import ru from './locales/ru.json'
 
 export const SUPPORTED_LANGUAGES = ['ru', 'en'] as const
 export type Language = (typeof SUPPORTED_LANGUAGES)[number]
@@ -29,15 +33,36 @@ export function currentLanguage(): Language {
   return isSupported(value) ? value : 'ru'
 }
 
-void i18n
+/** One chunk per locale (the file names are matched by `localePreload` in vite.config.ts). */
+const LOCALES: Record<Language, () => Promise<{ default: Record<string, unknown> }>> = {
+  ru: () => import('./locales/ru.json'),
+  en: () => import('./locales/en.json'),
+}
+
+const localeBackend: BackendModule = {
+  type: 'backend',
+  init() {},
+  read(language, _namespace, callback) {
+    const load = isSupported(language) ? LOCALES[language] : null
+    if (!load) return callback(null, {})
+    load().then(
+      (module) => callback(null, module.default),
+      (error: unknown) => callback(error instanceof Error ? error : new Error(String(error)), false),
+    )
+  },
+}
+
+// Russian is the fallback for every other language; English is complete
+// (scripts/check-i18n.mjs), so it never downloads the Russian chunk as well.
+const fallbackLng = { en: [], default: ['ru'] }
+
+/** Settles once the active language is loaded (or failed to load: render anyway). */
+export const i18nReady: Promise<unknown> = i18n
+  .use(localeBackend)
   .use(LanguageDetector)
   .use(initReactI18next)
   .init({
-    resources: {
-      ru: { translation: ru },
-      en: { translation: en },
-    },
-    fallbackLng: 'ru',
+    fallbackLng,
     supportedLngs: SUPPORTED_LANGUAGES,
     nonExplicitSupportedLngs: true,
     load: 'languageOnly',
@@ -49,5 +74,6 @@ void i18n
     },
     returnNull: false,
   })
+  .catch(() => undefined)
 
 export default i18n

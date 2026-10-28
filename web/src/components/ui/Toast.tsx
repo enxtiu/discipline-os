@@ -3,7 +3,7 @@
  * `success` doubles as the confirmation channel for offline-queued writes.
  */
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence, m } from 'framer-motion'
 import { IconAlert, IconCheck, IconInfo } from './icons'
 
 export type ToastTone = 'success' | 'error' | 'info'
@@ -62,7 +62,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       >
         <AnimatePresence initial={false}>
           {items.map((item) => (
-            <motion.div
+            <m.div
               key={item.id}
               layout
               initial={{ opacity: 0, y: 16, scale: 0.97 }}
@@ -90,7 +90,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                 )}
               </span>
               <p className="flex-1 text-sm leading-snug">{item.message}</p>
-            </motion.div>
+            </m.div>
           ))}
         </AnimatePresence>
       </div>

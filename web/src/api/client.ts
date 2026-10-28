@@ -17,13 +17,16 @@ export class ApiError extends Error {
   readonly status: number
   readonly code: string
   readonly details?: Record<string, unknown> | null
+  /** From `Retry-After` (429/503): how long the server asked us to wait, in ms. */
+  readonly retryAfterMs: number | null
 
-  constructor(status: number, body: ApiErrorBody) {
+  constructor(status: number, body: ApiErrorBody, retryAfterMs: number | null = null) {
     super(body.message || body.code)
     this.name = 'ApiError'
     this.status = status
     this.code = body.code
     this.details = body.details ?? null
+    this.retryAfterMs = retryAfterMs
   }
 
   get isUnauthorized(): boolean {
@@ -41,6 +44,29 @@ export class ApiError extends Error {
 }
 
 export const UNAUTHORIZED_EVENT = 'dsos:unauthorized'
+
+/**
+ * Successful responses, for the offline queue (stage 9): any answered request
+ * proves the server is reachable again, so writes waiting for a retry go now.
+ */
+type SuccessListener = (path: string, method: string) => void
+const successListeners = new Set<SuccessListener>()
+export function onApiSuccess(listener: SuccessListener): () => void {
+  successListeners.add(listener)
+  return () => {
+    successListeners.delete(listener)
+  }
+}
+
+/** `Retry-After` as seconds or an HTTP date → ms (null when absent or unreadable). */
+function retryAfter(response: Response): number | null {
+  const value = response.headers.get('Retry-After')
+  if (!value) return null
+  const seconds = Number(value)
+  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000)
+  const at = Date.parse(value)
+  return Number.isNaN(at) ? null : Math.max(0, at - Date.now())
+}
 
 export interface RequestOptions {
   method?: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE'
@@ -66,6 +92,23 @@ function buildUrl(path: string, query?: RequestOptions['query']): string {
   return qs ? `${url}?${qs}` : url
 }
 
+/**
+ * Stage 9 (performance): GETs that index.html started while the app code was still
+ * downloading (the session and the first screen's reads, `window.__dsosEarly`). The
+ * first request for the same URL takes that response instead of asking again —
+ * once, and only in the first seconds of the page.
+ */
+const EARLY_MAX_AGE_MS = 10_000
+
+function takeEarly(method: string, url: string): Promise<Response> | undefined {
+  if (method !== 'GET' || typeof window === 'undefined') return undefined
+  const early = (window as { __dsosEarly?: Record<string, Promise<Response>> }).__dsosEarly
+  const response = early?.[url]
+  if (!early || !response) return undefined
+  delete early[url]
+  return performance.now() < EARLY_MAX_AGE_MS ? response : undefined
+}
+
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { method = 'GET', body, query, signal, headers = {}, clientUuid, silentAuth } = options
 
@@ -83,13 +126,15 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
 
   let response: Response
   try {
-    response = await fetch(buildUrl(path, query), {
-      method,
-      headers: finalHeaders,
-      body: body === undefined ? undefined : isForm ? (body as FormData) : JSON.stringify(body),
-      signal,
-      credentials: 'omit', // token auth, no cookies
-    })
+    const url = buildUrl(path, query)
+    response = await (takeEarly(method, url) ??
+      fetch(url, {
+        method,
+        headers: finalHeaders,
+        body: body === undefined ? undefined : isForm ? (body as FormData) : JSON.stringify(body),
+        signal,
+        credentials: 'omit', // token auth, no cookies
+      }))
   } catch (cause) {
     if ((cause as Error)?.name === 'AbortError') throw cause
     throw new ApiError(0, {
@@ -98,6 +143,9 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     })
   }
 
+  if (response.ok) {
+    for (const listener of successListeners) listener(path, method)
+  }
   if (response.status === 204) return undefined as T
 
   const text = await response.text()
@@ -115,6 +163,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     const error = new ApiError(
       response.status,
       envelope ?? { code: 'internal_error', message: response.statusText || 'Request failed' },
+      retryAfter(response),
     )
     if (error.isUnauthorized && !silentAuth) {
       window.dispatchEvent(new CustomEvent(UNAUTHORIZED_EVENT, { detail: error }))

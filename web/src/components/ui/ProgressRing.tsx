@@ -10,7 +10,7 @@
  * circle is decoration and the text inside is read as plain text (use that
  * when a surrounding control or caption already says it all).
  */
-import { motion } from 'framer-motion'
+import { m } from 'framer-motion'
 import clsx from 'clsx'
 import type { ReactNode } from 'react'
 
@@ -85,7 +85,7 @@ export function ProgressRing({
           stroke="rgb(var(--border))"
           strokeWidth={thickness}
         />
-        <motion.circle
+        <m.circle
           cx={size / 2}
           cy={size / 2}
           r={radius}

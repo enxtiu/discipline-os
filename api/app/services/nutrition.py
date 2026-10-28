@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import case, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import NotFound, Unprocessable
@@ -308,7 +308,14 @@ async def create_meal_log(
 
 
 async def get_meal_log(db: AsyncSession, user_id: uuid.UUID, meal_id: uuid.UUID) -> MealLog:
-    meal = await db.scalar(select(MealLog).where(MealLog.id == meal_id, MealLog.user_id == user_id))
+    """By its id or by the client id it was logged with (stage 9: a meal logged offline is deleted
+    by the id the phone knows, even if the queued log reached the server before the delete)."""
+    meal = await db.scalar(
+        select(MealLog)
+        .where(MealLog.user_id == user_id, or_(MealLog.id == meal_id, MealLog.client_uuid == meal_id))
+        .order_by(case((MealLog.id == meal_id, 0), else_=1))
+        .limit(1)
+    )
     if meal is None or meal.is_deleted:
         raise NotFound("Meal not found", code="meal_not_found")
     return meal
@@ -483,7 +490,13 @@ async def add_water(
 
 
 async def delete_water(db: AsyncSession, user_id: uuid.UUID, water_id: uuid.UUID) -> None:
-    row = await db.scalar(select(WaterLog).where(WaterLog.id == water_id, WaterLog.user_id == user_id))
+    """By its id or its client id (see ``get_meal_log``)."""
+    row = await db.scalar(
+        select(WaterLog)
+        .where(WaterLog.user_id == user_id, or_(WaterLog.id == water_id, WaterLog.client_uuid == water_id))
+        .order_by(case((WaterLog.id == water_id, 0), else_=1))
+        .limit(1)
+    )
     if row is None:
         raise NotFound("Water log not found", code="water_not_found")
     await db.delete(row)

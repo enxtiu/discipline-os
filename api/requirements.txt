@@ -27,3 +27,6 @@ python-dateutil==2.9.0.post0 # RRULE expansion (tasks, reminders)
 pywebpush==2.5.0             # Web Push (stage 7)
 py-vapid==1.9.4              # `python -m app.cli vapid-keys`
 tenacity==9.1.4              # AI retry policy (stage 3)
+# Fernet + HKDF for integration secrets at rest (stage 9, Notion). Not a new package:
+# the same version was already installed as a dependency of pywebpush/py-vapid.
+cryptography==50.0.2

@@ -11,7 +11,7 @@
 import { NavLink, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import clsx from 'clsx'
-import { motion } from 'framer-motion'
+import { m } from 'framer-motion'
 
 import {
   IconFood,
@@ -46,7 +46,7 @@ export function BottomTabBar({ onQuickAdd }: { onQuickAdd: () => void }) {
 
         {/* the quick add floats above the bar; the Stats tab below it is clear of it */}
         <div className="relative flex w-20 flex-col items-center justify-end">
-          <motion.button
+          <m.button
             type="button"
             whileTap={{ scale: 0.92 }}
             onClick={onQuickAdd}
@@ -54,7 +54,7 @@ export function BottomTabBar({ onQuickAdd }: { onQuickAdd: () => void }) {
             className="absolute -top-12 z-10 flex h-14 w-14 items-center justify-center rounded-full bg-[rgb(var(--accent))] text-on-accent shadow-glow"
           >
             <IconPlus size={26} />
-          </motion.button>
+          </m.button>
           <TabButton
             to="/stats"
             labelKey="stats"

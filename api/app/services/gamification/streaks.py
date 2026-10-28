@@ -4,8 +4,8 @@
 kind     a day (week) counts when                                         unit
 ======== ================================================================ ======
 overall  daily score ≥ 60 *and* credit (≥ 1 meal, intake ≥ the floor)     day
-meal_logging ≥ 1 meal logged                                              day
-water    water ≥ target                                                   day
+meal_logging ≥ 1 meal logged (whatever the amount)                        day
+water    water ≥ target *and* nutrition credit (≥ 1 meal, ≥ the floor)    day
 steps    steps ≥ target                                                   day
 tasks    ≥ 1 task completed                                               day
 review   journal entry with content                                       day
@@ -14,6 +14,12 @@ workout  completed workouts ≥ planned that week (no plan → 3)             we
 
 Rest is part of a plan: the only training streak is weekly and plan-aware, and a
 week planned entirely as rest is neutral (it neither counts nor breaks).
+
+Targets of their time: a finished day is judged against the targets it was finalised
+with (its stored score row, ``GameContext.rules_for``) and a finished week against the
+requirement frozen when it ended (``score.frozen_weeks``); the current targets apply to
+the open window (yesterday, today) and the current plan to the current week only — a
+weigh-in or a plan edit never re-judges the past.
 
 Freeze tokens: +1 every week (on the user's week start), at most 2; a missed past
 day/week uses one automatically (``freeze_used_dates``) instead of breaking the
@@ -29,6 +35,7 @@ import uuid
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
+from typing import Any
 
 from sqlalchemy import exists, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -189,13 +196,13 @@ def simulate_weekly(
 
 
 def daily_conditions(history: dict[date, DayMetrics], overall_days: set[date], ctx: GameContext) -> dict:
-    """Days that count, per daily kind (current targets apply to the whole history)."""
-    t = ctx.targets
+    """Days that count, per daily kind — each day judged by ``ctx.rules_for(day)``: the
+    targets it was finalised with once final, the current ones in the open window."""
     return {
         StreakKind.OVERALL: set(overall_days),
         StreakKind.MEAL_LOGGING: {day for day, m in history.items() if m.meals >= 1},
-        StreakKind.WATER: {day for day, m in history.items() if t.water_ml and m.water_ml >= t.water_ml},
-        StreakKind.STEPS: {day for day, m in history.items() if t.steps and m.steps is not None and m.steps >= t.steps},
+        StreakKind.WATER: {day for day, m in history.items() if ctx.rules_for(day).water_met(m)},
+        StreakKind.STEPS: {day for day, m in history.items() if ctx.rules_for(day).steps_met(m)},
         StreakKind.TASKS: {day for day, m in history.items() if m.tasks_done >= 1},
         StreakKind.REVIEW: {day for day, m in history.items() if m.journal},
     }
@@ -233,13 +240,38 @@ def compute(
 # --------------------------------------------------------------------------- #
 # Storage
 # --------------------------------------------------------------------------- #
+STORED_COLUMNS = (
+    "current_count",
+    "longest_count",
+    "last_event_date",
+    "broken_on",
+    "freeze_tokens",
+    "freeze_used_dates",
+    "total_events",
+)
+
+
+async def stored_rows(db: AsyncSession, user_id: uuid.UUID) -> dict[StreakKind, dict[str, Any]]:
+    """The stored streak rows (the columns ``persist`` writes), by kind."""
+    rows = await db.execute(
+        select(Streak.kind, *(getattr(Streak, column) for column in STORED_COLUMNS)).where(Streak.user_id == user_id)
+    )
+    return {row[0]: dict(zip(STORED_COLUMNS, row[1:], strict=True)) for row in rows}
+
+
 async def stored_longest(db: AsyncSession, user_id: uuid.UUID) -> dict[StreakKind, int]:
-    rows = await db.execute(select(Streak.kind, Streak.longest_count).where(Streak.user_id == user_id))
-    return {row[0]: int(row[1] or 0) for row in rows}
+    return {kind: int(row["longest_count"] or 0) for kind, row in (await stored_rows(db, user_id)).items()}
 
 
-async def persist(db: AsyncSession, ctx: GameContext, states: list[StreakState]) -> None:
-    """Upsert the seven rows in one statement; ``longest_count`` never decreases."""
+async def persist(
+    db: AsyncSession,
+    ctx: GameContext,
+    states: list[StreakState],
+    stored: dict[StreakKind, dict[str, Any]] | None = None,
+) -> None:
+    """Upsert the seven rows in one statement; ``longest_count`` never decreases.
+    ``stored`` (``stored_rows``, read under the same lock): nothing is written when every
+    row already holds these values — the usual case for a read of the day (stage 9 perf)."""
     values = [
         {
             "id": new_id(),
@@ -257,6 +289,13 @@ async def persist(db: AsyncSession, ctx: GameContext, states: list[StreakState])
         }
         for state in states
     ]
+    if stored is not None and all(
+        (row := stored.get(value["kind"])) is not None
+        and all(row[column] == value[column] for column in STORED_COLUMNS if column != "longest_count")
+        and int(row["longest_count"] or 0) >= value["longest_count"]
+        for value in values
+    ):
+        return
     stmt = pg_insert(Streak).values(values)
     stmt = stmt.on_conflict_do_update(
         constraint="uq_streaks_user_kind",
@@ -275,24 +314,26 @@ async def persist(db: AsyncSession, ctx: GameContext, states: list[StreakState])
 
 
 async def award_milestones(db: AsyncSession, ctx: GameContext, overall: StreakState) -> int:
-    """Permanent XP for each milestone the current overall run has reached (once per run)."""
+    """Permanent XP for each milestone the current overall run has reached (once per run).
+    One statement for all of them: this runs on every read of the day (stage 9 perf)."""
     if overall.kind is not StreakKind.OVERALL or overall.run_start is None:
         return 0
-    added = 0
+    awards = []
     for days, points in OVERALL_MILESTONES:
         if overall.current < days:
             break
         reached = overall.reached.get(days)
-        added += await xp.award_permanent(
-            db,
-            ctx,
-            key=f"streak:overall:{overall.run_start.isoformat()}:{days}",
-            kind=XpKind.STREAK_BONUS,
-            points=points,
-            reason=f"streak_overall_{days}",
-            meta={"streak": "overall", "days": days, "reached_on": reached.isoformat() if reached else None},
+        awards.append(
+            xp.Award(
+                key=f"streak:overall:{overall.run_start.isoformat()}:{days}",
+                kind=XpKind.STREAK_BONUS,
+                points=points,
+                day=ctx.today,
+                reason=f"streak_overall_{days}",
+                meta={"streak": "overall", "days": days, "reached_on": reached.isoformat() if reached else None},
+            )
         )
-    return added
+    return await xp.award_permanent_many(db, ctx, awards)
 
 
 async def has_streak(db: AsyncSession, user_id: uuid.UUID, min_count: int = NOTIFY_MIN_STREAK) -> bool:

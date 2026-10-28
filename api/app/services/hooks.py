@@ -7,6 +7,7 @@ Stage 3  -> ``ai_housekeeping`` (nightly): unsaved photo thumbnails, old AI payl
 Stage 5  -> nothing (the Shortcut pushes; no polling needed)
 Stage 7  -> ``dispatch_notifications`` (every minute), ``plan_daily_reminders``
 Stage 8  -> ``recompute_daily_score``, ``evaluate_achievements``, quest rotation
+Stage 9  -> ``notion_sync`` (every 10 min; a no-op until the owner connects Notion)
 Stage 2  -> periodic Open Food Facts delta import
 """
 
@@ -160,5 +161,25 @@ register_job(
         minutes=15,
         description="Today's daily and this week's weekly quests per user, expire past periods, refresh progress",
         tags=("stage8", "gamification"),
+    )
+)
+
+
+# --------------------------------------------------------------------------- #
+# stage 9: the optional one-way Notion mirror (no connection → nothing happens)
+# --------------------------------------------------------------------------- #
+async def _notion_sync() -> None:
+    from app.services.notion.sync import sync_job
+
+    await sync_job()
+
+
+register_job(
+    ScheduledJobSpec(
+        id="notion_sync",
+        func=_notion_sync,
+        minutes=10,
+        description="Mirror areas, projects, tasks, journal and day summaries to Notion for connected users",
+        tags=("stage9", "notion"),
     )
 )

@@ -190,6 +190,29 @@ export function AiReviewSheet({
         ...provenance,
       }
     })
+    // stage 9: what the review shows is what the day shows if the save has to wait offline
+    const previewItems = items.map((item) => {
+      const base = per100Of(item)
+      const factor = (item.grams || 0) / 100
+      return {
+        name: item.choice.kind === 'food' ? foodName(item.choice.food) : (item.ai?.name_ru ?? ''),
+        grams: item.grams,
+        kcal: base.kcal * factor,
+        protein_g: base.protein * factor,
+        fat_g: base.fat * factor,
+        carbs_g: base.carbs * factor,
+        fiber_g: base.fiber * factor,
+      }
+    })
+    const preview = {
+      name: previewItems.map((item) => item.name).join(', '),
+      kcal: totals.kcal,
+      protein_g: totals.protein,
+      fat_g: totals.fat,
+      carbs_g: totals.carbs,
+      fiber_g: previewItems.reduce((sum, item) => sum + item.fiber_g, 0),
+      items: previewItems,
+    }
     logMeal.mutate(
       {
         id: mealId.current,
@@ -197,10 +220,12 @@ export function AiReviewSheet({
         source: analysis.kind,
         ai_job_id: analysis.job_id,
         items: payload,
+        preview,
       },
       {
-        onSuccess: (meal) => {
-          toast.success(t('ai.saved_toast', { n: meal.item_count, kcal: number(meal.kcal) }))
+        onSuccess: (result) => {
+          if (result.queued) toast.info(t('sync.ai_meal_queued', { n: items.length, kcal: number(totals.kcal) }))
+          else toast.success(t('ai.saved_toast', { n: result.data.item_count, kcal: number(result.data.kcal) }))
           onClose()
         },
         onError: (error) => toast.error(errorMessage(error)),

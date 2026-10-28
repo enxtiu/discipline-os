@@ -12,9 +12,9 @@ overlapping runs never duplicate.
 kind                points rule
 =================== ====== ===================================================
 meal_logged         5      per meal, at most 5 meals a day (logging, not eating)
-protein_target      20     protein ≥ target *and* intake ≥ the safe floor
-fiber_target        10     fiber ≥ target *and* intake ≥ the safe floor
-water_target        10     water ≥ target
+protein_target      20     protein ≥ target *and* nutrition credit
+fiber_target        10     fiber ≥ target *and* nutrition credit
+water_target        10     water ≥ target *and* nutrition credit
 kcal_in_zone        30     finished days only, kcal inside the zone (≥ floor)
 steps_target        15     steps ≥ target
 workout_completed   40     per completed workout, at most 2 a day
@@ -27,6 +27,11 @@ sleep_logged        5      a sleep entry for the day
 weight_logged       5      a weigh-in that day
 =================== ====== ===================================================
 
+Nutrition credit (``day_metrics.nutrition_credit``) = at least one meal logged and
+intake at or above the safe floor: every award of the nutrition category except the
+per-meal logging award needs it — water too (review 8, H1: a day of water and no food
+earns nothing). Meal logging is rewarded for logging, whatever the amount (D1).
+
 ``settings.xp_weights.xp_multipliers`` scales a category by 0..2 (default 1;
 rounded half up; a 0-point award is not stored).
 """
@@ -36,7 +41,7 @@ from __future__ import annotations
 import uuid
 from collections import defaultdict
 from collections.abc import Collection, Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
@@ -143,22 +148,22 @@ async def load_refs(db: AsyncSession, ctx: GameContext, first: date, last: date)
 def day_awards(day: date, m: DayMetrics, refs: DayRefs | None, ctx: GameContext, *, finished: bool) -> list[Award]:
     """Everything a day earns (pure). ``finished``: the day has ended (kcal_in_zone)."""
     refs = refs or DayRefs()
-    t, iso = ctx.targets, day.isoformat()
+    rules, iso = ctx.rules_for(day), day.isoformat()
     raw: list[Award] = []
 
-    for meal in refs.meals[:MEALS_PER_DAY]:
+    for meal in refs.meals[:MEALS_PER_DAY]:  # logging, whatever the amount (D1)
         raw.append(Award(f"meal:{meal.id}", XpKind.MEAL_LOGGED, MEAL_POINTS, day, "meal_logged", "meal", meal.id))
 
-    intake_ok = m.meals >= 1 and m.kcal >= ctx.floor  # intake-tied awards never below the floor
-    if t.protein_g and intake_ok and m.protein_g >= t.protein_g:
+    # intake-tied awards need nutrition credit: a meal and intake at or above the floor
+    if rules.protein_met(m):
         raw.append(Award(f"protein:{iso}", XpKind.PROTEIN_TARGET, PROTEIN_POINTS, day, "protein_target"))
-    if t.fiber_g and intake_ok and m.fiber_g >= t.fiber_g:
+    if rules.fiber_met(m):
         raw.append(Award(f"fiber:{iso}", XpKind.FIBER_TARGET, FIBER_POINTS, day, "fiber_target"))
-    if t.water_ml and m.water_ml >= t.water_ml:
+    if rules.water_met(m):
         raw.append(Award(f"water:{iso}", XpKind.WATER_TARGET, WATER_POINTS, day, "water_target"))
-    if finished and m.meals >= 1 and ctx.zone.contains(m.kcal):  # zone_low ≥ floor by construction
+    if finished and rules.in_zone(m):  # zone_low ≥ floor by construction
         raw.append(Award(f"kcal_zone:{iso}", XpKind.KCAL_IN_ZONE, KCAL_ZONE_POINTS, day, "kcal_in_zone"))
-    if t.steps and m.steps is not None and m.steps >= t.steps:
+    if rules.steps_met(m):
         raw.append(Award(f"steps:{iso}", XpKind.STEPS_TARGET, STEPS_POINTS, day, "steps_target"))
 
     for workout in refs.workouts[:WORKOUTS_PER_DAY]:
@@ -340,12 +345,30 @@ async def award_permanent(
 ) -> int:
     """Insert a permanent award (dated today) once; returns the points actually added
     (0 when the key was already paid, or when a multiplier of 0 makes it worthless)."""
-    assert kind in PERMANENT_KINDS
-    value = scaled(points, kind, ctx.multipliers)
-    if value <= 0:
-        return 0
-    award = Award(key, kind, value, ctx.today, reason, ref_type, ref_id, meta or {})
-    return value if await _insert(db, [_row(ctx, award, ctx.today)]) else 0
+    return await award_permanent_many(
+        db, ctx, [Award(key, kind, points, ctx.today, reason, ref_type, ref_id, meta or {})]
+    )
+
+
+async def award_permanent_many(db: AsyncSession, ctx: GameContext, awards: Iterable[Award]) -> int:
+    """Several permanent awards (dated today) in one statement, each key paid once;
+    returns the points actually added. ``Award.points`` is the unscaled value."""
+    rows = []
+    for award in awards:
+        assert award.kind in PERMANENT_KINDS
+        value = scaled(award.points, award.kind, ctx.multipliers)
+        if value > 0:
+            rows.append(_row(ctx, replace(award, points=value, day=ctx.today), ctx.today))
+    added = 0
+    for start in range(0, len(rows), CHUNK):
+        stmt = (
+            pg_insert(XpEvent)
+            .values(rows[start : start + CHUNK])
+            .on_conflict_do_nothing(index_elements=["user_id", "dedupe_key"])
+            .returning(XpEvent.points)
+        )
+        added += sum((await db.execute(stmt)).scalars().all())
+    return added
 
 
 async def total(db: AsyncSession, user_id: uuid.UUID) -> int:
