@@ -60,6 +60,92 @@ export function LevelPlaque() {
   const into = xp.total - level.min_xp
   const left = level.next_min_xp != null ? level.next_min_xp - xp.total : null
 
+  // the stickers' plaque (Ffin-Stats): the medal over the corner, the title with the total and the
+  // week's XP as stickers, the streak sticker at the top right, one big bar with its numbers
+  if (levelMedal) {
+    return (
+      <Card
+        className="sk-tile sk-plaque sk-plaque-board"
+        data-cat="xp"
+        aria-labelledby="level-plaque-title"
+        data-testid="level-plaque"
+        data-level={level.level}
+        data-total={xp.total}
+        role="region"
+      >
+        <span aria-hidden="true" className="sk-medal sk-medal-big sk-tilt-l flex shrink-0 flex-col items-center justify-center">
+          <span className="tnum text-[1.875rem] font-extrabold leading-none">{level.level}</span>
+          <span className="sk-medal-word text-[11px] font-bold leading-[13px]">{t('game.page.level_word')}</span>
+        </span>
+        <div className="sk-plaque-head">
+          <h2 id="level-plaque-title" className="truncate text-[22px] font-extrabold leading-[26px]">
+            <span className="sr-only">{t('stats.plaque.level_sr', { level: level.level })} </span>
+            {levelTitle(level)}
+          </h2>
+          <p className="tnum text-[13px] font-bold leading-[14px]" data-testid="plaque-total">
+            {t('game.page.total_xp', { xp: number(xp.total) })}
+          </p>
+          <dl className="sk-plaque-stickers">
+            <div className="sk-cell sk-cell-week sk-tilt-l tnum" data-testid="plaque-week" data-xp={weekXp ?? undefined}>
+              <dt className="sr-only">{t('stats.plaque.week')}</dt>
+              <dd>{weekXp != null ? t('board.plaque_week', { xp: number(weekXp) }) : '—'}</dd>
+            </div>
+            <div className="sk-cell sk-cell-today tnum" data-testid="plaque-today" data-xp={xp.today}>
+              <dt className="sr-only">{t('stats.plaque.today')}</dt>
+              <dd>
+                <span className="sr-only">{t('board.plaque_today', { xp: number(xp.today) })}</span>
+                <span aria-hidden="true">{t('board.plaque_today_short', { xp: number(xp.today) })}</span>
+              </dd>
+            </div>
+          </dl>
+        </div>
+        <div
+          className="sk-cell sk-cell-streak sk-tilt-r"
+          data-testid="plaque-streak"
+          data-current={overall?.current ?? 0}
+        >
+          <span className="sr-only">{t('game.status.streak')}: </span>
+          <span className="flex items-center gap-1 text-sm font-extrabold leading-[18px]">
+            <IconFlameLit lit={!!overall?.today_met} size={15} className="shrink-0" />
+            <span className="tnum whitespace-nowrap">
+              {overall ? streakLength(overall, overall.current) : t('game.streak.days', { count: 0 })}
+            </span>
+          </span>
+          <span aria-hidden="true" className="text-xs font-bold leading-[15px]">
+            {t('game.status.streak').toLowerCase()}
+          </span>
+        </div>
+        <div className="relative mt-2">
+          <ProgressBar
+            value={level.progress}
+            max={1}
+            tone="xp"
+            className="sk-bar-big h-3"
+            label={next ? t('stats.plaque.bar_label', { level: next.level }) : t('stats.plaque.bar_label_top')}
+            valueText={span != null ? t('stats.plaque.bar_value', { value: number(into), max: number(span) }) : undefined}
+          />
+          {span != null && (
+            <span aria-hidden="true" className="sk-bar-text tnum" data-side={level.progress > 0.5 ? 'left' : 'right'}>
+              {number(into)} / {number(span)} XP
+            </span>
+          )}
+        </div>
+        <div className="tnum mt-1 flex flex-wrap items-baseline justify-between gap-x-3 text-xs leading-[15px]">
+          {next && span != null && left != null ? (
+            <>
+              <span className="font-semibold muted">{t('board.plaque_to', { level: next.level, title: levelTitle(next) })}</span>
+              <span className="font-extrabold" data-testid="plaque-xp-left" data-xp={left}>
+                {t('stats.plaque.left', { xp: number(left) })}
+              </span>
+            </>
+          ) : (
+            <span className="muted">{t('game.xp_max', { total: number(xp.total) })}</span>
+          )}
+        </div>
+      </Card>
+    )
+  }
+
   return (
     <Card
       className="sk-tile sk-plaque space-y-3"
