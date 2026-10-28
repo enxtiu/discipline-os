@@ -13,6 +13,7 @@ import { useToast } from '@/components/ui/Toast'
 import type { Food, MealType, Recipe } from '@/api/types'
 import { number } from '@/lib/format'
 import { errorMessage } from '@/lib/errors'
+import { guessMealType } from './mealType'
 import { macrosFor, useLogMeal } from './useNutrition'
 import { VerifyNote } from './VerifyFood'
 
@@ -170,12 +171,4 @@ function Preview({ label, value, accent }: { label: string; value: string; accen
       <p className="text-[10px] muted">{label}</p>
     </div>
   )
-}
-
-function guessMealType(): MealType {
-  const hour = new Date().getHours()
-  if (hour < 11) return 'breakfast'
-  if (hour < 16) return 'lunch'
-  if (hour < 22) return 'dinner'
-  return 'snack'
 }
