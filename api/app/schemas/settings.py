@@ -8,6 +8,7 @@ from typing import Any, Literal
 
 from pydantic import Field, field_validator
 
+from app.schemas.appearance import AppearanceBaseIn, AppearanceIn, AppearanceOut, coerce_stored
 from app.schemas.common import ApiModel, ORMModel
 from app.schemas.gamification import validate_xp_weights
 
@@ -70,6 +71,14 @@ class TargetPreviewIn(ApiModel):
     target_steps: int = Field(default=8000, ge=0, le=60000)
 
 
+class SettingsBaseIn(ApiModel):
+    """``base`` of ``PATCH /settings`` (stage 9 rules, see docs/stage-10-appearance-sync.md §3):
+    the values an edit started from. Only ``appearance`` takes part today: ``null`` = "the
+    account had none", an object = the keys the edit depends on."""
+
+    appearance: AppearanceBaseIn | None = None
+
+
 class SettingsUpdateIn(ApiModel):
     language: LanguageLiteral | None = None
     timezone: str | None = Field(default=None, max_length=64)
@@ -105,6 +114,11 @@ class SettingsUpdateIn(ApiModel):
     onboarding_completed: bool | None = None
     notification_prefs: dict[str, Any] | None = None
     xp_weights: dict[str, Any] | None = None
+
+    # stage 10: any subset of the keys (merged onto the stored object); null = back to "never synced"
+    appearance: AppearanceIn | None = None
+    # stage 10: field-level compare-and-set, as the planner's edits (stage 9); absent = last write wins
+    base: SettingsBaseIn | None = None
 
     @field_validator("xp_weights")
     @classmethod
@@ -202,8 +216,15 @@ class UserSettingsOut(ORMModel):
     onboarding_completed: bool
     notification_prefs: dict = Field(default_factory=dict)
     xp_weights: dict = Field(default_factory=dict)
+    # stage 10: the account's appearance; null = never synced (see schemas/appearance.py)
+    appearance: AppearanceOut | None = None
 
     updated_at: datetime
+
+    @field_validator("appearance", mode="before")
+    @classmethod
+    def _stored_appearance(cls, value: Any) -> Any:
+        return coerce_stored(value)
 
 
 class SettingsEnvelopeOut(ApiModel):

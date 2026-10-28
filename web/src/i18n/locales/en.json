@@ -1466,7 +1466,13 @@
     "reduce_motion": "Reduce motion",
     "reduce_motion_hint": "No sliding, springs or tilt",
     "reduce_motion_system": "Already on in the device settings",
-    "device_note": "Appearance is stored on this device."
+    "sync_title": "Devices",
+    "sync_label": "Same on all devices",
+    "sync_on": "Your theme and look are saved to your account and will appear on your other devices.",
+    "sync_off": "This device keeps its own look. Turn this on to use the look from your account here.",
+    "sync_saving": "Saving to your account…",
+    "sync_waiting": "No connection — I'll save it when it's back.",
+    "sync_blocked": "Not included in your plan. The look stays on this device."
   },
   "common": {
     "g": "g",

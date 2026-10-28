@@ -2598,6 +2598,78 @@ export interface components {
              */
             units: "metric";
         };
+        /**
+         * AppearanceBaseIn
+         * @description ``base.appearance``: the values the edit started from, for the keys it depends on.
+         */
+        AppearanceBaseIn: {
+            /** Skin */
+            skin?: ("evolution" | "stickers") | null;
+            /** Mode */
+            mode?: ("light" | "dark" | "system") | null;
+            /** Ground */
+            ground?: ("lilac" | "mint" | "peach" | "lemonade") | null;
+            /** Tilt */
+            tilt?: boolean | null;
+            /** Shadow */
+            shadow?: ("hard" | "soft") | null;
+            /** Large Text */
+            large_text?: boolean | null;
+            /** Reduce Motion */
+            reduce_motion?: boolean | null;
+        };
+        /**
+         * AppearanceIn
+         * @description A write: any subset of the keys (merged onto the stored object). ``null`` is not a value.
+         */
+        AppearanceIn: {
+            /** Skin */
+            skin?: ("evolution" | "stickers") | null;
+            /** Mode */
+            mode?: ("light" | "dark" | "system") | null;
+            /** Ground */
+            ground?: ("lilac" | "mint" | "peach" | "lemonade") | null;
+            /** Tilt */
+            tilt?: boolean | null;
+            /** Shadow */
+            shadow?: ("hard" | "soft") | null;
+            /** Large Text */
+            large_text?: boolean | null;
+            /** Reduce Motion */
+            reduce_motion?: boolean | null;
+        };
+        /**
+         * AppearanceOut
+         * @description The whole object, as stored and as ``GET /settings`` shows it.
+         */
+        AppearanceOut: {
+            /**
+             * Skin
+             * @enum {string}
+             */
+            skin: "evolution" | "stickers";
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "light" | "dark" | "system";
+            /**
+             * Ground
+             * @enum {string}
+             */
+            ground: "lilac" | "mint" | "peach" | "lemonade";
+            /** Tilt */
+            tilt: boolean;
+            /**
+             * Shadow
+             * @enum {string}
+             */
+            shadow: "hard" | "soft";
+            /** Large Text */
+            large_text: boolean;
+            /** Reduce Motion */
+            reduce_motion: boolean;
+        };
         /** ArchiveViewOut */
         ArchiveViewOut: {
             /** Projects */
@@ -6308,6 +6380,15 @@ export interface components {
             targets: components["schemas"]["TargetsOut"];
         };
         /**
+         * SettingsBaseIn
+         * @description ``base`` of ``PATCH /settings`` (stage 9 rules, see docs/stage-10-appearance-sync.md §3):
+         *     the values an edit started from. Only ``appearance`` takes part today: ``null`` = "the
+         *     account had none", an object = the keys the edit depends on.
+         */
+        SettingsBaseIn: {
+            appearance?: components["schemas"]["AppearanceBaseIn"] | null;
+        };
+        /**
          * SettingsEnvelopeOut
          * @description The settings screen payload: the row itself + the derived targets.
          */
@@ -6382,6 +6463,8 @@ export interface components {
             xp_weights?: {
                 [key: string]: unknown;
             } | null;
+            appearance?: components["schemas"]["AppearanceIn"] | null;
+            base?: components["schemas"]["SettingsBaseIn"] | null;
         };
         /**
          * SleepIn
@@ -7806,6 +7889,7 @@ export interface components {
             xp_weights?: {
                 [key: string]: unknown;
             };
+            appearance?: components["schemas"]["AppearanceOut"] | null;
             /**
              * Updated At
              * Format: date-time

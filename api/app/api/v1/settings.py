@@ -20,7 +20,9 @@ from app.schemas.settings import (
     TargetsIn,
     TargetsOut,
 )
+from app.services.appearance import apply_appearance, check_appearance_base
 from app.services.bootstrap import DEFAULT_NOTIFICATION_PREFS
+from app.services.entitlements import FEATURE_APPEARANCE_SYNC, require_feature
 from app.services.settings_service import (
     current_targets,
     default_floor_for,
@@ -69,6 +71,18 @@ async def read_settings(principal: CurrentPrincipal, db: DbSession) -> SettingsE
 async def update_settings(payload: SettingsUpdateIn, principal: CurrentPrincipal, db: DbSession) -> SettingsEnvelopeOut:
     row = await get_or_create_settings(db, principal.user)
     data = payload.model_dump(exclude_unset=True)
+
+    # stage 10: the account's appearance. Checked before anything is written (a conflict writes
+    # nothing, not even the other fields of the request); the row is locked so two devices saving
+    # at once are compared one after the other.
+    sets_appearance = "appearance" in payload.model_fields_set
+    data.pop("appearance", None)
+    data.pop("base", None)
+    if sets_appearance:
+        require_feature(principal.user, FEATURE_APPEARANCE_SYNC)
+    if sets_appearance or payload.base is not None:
+        await _lock_settings(db, row)
+        check_appearance_base(row, payload.base, payload.appearance, sets=sets_appearance)
 
     floor_confirm = bool(data.pop("confirm_floor", False))
     requested_floor = data.get("safe_floor_kcal")
@@ -119,11 +133,18 @@ async def update_settings(payload: SettingsUpdateIn, principal: CurrentPrincipal
         if key in body_keys:
             touched_calc_inputs = True
 
+    if sets_appearance:
+        apply_appearance(row, payload.appearance)
+
     if touched_calc_inputs:
         await recompute_targets(db, row)
     await db.flush()
     targets = await targets_as_dict(db, row)
-    log.info("settings_updated", user_id=str(principal.user_id), fields=sorted(data.keys()))
+    log.info(
+        "settings_updated",
+        user_id=str(principal.user_id),
+        fields=sorted([*data.keys(), *(["appearance"] if sets_appearance else [])]),
+    )
     return SettingsEnvelopeOut(settings=_settings_dict(row), targets=TargetsOut(**targets))
 
 
@@ -264,6 +285,18 @@ async def _upsert_today_weight(db, user_id, weight_kg: float, timezone: str) -> 
     row = (await db.execute(select(UserSettings).where(UserSettings.user_id == user_id))).scalar_one_or_none()
     if row is not None:
         row.weight_kg = weight_kg
+
+
+async def _lock_settings(db, row) -> None:
+    """Lock this user's settings row until the transaction ends and re-read it (compare-and-set)."""
+    from app.models import UserSettings
+
+    await db.execute(
+        select(UserSettings)
+        .where(UserSettings.id == row.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
 
 
 def _settings_dict(row) -> dict:

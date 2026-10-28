@@ -61,7 +61,7 @@ function sessionReady(): Promise<unknown> {
   return Promise.race([loaded, new Promise((resolve) => setTimeout(resolve, 3000))])
 }
 
-void Promise.all([i18nReady, sessionReady()]).then(() =>
+void Promise.all([i18nReady, sessionReady()]).then(() => {
   createRoot(container).render(
     <StrictMode>
       <QueryClientProvider client={queryClient}>
@@ -77,5 +77,7 @@ void Promise.all([i18nReady, sessionReady()]).then(() =>
         </BrowserRouter>
       </QueryClientProvider>
     </StrictMode>,
-  ),
-)
+  )
+  // stage 10: «Одинаково на всех устройствах» — the account's appearance, in a chunk of its own
+  void import('@/lib/appearanceSync').then((sync) => sync.installAppearanceSync(queryClient))
+})

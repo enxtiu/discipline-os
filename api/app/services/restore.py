@@ -84,6 +84,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.models import Achievement, Exercise, Food, Quest, User
+from app.schemas.appearance import AppearanceOut
 from app.schemas.gamification import validate_xp_weights
 from app.services import export, media
 from app.services.export import (
@@ -584,6 +585,11 @@ def _settings_rules(row: dict[str, Any], notes: list[str]) -> None:
         validate_xp_weights(row["xp_weights"])
     except ValueError as exc:
         raise RestoreError(f"settings.xp_weights: {exc}") from None
+    if row.get("appearance") is not None:  # stage 10: the same object the API stores (unknown keys refused)
+        try:
+            AppearanceOut.model_validate(row["appearance"])
+        except ValueError:
+            raise RestoreError("settings.appearance: not an appearance object this app stores") from None
     confirmed = row.get("safe_floor_confirmed_at") is not None
     default = default_floor_for(SimpleNamespace(safe_floor_kcal=None, sex=row.get("sex")))  # type: ignore[arg-type]
     floor = row.get("safe_floor_kcal")
