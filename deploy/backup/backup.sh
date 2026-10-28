@@ -19,7 +19,10 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/../.."
-set -a; . ./.env; set +a
+set -a
+# shellcheck source=/dev/null
+. ./.env
+set +a
 
 PUSH=1
 [[ "${1:-}" == "--no-push" ]] && PUSH=0
@@ -53,9 +56,18 @@ docker compose exec -T postgres \
 
 chmod 600 "$TARGET"
 
-# Integrity: we can decrypt, and the payload is a real pg_dump archive.
-if ! age --decrypt --identity "${AGE_IDENTITY_FILE:-/root/.config/age/dsos.key}" "$TARGET" 2>/dev/null | head -c 5 | grep -q "PGDMP"; then
-  log "WARNING: could not verify the archive header (age identity missing?) — keeping the file, check it by hand"
+# Integrity: we can decrypt, and the payload is a real pg_dump archive (the custom
+# format starts with "PGDMP"). `head -c 5` closes the pipe after five bytes, so age is
+# killed by SIGPIPE (status 141) as soon as the dump is bigger than a pipe buffer —
+# which `set -o pipefail` turns into a failed check for a perfectly good archive. This
+# one pipeline therefore runs with pipefail off: only grep's verdict counts.
+IDENTITY="${AGE_IDENTITY_FILE:-/root/.config/age/dsos.key}"
+if [[ ! -r "$IDENTITY" ]]; then
+  log "WARNING: cannot verify ${NAME}: the age identity ${IDENTITY} is not readable (set AGE_IDENTITY_FILE) — keeping the file, check it by hand"
+elif ( set +o pipefail; age --decrypt --identity "$IDENTITY" "$TARGET" 2>/dev/null | head -c 5 | grep -q '^PGDMP' ); then
+  log "archive verified: it decrypts with ${IDENTITY} to a pg_dump archive"
+else
+  log "WARNING: ${NAME} does not decrypt with ${IDENTITY} to a pg_dump archive (is AGE_RECIPIENT the public half of that key?) — keeping the file, check it by hand"
 fi
 
 SIZE="$(du -h "$TARGET" | cut -f1)"
