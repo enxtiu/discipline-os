@@ -49,14 +49,19 @@ const check = (condition, label, detail = '') => (condition ? ok(label, detail) 
 // barcode scanner see a real EAN-13 through Chromium's fake camera.
 const FAKE_CAMERA = process.env.FAKE_CAMERA && existsSync(process.env.FAKE_CAMERA) ? process.env.FAKE_CAMERA : ''
 const BARCODE = process.env.BARCODE ?? '4607001234562'
+// CHROMIUM_NO_DEV_SHM=1: Chromium keeps its shared memory in /tmp instead of /dev/shm (where a
+// container counts it against the memory limit — the dev server's pages got it OOM-killed)
 const browser = await chromium.launch({
-  args: FAKE_CAMERA
-    ? [
-        '--use-fake-ui-for-media-stream',
-        '--use-fake-device-for-media-stream',
-        `--use-file-for-fake-video-capture=${FAKE_CAMERA}`,
-      ]
-    : [],
+  args: [
+    ...(process.env.CHROMIUM_NO_DEV_SHM ? ['--disable-dev-shm-usage'] : []),
+    ...(FAKE_CAMERA
+      ? [
+          '--use-fake-ui-for-media-stream',
+          '--use-fake-device-for-media-stream',
+          `--use-file-for-fake-video-capture=${FAKE_CAMERA}`,
+        ]
+      : []),
+  ],
 })
 const context = await browser.newContext({
   ...iPhone,
