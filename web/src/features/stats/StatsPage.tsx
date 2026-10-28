@@ -21,6 +21,7 @@ import { IconTrophy } from '@/features/game/icons'
 import { useAuth } from '@/features/auth/AuthProvider'
 import { addDays } from '@/lib/format'
 import { useSkinTraits } from '@/lib/appearance'
+import { PageActions } from '@/components/layout/headerSlot'
 import { LevelPlaque } from './LevelPlaque'
 import { WeekStickers } from './WeekStickers'
 import { PERIODS, PeriodSwitcher } from './PeriodSwitcher'
@@ -75,11 +76,13 @@ export default function StatsPage() {
   return (
     <div className="space-y-5 pb-2" data-testid="stats-page" data-period={period} data-loading={loading || undefined}>
       <header className="flex items-center gap-3">
-        <h1 className="h1 min-w-0 flex-1 truncate">{t('stats.title')}</h1>
-        <Link to="/stats/achievements" className="btn-secondary min-h-tap shrink-0 px-3 text-sm" data-testid="stats-achievements-link">
-          <IconTrophy size={18} />
-          <span>{t('stats.achievements')}</span>
-        </Link>
+        <h1 className="h1 sk-h1 min-w-0 flex-1 truncate">{t('stats.title')}</h1>
+        <PageActions>
+          <Link to="/stats/achievements" className="sk-achv btn-secondary min-h-tap shrink-0 px-3 text-sm" data-testid="stats-achievements-link">
+            <IconTrophy size={18} />
+            <span className="sk-achv-text">{t('stats.achievements')}</span>
+          </Link>
+        </PageActions>
       </header>
 
       <LevelPlaque />

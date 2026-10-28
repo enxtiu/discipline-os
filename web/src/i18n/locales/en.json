@@ -2173,5 +2173,33 @@
       "disconnect_confirm": "Disconnect",
       "disconnected_toast": "Notion disconnected. Your data in Notion stays."
     }
+  },
+  "board": {
+    "day_group": "Choose a day",
+    "day_prev": "Previous day",
+    "day_next": "Next day",
+    "day_today": "today",
+    "totals": "Day total: calories and macros",
+    "add_to": {
+      "breakfast": "Add to breakfast",
+      "lunch": "Add to lunch",
+      "dinner": "Add to dinner",
+      "snack": "Add to snack",
+      "other": "Add to Other"
+    },
+    "ai": "AI",
+    "recents_title": "Recent · log in one tap",
+    "recent_again": "Log again: {{name}}, {{kcal}} kcal",
+    "plan_tag": "planned: {{name}}",
+    "plan_label": "Planned for today",
+    "exercises": "Exercises",
+    "sets_reps": "{{sets}}×{{reps}}",
+    "sets_reps_kg": "{{sets}}×{{reps}} · {{kg}} kg",
+    "week_range": "{{from}} – {{to}}",
+    "left": "{{kcal}} left",
+    "plaque_week": "+{{xp}} XP this week",
+    "plaque_today": "+{{xp}} XP today",
+    "plaque_to": "to {{level}} · {{title}}",
+    "plaque_today_short": "+{{xp}} today"
   }
 }
