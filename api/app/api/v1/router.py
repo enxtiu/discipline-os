@@ -28,6 +28,7 @@ from app.api.v1 import (
 )
 from app.api.v1 import export as export_api
 from app.api.v1 import gamification as gamification_api
+from app.api.v1 import insights as insights_api
 from app.api.v1 import integrations as integrations_api
 from app.api.v1 import notifications as notifications_api
 from app.api.v1 import push as push_api
@@ -74,5 +75,8 @@ api_router.include_router(export_api.router)
 
 # --- stage 9: integrations (the optional one-way Notion sync) ------------------------
 api_router.include_router(integrations_api.router)
+
+# --- stage 10: the insight of «Сегодня» (read-only) ----------------------------------
+api_router.include_router(insights_api.router)
 
 __all__ = ["api_router"]
