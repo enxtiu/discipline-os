@@ -8,6 +8,7 @@ for the outside world; the behaviour that broke on the first real deployment (a 
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
@@ -299,3 +300,116 @@ def test_healthcheck_passes_when_everything_is_fine(health_box: Sandbox) -> None
     done, out = check_health(health_box)
     assert done.returncode == 0, out
     assert "All checks passed" in out
+
+
+# --------------------------------------------------------------------------- #
+# 4. healthcheck.sh — the scheduler as /meta/health reports it (the same from every api worker)
+# --------------------------------------------------------------------------- #
+JOBS = [
+    {"id": "scheduler_heartbeat", "name": "heartbeat", "next_run_time": "2026-10-28T22:08:28+07:00"},
+    {"id": "dispatch_notifications", "name": "dispatch", "next_run_time": "2026-10-28T22:08:28+07:00"},
+    {"id": "housekeeping", "name": "housekeeping", "next_run_time": "2026-10-28T22:22:28+07:00"},
+]
+
+
+def scheduler(**overrides) -> dict:
+    """The `scheduler` object of a healthy deployment, as seen by a worker that does NOT own it."""
+    base = {
+        "enabled": True,
+        "running": True,
+        "owner": False,
+        "lock_held": True,
+        "started_at": "2026-10-28T15:07:28+00:00",
+        "heartbeat_age_seconds": 12,
+        "stale": False,
+        "jobs": JOBS,
+    }
+    return base | overrides
+
+
+def health_body(sched: dict | None, **top) -> str:
+    return json.dumps({"status": "ok", "database": True, "scheduler": sched} | top)
+
+
+def run_check(box: Sandbox, body: str):
+    (box.root / "health.json").write_text(body)
+    make_archive(box, "20261028T031500Z/dsos-20261028T031500Z.dump.age", age_hours=1)
+    return check_health(box)
+
+
+def test_healthcheck_accepts_the_scheduler_whichever_worker_answered(health_box: Sandbox) -> None:
+    done, out = run_check(health_box, health_body(scheduler()))  # a worker that does not own it
+    assert done.returncode == 0, out
+    assert "scheduler: running=True jobs=3 owner=False heartbeat=12s" in out
+    done, out = run_check(health_box, health_body(scheduler(owner=True, heartbeat_age_seconds=4)))  # the owner itself
+    assert done.returncode == 0, out
+    assert "owner=True heartbeat=4s" in out
+
+
+def test_healthcheck_still_reads_the_older_api_answer(health_box: Sandbox) -> None:
+    """Right after the script is updated and before the api is: running/jobs only, no new keys."""
+    old = {"running": True, "jobs": JOBS}
+    done, out = run_check(health_box, health_body(old))
+    assert done.returncode == 0, out
+    assert "scheduler: running=True jobs=3" in out and "owner=" not in out
+
+
+@pytest.mark.parametrize(
+    ("sched", "problem"),
+    [
+        pytest.param(
+            {"enabled": True, "running": False, "owner": False, "lock_held": False, "stale": False, "jobs": []},
+            "no scheduler is running: nothing holds the scheduler lock",
+            id="no-one-holds-the-lock",
+        ),
+        pytest.param(
+            {"enabled": False, "running": False, "owner": False, "lock_held": False, "stale": False, "jobs": []},
+            "the scheduler is disabled (SCHEDULER_ENABLED=false)",
+            id="disabled",
+        ),
+        pytest.param({"running": False, "jobs": []}, "the scheduler is not running", id="older-api-no-scheduler"),
+        pytest.param(
+            scheduler(stale=True, heartbeat_age_seconds=640),
+            "has not published its state for 640 s",
+            id="stale-heartbeat",
+        ),
+        pytest.param(
+            scheduler(stale=True, heartbeat_age_seconds=None, jobs=[]),
+            "has not published its state at all",
+            id="nothing-published",
+        ),
+        pytest.param(scheduler(jobs=[]), "the scheduler has no jobs registered", id="no-jobs"),
+        pytest.param(
+            scheduler(jobs=[*JOBS[:2], {"id": "notion_sync", "name": "n", "next_run_time": None}]),
+            "a scheduler job is paused (no next run): notion_sync",
+            id="paused-job",
+        ),
+        pytest.param(
+            scheduler(owner=True, lock_held=False),
+            "the lock that keeps a second one away is gone",
+            id="lock-lost",
+        ),
+    ],
+)
+def test_healthcheck_names_what_is_wrong_with_the_scheduler(health_box: Sandbox, sched: dict, problem: str) -> None:
+    done, out = run_check(health_box, health_body(sched))
+    assert problem in out, out
+    assert done.returncode == 1, out
+    assert "payload ok" not in out
+
+
+@pytest.mark.parametrize(
+    ("body", "problem"),
+    [
+        (health_body(scheduler(), status="degraded"), "health status is 'degraded', not 'ok'"),
+        (health_body(scheduler(), database=False), "the database flag is false"),
+        (health_body(None), "the scheduler is not running"),
+        ("<html>bad gateway</html>", "did not answer a JSON object"),
+        ("[1, 2]", "did not answer a JSON object"),
+    ],
+    ids=["degraded", "no-database", "no-scheduler-object", "html", "json-array"],
+)
+def test_healthcheck_names_what_is_wrong_with_the_payload(health_box: Sandbox, body: str, problem: str) -> None:
+    done, out = run_check(health_box, body)
+    assert problem in out, out
+    assert done.returncode == 1, out

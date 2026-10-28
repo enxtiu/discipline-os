@@ -579,10 +579,12 @@ API_IMAGE=ghcr.io/owner/disciplineos-api:sha-<previous> ...
 */5 * * * * /opt/disciplineos/deploy/healthcheck.sh >> /var/log/dsos-health.log 2>&1
 ```
 
-Checks the public health endpoint, that the scheduler actually holds a scheduled
-run (a *paused* APScheduler job is silent otherwise), container state, database
-reachability, disk space, TLS expiry and backup age. Exit code 1 on any failure;
-set `ALERT_WEBHOOK_URL` in the environment to POST a JSON alert.
+Checks the public health endpoint, the scheduler (running somewhere, every job holding a
+scheduled run — a *paused* APScheduler job is silent otherwise —, a fresh heartbeat and its
+lock held; the answer is the same from each of the API's workers), container state, database
+reachability, disk space, TLS expiry and the age of the newest nightly backup
+(`<BACKUP_LOCAL_DIR>/<stamp>/dsos-<stamp>.dump.age`). Exit code 1 on any failure, with the
+reason on a `✗` line; set `ALERT_WEBHOOK_URL` in the environment to POST a JSON alert.
 
 ---
 
