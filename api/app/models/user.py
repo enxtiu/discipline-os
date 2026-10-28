@@ -182,6 +182,9 @@ class UserSettings(UuidPkMixin, TimestampMixin, Base):
     )
     xp_weights: Mapped[dict[str, Any]] = mapped_column(JsonType, nullable=False, server_default=sa.text("'{}'::jsonb"))
     extras: Mapped[dict[str, Any]] = mapped_column(JsonType, nullable=False, server_default=sa.text("'{}'::jsonb"))
+    # The account's appearance (stage 10, «Одинаково на всех устройствах»): the validated object of
+    # schemas/appearance.py, NULL = never synced. Per user like every setting.
+    appearance: Mapped[dict[str, Any] | None] = mapped_column(JsonType, nullable=True)
 
     user: Mapped[User] = relationship(back_populates="settings")
 
