@@ -27,6 +27,7 @@ import { errorMessage } from '@/lib/errors'
 import { useAuth } from '@/features/auth/AuthProvider'
 import { CustomFoodSheet } from './CustomFoodSheet'
 import { LogSheet, type LogTarget } from './LogSheet'
+import { asMealType } from './mealType'
 import { RecipeSheet } from './RecipeSheet'
 import {
   useAddWater,
@@ -53,6 +54,8 @@ export function FoodPage() {
   const [query, setQuery] = useState('')
   const [debounced, setDebounced] = useState('')
   const [target, setTarget] = useState<LogTarget | null>(null)
+  // stage 10: «Добавить» in Сегодня's «План дня» searches for one meal (?action=search&meal=dinner)
+  const [mealFor, setMealFor] = useState<MealType | undefined>(undefined)
   const [recipeSheet, setRecipeSheet] = useState(false)
   const [customSheet, setCustomSheet] = useState(false)
   const searchRef = useRef<HTMLInputElement>(null)
@@ -80,7 +83,10 @@ export function FoodPage() {
   useEffect(() => {
     const action = params.get('action')
     if (!action) return
-    if (action === 'search') searchRef.current?.focus()
+    if (action === 'search') {
+      searchRef.current?.focus()
+      setMealFor(asMealType(params.get('meal')))
+    }
     if (action === 'water') {
       addWater.mutate(
         { amountMl: 250, id: crypto.randomUUID() },
@@ -399,7 +405,7 @@ export function FoodPage() {
         </>
       )}
 
-      <LogSheet target={target} onClose={() => setTarget(null)} />
+      <LogSheet target={target} onClose={() => setTarget(null)} defaultMealType={mealFor} />
       <RecipeSheet open={recipeSheet} onClose={() => setRecipeSheet(false)} />
       <CustomFoodSheet open={customSheet} onClose={() => setCustomSheet(false)} />
     </div>
