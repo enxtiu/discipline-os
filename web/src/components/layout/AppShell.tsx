@@ -35,7 +35,7 @@ export function AppShell() {
   return (
     <AiCaptureProvider>
       <div className="flex min-h-[100dvh] flex-col">
-        <header className="sticky top-0 z-30 border-b border-[rgb(var(--border))]/70 bg-[rgb(var(--bg))]/85 backdrop-blur-xl">
+        <header className="sk-header sticky top-0 z-30 border-b border-[rgb(var(--border))]/70 bg-[rgb(var(--bg))]/85 backdrop-blur-xl">
           <div className="safe-top mx-auto flex max-w-lg items-center gap-3 px-4 pb-2.5">
             <div className="min-w-0 flex-1">
               <button
@@ -43,8 +43,8 @@ export function AppShell() {
                 onClick={() => navigate('/today')}
                 className="block max-w-full truncate text-left"
               >
-                <span className="block truncate text-[13px] muted">{t(greeting)}</span>
-                <span className="block truncate text-[15px] font-semibold">{name}</span>
+                <span className="sk-greeting block truncate text-[13px] muted">{t(greeting)}</span>
+                <span className="sk-name block truncate text-[15px] font-semibold">{name}</span>
               </button>
             </div>
             <SyncStatus />

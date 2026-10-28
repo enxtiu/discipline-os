@@ -14,12 +14,18 @@ import { m } from 'framer-motion'
 import clsx from 'clsx'
 import type { ReactNode } from 'react'
 
+/**
+ * Stage 10: what a ring or bar measures, coloured by the theme's category token
+ * (`--cat-kcal` …, styles/index.css; «Эволюция» keeps the stage-8 colours).
+ */
+export type Category = 'kcal' | 'protein' | 'fat' | 'carbs' | 'fibre' | 'water' | 'steps' | 'streak' | 'score' | 'xp'
+
 export interface RingProps {
   value: number
   max: number
   size?: number
   thickness?: number
-  tone?: 'accent' | 'violet' | 'warn' | 'muted'
+  tone?: 'accent' | 'violet' | 'warn' | 'muted' | Category
   label?: ReactNode
   sublabel?: ReactNode
   glow?: boolean
@@ -32,12 +38,24 @@ export interface RingProps {
   valueText?: string
 }
 
-// strokes follow the theme tokens (a light-theme ring stays visible on white)
+// strokes follow the theme tokens (a light-theme ring stays visible on white); a category
+// ring glows like the stage-8 tone it replaced (a theme without glow turns it off in CSS)
+const GLOW = { aqua: 'rgb(56 224 200 / .45)', violet: 'rgb(139 92 246 / .45)', amber: 'rgb(251 191 36 / .45)' }
 const TONES = {
-  accent: { stroke: 'rgb(var(--accent))', glow: 'rgb(56 224 200 / .45)' },
-  violet: { stroke: 'rgb(var(--accent-2))', glow: 'rgb(139 92 246 / .45)' },
-  warn: { stroke: 'rgb(var(--warn))', glow: 'rgb(251 191 36 / .45)' },
+  accent: { stroke: 'rgb(var(--accent))', glow: GLOW.aqua },
+  violet: { stroke: 'rgb(var(--accent-2))', glow: GLOW.violet },
+  warn: { stroke: 'rgb(var(--warn))', glow: GLOW.amber },
   muted: { stroke: '#3B4E70', glow: 'transparent' },
+  kcal: { stroke: 'rgb(var(--cat-kcal))', glow: GLOW.aqua },
+  protein: { stroke: 'rgb(var(--cat-protein))', glow: GLOW.violet },
+  fat: { stroke: 'rgb(var(--cat-fat))', glow: GLOW.amber },
+  carbs: { stroke: 'rgb(var(--cat-carbs))', glow: GLOW.aqua },
+  fibre: { stroke: 'rgb(var(--cat-fibre))', glow: GLOW.aqua },
+  water: { stroke: 'rgb(var(--cat-water))', glow: GLOW.aqua },
+  steps: { stroke: 'rgb(var(--cat-steps))', glow: GLOW.violet },
+  streak: { stroke: 'rgb(var(--cat-streak))', glow: GLOW.amber },
+  score: { stroke: 'rgb(var(--cat-score))', glow: GLOW.aqua },
+  xp: { stroke: 'rgb(var(--cat-xp))', glow: GLOW.violet },
 } as const
 
 export function ProgressRing({
@@ -63,8 +81,9 @@ export function ProgressRing({
 
   return (
     <div
-      className={clsx('relative inline-flex items-center justify-center', className)}
+      className={clsx('sk-ring relative inline-flex items-center justify-center', className)}
       style={{ width: size, height: size }}
+      data-tone={tone}
       {...(name
         ? {
             role: 'progressbar',
@@ -78,6 +97,7 @@ export function ProgressRing({
     >
       <svg width={size} height={size} className="-rotate-90" aria-hidden="true">
         <circle
+          className="sk-ring-track"
           cx={size / 2}
           cy={size / 2}
           r={radius}
@@ -86,6 +106,7 @@ export function ProgressRing({
           strokeWidth={thickness}
         />
         <m.circle
+          className="sk-ring-arc"
           cx={size / 2}
           cy={size / 2}
           r={radius}

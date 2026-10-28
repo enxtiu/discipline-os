@@ -36,8 +36,6 @@ export const STREAK_MILESTONES: readonly (readonly [number, number])[] = [
   [365, 500],
 ]
 
-export const FREEZE = { perWeek: 1, max: 2 } as const
-
 /** XP of an overall-streak milestone (null when it is not one). */
 export function milestoneXp(days: number | null | undefined): number | null {
   if (days == null) return null

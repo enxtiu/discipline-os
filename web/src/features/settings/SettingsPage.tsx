@@ -9,6 +9,7 @@ import { Card, Row, Rows } from '@/components/ui'
 import {
   IconBell,
   IconChevronRight,
+  IconDownload,
   IconFootprints,
   IconGlobe,
   IconKey,
@@ -18,19 +19,29 @@ import {
   IconUser,
 } from '@/components/ui/icons'
 import { useAuth } from '@/features/auth/AuthProvider'
+import { useAppearance, useResolvedTheme } from '@/lib/appearance'
 
 export function SettingsPage() {
   const { t } = useTranslation()
   const { session } = useAuth()
+  const appearance = useAppearance()
+  const theme = useResolvedTheme()
 
   const sections = [
     { to: '/settings/profile', icon: <IconUser size={18} />, label: t('settings.sections.profile'), hint: session?.settings.target_kcal ? `${session.settings.target_kcal} ${t('common.kcal')}` : t('today.no_target') },
-    { to: '/settings/appearance', icon: <IconPalette size={18} />, label: t('settings.sections.appearance') },
+    // stage 10: the theme screen; the language and region keep the stage-1 route
+    {
+      to: '/settings/theme',
+      icon: <IconPalette size={18} />,
+      label: t('look.title'),
+      hint: `${t(`look.skins.${appearance.skin}`)} · ${t(appearance.mode === 'system' ? 'look.mode.system' : `look.mode.${theme}`)}`,
+    },
+    { to: '/settings/appearance', icon: <IconGlobe size={18} />, label: t('settings.sections.appearance') },
     { to: '/settings/notifications', icon: <IconBell size={18} />, label: t('settings.sections.notifications') },
     { to: '/settings/devices', icon: <IconPhone size={18} />, label: t('settings.sections.devices') },
     { to: '/settings/shortcut', icon: <IconFootprints size={18} />, label: t('settings.sections.shortcut'), hint: t('settings.shortcut_hint') },
     { to: '/settings/tokens', icon: <IconKey size={18} />, label: t('settings.sections.tokens') },
-    { to: '/settings/data', icon: <IconGlobe size={18} />, label: t('settings.sections.data') },
+    { to: '/settings/data', icon: <IconDownload size={18} />, label: t('settings.sections.data') },
     { to: '/settings/integrations', icon: <IconRefresh size={18} />, label: t('settings.sections.integrations'), hint: t('settings.integrations_hint') },
   ]
 

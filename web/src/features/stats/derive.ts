@@ -134,7 +134,6 @@ export function progressTotals(stats: ProgressStats) {
     scoreMean: mean(stats.scores.filter((day) => day.date < stats.today).map((day) => day.score)),
     scoredDays: stats.scores.filter((day) => day.date < stats.today && day.score != null).length,
     overallDays: stats.streak_calendar.filter((day) => day.overall).length,
-    freezeDays: stats.streak_calendar.filter((day) => day.freeze).length,
   }
 }
 

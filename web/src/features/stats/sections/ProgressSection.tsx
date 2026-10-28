@@ -1,6 +1,6 @@
 /**
  * Прогресс: the stored daily score (0–100) as a line with the overall-streak
- * level, XP per day, and the streak calendar (counted / freeze days) — with a
+ * level, XP per day, and the streak calendar (counted days) — with a
  * way to the levels, streaks and achievements screen (`/stats/achievements`).
  * Every number is the server's; today's score is provisional and says so.
  */
@@ -36,18 +36,16 @@ function ScoreCard({ stats, dimmed }: { stats: ProgressStats; dimmed: boolean })
   const totals = progressTotals(stats)
   const counted = new Map(stats.streak_calendar.map((day) => [day.date, day]))
   const best = stats.scores.reduce<ScorePoint | null>((top, day) => (day.score != null && (top?.score == null || day.score > top.score) ? day : top), null)
-  const colour = () => theme.food
+  const colour = () => theme.score
   const tooltip = (day: ScorePoint): TooltipLine[] => {
     if (day.score == null) return [{ label: '', value: t('stats.no_data'), mark: 'none' }]
     const flag = counted.get(day.date)
     const note =
       day.date === stats.today
         ? t('stats.progress.provisional')
-        : flag?.freeze
-          ? t('stats.progress.cell.freeze')
-          : flag?.overall
-            ? t('stats.progress.cell.overall')
-            : t('stats.progress.cell.missed')
+        : flag?.overall
+          ? t('stats.progress.cell.overall')
+          : t('stats.progress.cell.missed')
     return [{ label: note, value: t('stats.progress.score_value', { score: number(day.score) }), color: colour() }]
   }
   return (
@@ -91,8 +89,8 @@ function ScoreCard({ stats, dimmed }: { stats: ProgressStats; dimmed: boolean })
           {
             key: 'score',
             value: (day) => day.score,
-            color: theme.food,
-            outlineOf: (day) => (day.date === stats.today ? theme.food : undefined),
+            color: theme.score,
+            outlineOf: (day) => (day.date === stats.today ? theme.score : undefined),
             kind: 'line',
             denseKind: 'line',
             dots: stats.scores.length <= DENSE_AFTER,
@@ -103,9 +101,9 @@ function ScoreCard({ stats, dimmed }: { stats: ProgressStats; dimmed: boolean })
       />
       <Legend
         items={[
-          { mark: 'line', color: theme.food, label: t('stats.progress.legend_score') },
+          { mark: 'line', color: theme.score, label: t('stats.progress.legend_score') },
           ...(stats.scores.some((day) => day.date === stats.today && day.score != null)
-            ? [{ mark: 'ring' as const, color: theme.food, label: t('stats.progress.legend_provisional') }]
+            ? [{ mark: 'ring' as const, color: theme.score, label: t('stats.progress.legend_provisional') }]
             : []),
           { mark: 'dash', color: theme.ink, label: t('stats.progress.legend_streak', { min: OVERALL_MIN_SCORE }) },
         ]}
@@ -134,7 +132,7 @@ function XpCard({ stats, dimmed }: { stats: ProgressStats; dimmed: boolean }) {
   const theme = useChartTheme()
   const totals = progressTotals(stats)
   const best = stats.xp.reduce<XpPoint | null>((top, day) => (day.xp > 0 && (!top || day.xp > top.xp) ? day : top), null)
-  const tooltip = (day: XpPoint): TooltipLine[] => [{ label: t('stats.progress.xp_day'), value: `${number(day.xp)} XP`, color: theme.move }]
+  const tooltip = (day: XpPoint): TooltipLine[] => [{ label: t('stats.progress.xp_day'), value: `${number(day.xp)} XP`, color: theme.xp }]
   return (
     <StatCard title={t('stats.progress.xp_title')} hint={t('stats.progress.xp_hint')} testId="stats-xp-card" dimmed={dimmed}>
       <Tiles
@@ -156,7 +154,7 @@ function XpCard({ stats, dimmed }: { stats: ProgressStats; dimmed: boolean }) {
         height={140}
         formatY={(value) => number(value)}
         summary={t('stats.progress.xp_summary', { period: periodLabel(stats), xp: number(totals.xp) })}
-        series={[{ key: 'xp', value: (day) => (day.date <= stats.today ? day.xp : null), color: theme.move }]}
+        series={[{ key: 'xp', value: (day) => (day.date <= stats.today ? day.xp : null), color: theme.xp }]}
         tooltip={tooltip}
       />
     </StatCard>
@@ -177,7 +175,6 @@ function StreakCard({ stats, dimmed, weekStart }: { stats: ProgressStats; dimmed
       <Tiles
         items={[
           { label: t('stats.progress.counted'), value: number(totals.overallDays), sub: t('stats.days_short'), testId: 'stat-streak-days' },
-          { label: t('stats.progress.freezes'), value: number(totals.freezeDays), sub: t('stats.days_short'), testId: 'stat-freeze-days' },
         ]}
       />
       <StreakCalendar
@@ -188,13 +185,11 @@ function StreakCard({ stats, dimmed, weekStart }: { stats: ProgressStats; dimmed
         summary={t('stats.progress.calendar_summary', {
           period: periodLabel(stats),
           n: totals.overallDays,
-          f: totals.freezeDays,
         })}
       />
       <Legend
         items={[
           { mark: 'cell', color: theme.food, label: t('stats.progress.legend_counted') },
-          { mark: 'cell', color: theme.sleep, label: t('stats.progress.legend_freeze') },
           { mark: 'empty', color: theme.muted, label: t('stats.progress.legend_missed') },
         ]}
       />

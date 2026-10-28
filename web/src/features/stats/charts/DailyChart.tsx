@@ -252,6 +252,9 @@ export function DailyChart<Row extends { date: string }>({
                   dataKey={item.key}
                   stackId={stack}
                   fill={item.color}
+                  // stage 10: a theme that outlines its marks (stickers) — none in «Эволюция»
+                  stroke={theme.outline ?? undefined}
+                  strokeWidth={theme.outline ? theme.outlineWidth : undefined}
                   maxBarSize={24}
                   radius={dense ? 0 : [4, 4, 0, 0]}
                   isAnimationActive={animate}
@@ -261,12 +264,15 @@ export function DailyChart<Row extends { date: string }>({
                   {(item.colorOf || item.outlineOf) &&
                     rows.map((row) => {
                       const outline = item.outlineOf?.(row)
+                      // an outlining theme draws the day in progress with its own outline, dashed
+                      const hollow = !!outline && !!theme.outline
                       return (
                         <Cell
                           key={row.date}
                           fill={item.colorOf?.(row) ?? item.color}
-                          stroke={outline ?? 'none'}
-                          strokeWidth={outline ? 1.5 : 0}
+                          stroke={hollow ? (theme.outline as string) : (outline ?? theme.outline ?? 'none')}
+                          strokeWidth={outline ? (hollow ? theme.outlineWidth : 1.5) : theme.outline ? theme.outlineWidth : 0}
+                          strokeDasharray={hollow ? '4 3' : undefined}
                         />
                       )
                     })}

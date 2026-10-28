@@ -75,7 +75,12 @@ export function WeeksChart({ weeks, summary, height = 150 }: { weeks: ActivityWe
           )}
           <Bar dataKey="workouts" maxBarSize={24} radius={dense ? 0 : [4, 4, 0, 0]} isAnimationActive={!reduced} animationDuration={350} className="stats-bar stats-bar-workouts">
             {data.map((datum) => (
-              <Cell key={datum.week} fill={datum.workouts >= datum.required ? theme.move : theme.rest} />
+              <Cell
+                key={datum.week}
+                fill={datum.workouts >= datum.required ? theme.move : theme.rest}
+                stroke={theme.outline ?? undefined}
+                strokeWidth={theme.outline ? theme.outlineWidth : undefined}
+              />
             ))}
           </Bar>
           <Scatter

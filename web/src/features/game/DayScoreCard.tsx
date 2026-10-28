@@ -18,7 +18,7 @@ import { ProgressRing } from '@/components/ui/ProgressRing'
 import { IconChevronRight } from '@/components/ui/icons'
 import { number } from '@/lib/format'
 import { CelebrationPill, CelebrationSheet, useCelebration } from './Celebration'
-import { IconFlameLit, IconSnowflake } from './icons'
+import { IconFlameLit } from './icons'
 import { levelTitle, percent01, RING_TONES, streakLength } from './format'
 import { ProvisionalPill } from './parts'
 import { QuestList, useQuestClaimer } from './QuestList'
@@ -93,7 +93,7 @@ export function DayScoreCard() {
               max={100}
               size={112}
               thickness={10}
-              tone="accent"
+              tone="score"
               className="[&_svg]:overflow-visible"
               label={
                 <span className="text-[34px]" data-testid="day-score-value">
@@ -174,7 +174,7 @@ function LevelBlock({ xp }: { xp: XpToday }) {
         </span>
         <span className="min-w-0 flex-1 truncate font-semibold">{levelTitle(level)}</span>
       </div>
-      <ProgressBar value={level.progress} max={1} tone="violet" />
+      <ProgressBar value={level.progress} max={1} tone="xp" />
       <div className="tnum flex items-baseline justify-between gap-3 text-xs">
         <span className="font-semibold text-[rgb(var(--accent-2))]" data-testid="day-xp-today">
           {t('game.xp_today', { xp: number(xp.today) })}
@@ -211,7 +211,7 @@ function StreakBlock({ streaks }: { streaks: Streak[] }) {
                 <IconFlameLit
                   lit={streak.today_met}
                   size={16}
-                  className={clsx('shrink-0', streak.today_met ? 'text-[rgb(var(--warn))]' : 'text-[rgb(var(--text-muted))]')}
+                  className={clsx('shrink-0', streak.today_met ? 'text-[rgb(var(--cat-streak))]' : 'text-[rgb(var(--text-muted))]')}
                 />
                 <span className="tnum truncate text-sm font-semibold">{streakLength(streak, streak.current)}</span>
               </span>
@@ -230,10 +230,10 @@ function StreakBlock({ streaks }: { streaks: Streak[] }) {
 /**
  * After 18:00 (server rule): the streaks whose today does not count yet, and
  * what keeps each going — one box for all of them. Never about eating less.
+ * Stage 10: no freezes — a missed day ends a streak.
  */
 function AtRiskHint({ streaks }: { streaks: Streak[] }) {
   const { t } = useTranslation()
-  const freezes = streaks.some((streak) => streak.freeze_tokens > 0)
   return (
     <div
       className="space-y-1.5 rounded-2xl border border-[rgb(var(--warn))]/40 bg-[rgb(var(--warn))]/10 px-3 py-2.5 text-sm leading-snug"
@@ -251,16 +251,10 @@ function AtRiskHint({ streaks }: { streaks: Streak[] }) {
               {t(`game.streak.name.${streak.kind}`)} · <span className="tnum">{streakLength(streak, streak.current)}</span>
             </span>
             <span className="muted"> — {t(`game.streak.action.${streak.kind}`)}</span>
-            {streak.freeze_tokens === 0 && <span className="muted"> · {t('game.streak.at_risk_no_freeze')}</span>}
           </li>
         ))}
       </ul>
-      {freezes && (
-        <p className="flex gap-1.5 text-xs muted">
-          <IconSnowflake size={13} className="mt-px shrink-0 text-[rgb(var(--accent))]" />
-          {t('game.streak.at_risk_freeze')}
-        </p>
-      )}
+      <p className="text-xs muted">{t('game.status.reset_note')}</p>
     </div>
   )
 }
