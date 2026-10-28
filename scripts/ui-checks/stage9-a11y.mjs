@@ -369,7 +369,7 @@ export async function run(ctx) {
       if (present === false) {
         if (optional) {
           report.skipped.push(name)
-          ok(`a11y ${name}: not on this branch — skipped`)
+          ok(`a11y ${name}: not present in this run — skipped`)
         } else {
           bad(`a11y ${name}: could not open the screen`)
         }
@@ -701,6 +701,25 @@ export async function run(ctx) {
       await page.locator(`[data-testid="task-sheet"][data-task-id="${editTask}"] [data-testid="task-title-input"]`).waitFor({ timeout: 10_000 })
       return true
     }, { scope: 'dialog' })
+    // «Изменено на другом устройстве» (the sync sheet shows the same view for a queued write):
+    // the title changes on the server while the editor is open, so saving answers 409
+    await audit('task editor · edit conflict', async () => {
+      await goto('/plan', '[data-testid="plan-today"]')
+      await page.locator(`[data-testid="task-row"][data-task-id="${editTask}"] [data-testid="task-title"]`).first().click()
+      const sheet = page.locator(`[data-testid="task-sheet"][data-task-id="${editTask}"]`)
+      await sheet.locator('[data-testid="task-title-input"]').waitFor({ timeout: 10_000 })
+      const elsewhere = await apiFetch(`/v1/planner/tasks/${editTask}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ title: `A11y отчёт, другое устройство (ui-check ${RUN})` }),
+      })
+      if (elsewhere.status !== 200) return false
+      await sheet.locator('[data-testid="task-title-input"]').fill(`A11y отчёт, этот телефон (ui-check ${RUN})`)
+      await sheet.locator('[data-testid="task-save"]').click()
+      await sheet.locator('[data-testid="conflict-view"]').waitFor({ timeout: 8000 })
+      return true
+    }, { scope: 'dialog' })
+    // settle it without writing anything («Оставить их версию»)
+    await page.locator('[data-testid="conflict-keep-theirs"]').first().click({ timeout: 3000 }).catch(() => {})
     await audit('task quick add', async () => {
       await goto('/plan', '[data-testid="plan-today"]')
       await page.getByRole('button', { name: 'Новая задача' }).first().click()
@@ -752,7 +771,6 @@ export async function run(ctx) {
         await page.waitForTimeout(400)
         return new URL(page.url()).pathname === '/settings/integrations'
       },
-      { optional: true },
     )
     // the connected Notion card: reaching it needs Notion, so GET is answered from a fixture
     const notionRoute = (route) =>
@@ -769,7 +787,6 @@ export async function run(ctx) {
           .then(() => true)
           .catch(() => false)
       },
-      { optional: true },
     )
     await page.unroute('**/api/v1/integrations/notion', notionRoute)
     const pill = () => page.locator('[data-testid="sync-pill"], header > div > button').first()
@@ -787,7 +804,7 @@ export async function run(ctx) {
         await goto('/today', '[data-testid="burned-today"]')
         return openSync()
       },
-      { scope: 'dialog', optional: true },
+      { scope: 'dialog' },
     )
     // the same sheet with a write waiting: offline, +250 мл, open the pill
     let syncWater = false
@@ -803,7 +820,7 @@ export async function run(ctx) {
         syncWater = true
         return openSync()
       },
-      { scope: 'dialog', optional: true },
+      { scope: 'dialog' },
     )
     if (offline) {
       await page.keyboard.press('Escape').catch(() => {})
@@ -1041,13 +1058,22 @@ export async function run(ctx) {
     await page.getByRole('tab', { name: 'English', exact: true }).click()
     await page.waitForTimeout(800)
     const langEnglish = await page.evaluate(() => document.documentElement.lang)
+    // a cold start in English too: only the active locale is downloaded, before the first render
+    let langReloaded = 'not reached'
+    try {
+      await page.reload({ waitUntil: 'networkidle' })
+      await page.getByRole('tab', { name: 'Русский', exact: true }).waitFor({ timeout: 10_000 })
+      langReloaded = await page.evaluate(() => document.documentElement.lang)
+    } catch {
+      /* reported below; Russian is restored either way */
+    }
     await page.getByRole('tab', { name: 'Русский', exact: true }).click()
     await page.waitForTimeout(800)
     const langBack = await page.evaluate(() => document.documentElement.lang)
     check(
-      langBefore === 'ru' && langEnglish === 'en' && langBack === 'ru',
-      '<html lang> follows the UI language',
-      `${langBefore} → ${langEnglish} → ${langBack}`,
+      langBefore === 'ru' && langEnglish === 'en' && langReloaded === 'en' && langBack === 'ru',
+      '<html lang> follows the UI language, also on a start in English',
+      `${langBefore} → ${langEnglish} → reload ${langReloaded} → ${langBack}`,
     )
   } catch (error) {
     bad('stage 9 accessibility checks', String(error?.message ?? error).split('\n')[0])
