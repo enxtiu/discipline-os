@@ -27,7 +27,8 @@
  *
  * --tabs adds a tab-switching run per mode: open /today, then tap Food, Plan, Today,
  * Food, Plan, Stats, Today in the tab bar (each once the previous screen is ready and
- * the network idle) and count the API requests and the time to "ready" of every switch.
+ * the network idle) and count the API requests and the time to "ready" of every switch
+ * (in the page: from the tap event to the first frame painted with the new screen ready).
  *
  * Usage:
  *   DEVICE_TOKEN=… | PAIRING_CODE=XXXX-XXXX \
@@ -152,7 +153,29 @@ function probe({ token, selectors }) {
       painted(name)
     }
   }
-  const observer = new MutationObserver(check)
+  // tab switches (--tabs): the runner arms `perf.tab` before a tap; the tap event starts
+  // the clock, the first frame painted with the target screen ready (its path, marker, no
+  // skeleton) stops it — in-page, so the automation's own click overhead is not counted
+  perf.tab = null
+  const checkTab = () => {
+    const tab = perf.tab
+    if (!tab || tab.start === null || tab.dom !== null || !location.pathname.startsWith(tab.path)) return
+    const main = document.querySelector('main')
+    if (!main || !document.querySelector(tab.selector) || main.querySelector('.skeleton')) return
+    tab.dom = performance.now()
+    requestAnimationFrame(() => setTimeout(() => (tab.ready = performance.now()), 0))
+  }
+  document.addEventListener(
+    'click',
+    () => {
+      if (perf.tab && perf.tab.start === null) perf.tab.start = performance.now()
+    },
+    true,
+  )
+  const observer = new MutationObserver(() => {
+    check()
+    checkTab()
+  })
   const start = () => observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true })
   if (document.documentElement) start()
   else document.addEventListener('DOMContentLoaded', start)
@@ -326,34 +349,32 @@ async function tabs(mode, base) {
   }
   cdp.on('Network.loadingFinished', done)
   cdp.on('Network.loadingFailed', done)
-  const settle = async (selector, started = Date.now()) => {
-    let readyAt = null
+  /** Waits until `read()` (in the page) gives a number and the network has been quiet. */
+  const settle = async (read) => {
+    const started = Date.now()
+    let value = null
     for (;;) {
       await page.waitForTimeout(50)
-      if (readyAt === null) {
-        const ready = await page
-          .evaluate((sel) => {
-            const main = document.querySelector('main')
-            return !!main && !!document.querySelector(sel) && !main.querySelector('.skeleton')
-          }, selector)
-          .catch(() => false)
-        if (ready) readyAt = Date.now()
-      }
-      if (readyAt !== null && inflight.size === 0 && Date.now() - lastActivity >= QUIET_MS) break
+      if (value === null) value = await page.evaluate(read).catch(() => null)
+      if (value !== null && inflight.size === 0 && Date.now() - lastActivity >= QUIET_MS) break
       if (Date.now() - started > TIMEOUT_MS) break
     }
-    return readyAt === null ? null : readyAt - started
+    return value
   }
   await page.goto(`${base}/today`, { waitUntil: 'commit' })
-  await settle(SCREENS.today.ready)
+  await settle(() => window.__perf?.marks.ready ?? null)
   const switches = []
   for (const name of TAB_SEQUENCE) {
     calls = []
-    const started = Date.now()
+    const { path, ready: selector } = SCREENS[name]
+    await page.evaluate((tab) => (window.__perf.tab = { ...tab, start: null, dom: null, ready: null }), { path, selector })
     // the Stats button sits under the raised quick-add button: dispatch the tap on it directly
     if (name === 'stats') await page.locator('nav.tabbar button.tab').first().dispatchEvent('click')
-    else await page.locator(`nav.tabbar a[href="${SCREENS[name].path}"]`).click()
-    const readyMs = await settle(SCREENS[name].ready, started) // from the tap
+    else await page.locator(`nav.tabbar a[href="${path}"]`).click()
+    const readyMs = await settle(() => {
+      const tab = window.__perf?.tab
+      return tab && tab.ready !== null ? Math.round(tab.ready - tab.start) : null
+    }) // tap → first frame painted with the screen ready
     switches.push({ screen: name, readyMs, apiCalls: calls })
   }
   await context.close()
