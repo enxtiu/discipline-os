@@ -622,7 +622,7 @@ export function Sheet({
       {open && (
         <>
           <m.div
-            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-[2px]"
+            className="sk-scrim fixed inset-0 z-50 bg-black/60 backdrop-blur-[2px]"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -636,7 +636,7 @@ export function Sheet({
             aria-labelledby={title ? titleId : undefined}
             tabIndex={-1}
             className={clsx(
-              'fixed inset-x-0 bottom-0 z-50 flex flex-col rounded-t-3xl border border-b-0 border-[rgb(var(--border))] bg-[rgb(var(--bg-elevated))] focus:outline-none',
+              'sk-sheet fixed inset-x-0 bottom-0 z-50 flex flex-col rounded-t-3xl border border-b-0 border-[rgb(var(--border))] bg-[rgb(var(--bg-elevated))] focus:outline-none',
               size === 'tall' ? 'max-h-[92dvh]' : 'max-h-[85dvh]',
             )}
             initial={{ y: '100%' }}
@@ -651,7 +651,7 @@ export function Sheet({
             }}
           >
             <div className="flex items-center justify-between gap-3 px-5 pt-4" aria-hidden="true">
-              <div className="mx-auto h-1.5 w-10 rounded-pill bg-[rgb(var(--border))]" />
+              <div className="sk-sheet-handle mx-auto h-1.5 w-10 rounded-pill bg-[rgb(var(--border))]" />
             </div>
             {title && (
               <header className="flex items-center justify-between gap-3 px-5 pb-2 pt-3">

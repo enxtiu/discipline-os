@@ -321,9 +321,12 @@ function WeekDay({ day, onClick }: { day: PlanDay; onClick: () => void }) {
       type="button"
       onClick={onClick}
       className={clsx(
-        'flex min-h-[5rem] min-w-0 flex-col items-center gap-1 rounded-2xl border px-0.5 py-2 text-center',
+        'sk-day flex min-h-[5rem] min-w-0 flex-col items-center gap-1 rounded-2xl border px-0.5 py-2 text-center',
         day.is_today ? 'border-aqua-400/50 bg-aqua-400/[.08]' : 'border-[rgb(var(--border))]',
       )}
+      data-today={day.is_today || undefined}
+      data-done={done || undefined}
+      data-rest={day.is_rest_day || undefined}
     >
       <span className="sr-only">
         {t('train.plan_day_label', { day: dayLabel(day.date, 'long'), plan: label || t('a11y.nothing_planned') })}

@@ -1,4 +1,1040 @@
 /* ==========================================================================
-   Theme F «Наклейки» (stage 10) — tokens and component overrides, everything under
-   :root[data-skin='stickers']. Filled in by the F skin commit.
+   Theme F «Наклейки» (stage 10) — the design boards Ffin-*.dc.html.
+   Bright stickers with a 2 px outline and a hard offset shadow on a calm sheet.
+   Everything here is under :root[data-skin='stickers'] (lib/appearance.ts sets it):
+   «Эволюция» never sees a rule of this file. Tokens first, then the shared classes
+   of styles/index.css, then the sk-* hooks of the components.
+
+   Contrast (checked): text #111111 on every ground ≥ 15.7:1, labels #4A4A57 ≥ 7.3:1,
+   on white 9.4:1; on the stickers (lemon 13.7, tomato 6.7, sky 9.7, mint 11.4,
+   lavender 8.7 : 1) text is only #111111 / #3B3A33 (lemon). Night: text #F5F3FF on
+   the ground 16.4 / tiles 14.2, labels #B4B0C8 8.5 / 7.4. Outlines take the text
+   colour of the surface they sit on (#111111 light; #F5F3FF on the night surfaces,
+   #111111 again inside a bright sticker).
    ========================================================================== */
+
+/* Rubik, self-hosted (@fontsource/rubik): the four weights the theme uses, Latin and
+   Cyrillic. Declared here so the browser fetches the files only when text is set in
+   Rubik — that is, only with this theme on (the service worker does not precache them,
+   vite.config.ts; they are cached on first use). */
+@font-face {
+  font-family: 'Rubik';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 500;
+  src: url('@fontsource/rubik/files/rubik-cyrillic-500-normal.woff2') format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: 'Rubik';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 500;
+  src: url('@fontsource/rubik/files/rubik-latin-500-normal.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F,
+    U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Rubik';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 600;
+  src: url('@fontsource/rubik/files/rubik-cyrillic-600-normal.woff2') format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: 'Rubik';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 600;
+  src: url('@fontsource/rubik/files/rubik-latin-600-normal.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F,
+    U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Rubik';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 700;
+  src: url('@fontsource/rubik/files/rubik-cyrillic-700-normal.woff2') format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: 'Rubik';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 700;
+  src: url('@fontsource/rubik/files/rubik-latin-700-normal.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F,
+    U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Rubik';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 800;
+  src: url('@fontsource/rubik/files/rubik-cyrillic-800-normal.woff2') format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: 'Rubik';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 800;
+  src: url('@fontsource/rubik/files/rubik-latin-800-normal.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F,
+    U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* ---- tokens ------------------------------------------------------------- */
+:root[data-skin='stickers'] {
+  /* the five sticker colours: text on them is only #111111 */
+  --sk-lemon: 255 216 77; /* #FFD84D calories */
+  --sk-tomato: 255 107 74; /* #FF6B4A streak */
+  --sk-sky: 110 193 255; /* #6EC1FF water */
+  --sk-mint: 94 224 160; /* #5EE0A0 steps */
+  --sk-lavender: 185 162 255; /* #B9A2FF score, XP */
+  --sk-on-fill: 17 17 17; /* text and outlines on a sticker */
+  --sk-soft-on-fill: 59 58 51; /* #3B3A33 secondary text on lemon, 10.3:1 */
+
+  --cat-kcal: var(--sk-lemon);
+  --cat-protein: var(--sk-lavender);
+  --cat-fat: var(--sk-lemon);
+  --cat-carbs: var(--sk-sky);
+  --cat-fibre: var(--sk-mint);
+  --cat-water: var(--sk-sky);
+  --cat-steps: var(--sk-mint);
+  --cat-streak: var(--sk-tomato);
+  --cat-score: var(--sk-lavender);
+  --cat-xp: var(--sk-lavender);
+  --on-cat-kcal: var(--sk-on-fill);
+  --on-cat-protein: var(--sk-on-fill);
+  --on-cat-fat: var(--sk-on-fill);
+  --on-cat-carbs: var(--sk-on-fill);
+  --on-cat-fibre: var(--sk-on-fill);
+  --on-cat-water: var(--sk-on-fill);
+  --on-cat-steps: var(--sk-on-fill);
+  --on-cat-streak: var(--sk-on-fill);
+  --on-cat-score: var(--sk-on-fill);
+  --on-cat-xp: var(--sk-on-fill);
+
+  /* charts: the sticker colours, outlined marks */
+  --chart-food: var(--sk-lemon);
+  --on-chart-food: var(--sk-on-fill);
+  --chart-move: var(--sk-mint);
+  --chart-score: var(--sk-lavender);
+  --chart-xp: var(--sk-lavender);
+  --chart-burn: var(--sk-tomato);
+  --chart-sleep: var(--sk-sky);
+  --chart-outline: var(--ink);
+  --chart-outline-width: 2;
+
+  /* shape */
+  --sk-radius: 18px;
+  --sk-radius-control: 12px;
+  --sk-shadow: 4px 4px 0 rgb(var(--shade));
+  --sk-shadow-3: 3px 3px 0 rgb(var(--shade));
+  --sk-shadow-2: 2px 2px 0 rgb(var(--shade));
+  --sk-shadow-primary: 3px 3px 0 rgb(var(--sk-tomato));
+}
+
+/* light: one of the four grounds (Сирень by default) */
+:root[data-skin='stickers'][data-theme='light'] {
+  --bg: 232 234 251; /* #E8EAFB Сирень */
+  --bg-elevated: 255 255 255;
+  --bg-sunken: 241 241 246; /* #F1F1F6 tracks and wells */
+  --ink: 17 17 17; /* outlines */
+  --shade: 17 17 17; /* hard shadows */
+  --border: var(--ink);
+  --text: 17 17 17;
+  --text-muted: 74 74 87; /* #4A4A57 */
+  --accent: 17 17 17; /* primary: ink */
+  --on-accent: 255 255 255;
+  --chart-rest: 255 255 255; /* a logged day outside the zone: an outlined white bar */
+  --chart-grid: 205 207 222;
+  --sk-soft-shadow: 0 6px 14px rgb(17 17 17 / 0.22);
+}
+:root[data-skin='stickers'][data-theme='light'][data-ground='mint'] {
+  --bg: 219 241 229; /* #DBF1E5 */
+}
+:root[data-skin='stickers'][data-theme='light'][data-ground='peach'] {
+  --bg: 251 230 220; /* #FBE6DC */
+}
+:root[data-skin='stickers'][data-theme='light'][data-ground='lemonade'] {
+  --bg: 240 239 210; /* #F0EFD2 */
+}
+
+/* night «Ночь»: the stickers stay bright; outlines take the surface's text colour */
+:root[data-skin='stickers'][data-theme='dark'] {
+  --bg: 23 22 31; /* #17161F */
+  --bg-elevated: 36 34 47; /* #24222F tiles */
+  --bg-sunken: 58 55 73; /* #3A3749 tracks */
+  --ink: 245 243 255; /* #F5F3FF */
+  --shade: 76 71 102; /* #4C4766 */
+  --border: var(--ink);
+  --text: 245 243 255;
+  --text-muted: 180 176 200; /* #B4B0C8 */
+  --accent: 245 243 255;
+  --on-accent: 17 17 17;
+  --accent-2: 185 162 255; /* lavender as text: 7.0:1 on tiles */
+  --on-accent-2: 17 17 17;
+  --chart-rest: 36 34 47;
+  --chart-grid: 76 71 102;
+  --sk-soft-shadow: 0 6px 14px rgb(0 0 0 / 0.45);
+}
+
+/* «Тени: Мягкие» — no offset, a soft drop */
+:root[data-skin='stickers'][data-shadow='soft'] {
+  --sk-shadow: var(--sk-soft-shadow);
+  --sk-shadow-3: var(--sk-soft-shadow);
+  --sk-shadow-2: 0 2px 6px rgb(17 17 17 / 0.2);
+  --sk-shadow-primary: var(--sk-soft-shadow);
+}
+
+/* ---- base --------------------------------------------------------------- */
+:root[data-skin='stickers'] body,
+:root[data-skin='stickers'] .font-stat,
+:root[data-skin='stickers'] .stat-value {
+  font-family: 'Rubik', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+:root[data-skin='stickers'] body {
+  font-weight: 500;
+}
+/* Rubik runs a step lighter than Inter: one step up keeps the stickers' chunky type */
+:root[data-skin='stickers'] .font-medium {
+  font-weight: 600;
+}
+:root[data-skin='stickers'] .font-semibold {
+  font-weight: 700;
+}
+:root[data-skin='stickers'] .font-bold,
+:root[data-skin='stickers'] .stat-value {
+  font-weight: 800;
+}
+:root[data-skin='stickers'] .h1 {
+  font-size: 1.75rem;
+  line-height: 2.125rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+:root[data-skin='stickers'] .h2 {
+  font-size: 1.125rem;
+  line-height: 1.375rem;
+  font-weight: 800;
+}
+:root[data-skin='stickers'] .label {
+  font-size: 0.8125rem;
+  line-height: 1rem;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: 0;
+}
+/* a group heading of the settings pages (Ffin-Theme: 15 px / 800, ink) */
+:root[data-skin='stickers'] .sk-group-title {
+  font-size: 0.9375rem;
+  line-height: 1.125rem;
+  font-weight: 800;
+  color: rgb(var(--text));
+}
+:root[data-skin='stickers'] ::selection {
+  background: rgb(var(--sk-lemon));
+  color: #111111;
+}
+/* icons: the boards draw them a little heavier */
+:root[data-skin='stickers'] svg[stroke='currentColor'] {
+  stroke-width: 2.1;
+}
+/* focus: a thick ink outline, never hidden by the shadows */
+:root[data-skin='stickers'] :focus-visible {
+  outline: 3px solid rgb(var(--ink));
+  outline-offset: 3px;
+}
+
+/* ---- surfaces ----------------------------------------------------------- */
+:root[data-skin='stickers'] .card {
+  border: 2px solid rgb(var(--ink));
+  border-radius: var(--sk-radius);
+  background-color: rgb(var(--bg-elevated));
+  box-shadow: var(--sk-shadow);
+}
+:root[data-skin='stickers'] .surface-sunken {
+  border-radius: 14px;
+  border: 2px solid rgb(var(--ink));
+  background-color: rgb(var(--bg-elevated));
+}
+/* a well inside a card: flat, outlined */
+:root[data-skin='stickers'] .card .surface-sunken {
+  background-color: rgb(var(--bg-sunken));
+}
+:root[data-skin='stickers'] .divider {
+  height: 0;
+  background: none;
+  border-top: 2px dashed rgb(var(--ink));
+}
+/* list rows (Rows, task lists): dashed 2 px separators, as the boards */
+:root[data-skin='stickers'] .divide-y > :not([hidden]) ~ :not([hidden]) {
+  border-top-width: 2px;
+  border-top-style: dashed;
+  border-color: rgb(var(--ink));
+}
+:root[data-skin='stickers'] .skeleton {
+  background-color: rgb(var(--bg-sunken));
+  border: 2px dashed rgb(var(--ink) / 0.35);
+}
+:root[data-skin='stickers'] .skeleton::after {
+  display: none;
+}
+
+/* ---- controls ----------------------------------------------------------- */
+/* Never select `.btn` here: index.css builds the variants with `@apply btn`, and Tailwind
+   copies every rule that names `.btn` into each of them — after this file's rules. */
+:root[data-skin='stickers'] .btn-primary,
+:root[data-skin='stickers'] .btn-secondary,
+:root[data-skin='stickers'] .btn-danger {
+  border: 2px solid rgb(var(--ink));
+  border-radius: var(--sk-radius-control);
+  font-weight: 700;
+  box-shadow: var(--sk-shadow-3);
+}
+:root[data-skin='stickers'] .btn-ghost {
+  border-radius: var(--sk-radius-control);
+  font-weight: 700;
+}
+:root[data-skin='stickers'] .btn-primary {
+  background-color: rgb(var(--accent));
+  color: rgb(var(--on-accent));
+  box-shadow: var(--sk-shadow-primary);
+  filter: none;
+}
+:root[data-skin='stickers'] .btn-secondary {
+  background-color: rgb(var(--bg-elevated));
+  color: rgb(var(--text));
+}
+/* ghost buttons (icon buttons: arrows, close) are white stickers too, as on the boards */
+:root[data-skin='stickers'] .btn-ghost {
+  border: 2px solid rgb(var(--ink));
+  background-color: rgb(var(--bg-elevated));
+  color: rgb(var(--text));
+  box-shadow: var(--sk-shadow-3);
+}
+:root[data-skin='stickers'] .btn-ghost:disabled {
+  box-shadow: none;
+}
+/* the two AI ways to log on Питание are the primary stickers */
+:root[data-skin='stickers'] .sk-ai {
+  background-color: rgb(var(--accent));
+  color: rgb(var(--on-accent));
+  box-shadow: var(--sk-shadow-primary);
+}
+:root[data-skin='stickers'] .sk-ai svg {
+  color: inherit;
+}
+:root[data-skin='stickers'] .btn-danger {
+  background-color: rgb(var(--bg-elevated));
+  color: rgb(var(--text));
+  box-shadow: 3px 3px 0 rgb(var(--sk-tomato));
+}
+/* pressed: the sticker sits down on its shadow */
+:root[data-skin='stickers'] .btn-primary:active,
+:root[data-skin='stickers'] .btn-secondary:active,
+:root[data-skin='stickers'] .btn-danger:active {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 rgb(var(--shade));
+}
+
+:root[data-skin='stickers'] .input {
+  border: 2px solid rgb(var(--ink));
+  border-radius: var(--sk-radius-control);
+  background-color: rgb(var(--bg-elevated));
+  box-shadow: var(--sk-shadow-3);
+  font-weight: 500;
+}
+:root[data-skin='stickers'] .input:focus,
+:root[data-skin='stickers'] .input:focus-within {
+  border-color: rgb(var(--ink));
+  box-shadow: 3px 3px 0 rgb(var(--sk-lemon)), 0 0 0 1px rgb(var(--ink));
+}
+
+:root[data-skin='stickers'] .chip {
+  border: 2px solid rgb(var(--ink));
+  background-color: rgb(var(--bg-elevated));
+  color: rgb(var(--text));
+  font-weight: 700;
+  box-shadow: var(--sk-shadow-3);
+}
+:root[data-skin='stickers'] .chip-active,
+:root[data-skin='stickers'] .chip[aria-pressed='true'] {
+  border-color: rgb(var(--ink));
+  background-color: rgb(var(--accent));
+  color: rgb(var(--on-accent));
+  box-shadow: var(--sk-shadow-primary);
+}
+
+/* segmented: a white strip; the chosen segment is a lemon pill inside it */
+:root[data-skin='stickers'] .segmented {
+  gap: 0;
+  padding: 0;
+  border: 2px solid rgb(var(--ink));
+  border-radius: 14px;
+  background-color: rgb(var(--bg-elevated));
+  box-shadow: var(--sk-shadow-3);
+}
+:root[data-skin='stickers'] .segmented > button,
+:root[data-skin='stickers'] .segmented > a {
+  position: relative;
+  padding-left: 6px;
+  padding-right: 6px;
+  border-radius: 12px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  white-space: nowrap;
+  color: rgb(var(--text-muted));
+}
+:root[data-skin='stickers'] .segmented > button[data-active='true'],
+:root[data-skin='stickers'] .segmented > a[aria-current='page'] {
+  background: none;
+  box-shadow: none;
+  color: #111111;
+  font-weight: 800;
+  z-index: 0;
+}
+:root[data-skin='stickers'] .segmented > button[data-active='true']::before,
+:root[data-skin='stickers'] .segmented > a[aria-current='page']::before {
+  content: '';
+  position: absolute;
+  inset: 8px 4px;
+  z-index: -1;
+  border: 2px solid #111111;
+  border-radius: 999px;
+  background-color: rgb(var(--sk-lemon));
+}
+
+/* switches (Toggle): a 52 × 30 sticker track, mint when on, the knob outlined */
+:root[data-skin='stickers'] [role='switch'] > span {
+  height: 30px;
+  width: 52px;
+  border: 2px solid rgb(var(--ink));
+  background-color: rgb(var(--bg-elevated));
+  box-shadow: var(--sk-shadow-2);
+}
+:root[data-skin='stickers'] [role='switch'][aria-checked='true'] > span {
+  border-color: rgb(var(--ink));
+  background-color: rgb(var(--sk-mint));
+}
+:root[data-skin='stickers'] [role='switch'] > span > span {
+  top: 2px;
+  height: 22px;
+  width: 22px;
+  border: 2px solid #111111;
+  background-color: #111111;
+  box-shadow: none;
+}
+:root[data-skin='stickers'] [role='switch'][aria-checked='true'] > span > span {
+  left: 24px;
+  background-color: #ffffff;
+}
+:root[data-skin='stickers'][data-theme='dark'] [role='switch'] > span > span {
+  border-color: rgb(var(--ink));
+  background-color: rgb(var(--ink));
+}
+:root[data-skin='stickers'][data-theme='dark'] [role='switch'][aria-checked='true'] > span > span {
+  border-color: #111111;
+  background-color: #ffffff;
+}
+
+/* checkboxes (task rows): a 26 px rounded square sticker, mint with a black tick when done */
+:root[data-skin='stickers'] button[role='checkbox'] > span {
+  height: 26px;
+  width: 26px;
+  border-radius: 8px;
+  background-color: rgb(var(--bg-elevated));
+  box-shadow: var(--sk-shadow-2);
+}
+:root[data-skin='stickers'] button[role='checkbox'][aria-checked='true'] > span {
+  border-color: rgb(var(--ink));
+  background-color: rgb(var(--sk-mint));
+  color: #111111;
+}
+
+/* progress bars: an outlined track with a coloured fill closed by a 2 px edge */
+:root[data-skin='stickers'] .sk-bar {
+  height: 14px;
+  border: 2px solid rgb(var(--ink));
+  border-radius: 999px;
+  background-color: rgb(var(--bg-sunken));
+}
+:root[data-skin='stickers'] .sk-bar-fill {
+  border-radius: 0;
+  box-shadow: 2px 0 0 rgb(var(--sk-on-fill));
+}
+:root[data-skin='stickers'] .sk-bar.h-3 {
+  height: 14px;
+}
+:root[data-skin='stickers'] .sk-bar.h-6 {
+  height: 24px;
+}
+:root[data-skin='stickers'] .sk-bar.h-1\.5,
+:root[data-skin='stickers'] .sk-bar-mini {
+  height: 9px;
+  border-width: 1.5px;
+}
+:root[data-skin='stickers'] .sk-bar-big {
+  height: 22px;
+  box-shadow: var(--sk-shadow-2);
+  background-color: #ffffff;
+}
+:root[data-skin='stickers'][data-theme='dark'] .sk-bar-big {
+  background-color: rgb(var(--bg-sunken));
+}
+
+/* rings: no glow; the track is the well colour, outlined by the card around it */
+:root[data-skin='stickers'] .sk-ring-arc {
+  filter: none !important;
+}
+:root[data-skin='stickers'] .sk-ring-track {
+  stroke: rgb(var(--bg-sunken));
+}
+
+/* badges («Новое», rarity pills): outlined label stickers */
+:root[data-skin='stickers'] .rounded-pill.border {
+  border-width: 2px;
+}
+
+/* ---- sheets ------------------------------------------------------------- */
+:root[data-skin='stickers'] .sk-sheet {
+  border: 2px solid rgb(var(--ink));
+  border-bottom: 0;
+  border-radius: 24px 24px 0 0;
+}
+:root[data-skin='stickers'] .sk-sheet-handle {
+  height: 5px;
+  width: 44px;
+  background-color: rgb(var(--ink));
+}
+:root[data-skin='stickers'] .sk-scrim {
+  background-color: rgb(17 17 17 / 0.6);
+  backdrop-filter: none;
+}
+
+/* ---- the app shell -------------------------------------------------------- */
+/* the header sits on the page's own ground: no bar, no blur */
+:root[data-skin='stickers'] .sk-header {
+  border-bottom: 0;
+  background-color: rgb(var(--bg));
+  backdrop-filter: none;
+}
+:root[data-skin='stickers'] .sk-greeting {
+  font-size: 0.875rem;
+  line-height: 1.125rem;
+  font-weight: 700;
+  color: rgb(var(--text-muted));
+}
+:root[data-skin='stickers'] .sk-name {
+  font-size: 1.5rem;
+  line-height: 1.875rem;
+  font-weight: 800;
+}
+/* the sync pill becomes a 48 px icon sticker, as the settings button beside it */
+:root[data-skin='stickers'] .sk-sync > span {
+  min-height: 48px;
+  min-width: 48px;
+  justify-content: center;
+  padding: 0 10px;
+  border: 2px solid rgb(var(--ink));
+  border-radius: var(--sk-radius-control);
+  background-color: rgb(var(--bg-elevated));
+  color: rgb(var(--text));
+  box-shadow: var(--sk-shadow-3);
+}
+
+/* the tab bar: opaque, a straight 2 px top edge; the active tab is a lemon sticker */
+:root[data-skin='stickers'] .tabbar {
+  border-top: 2px solid rgb(var(--ink));
+  background-color: rgb(var(--bg-elevated));
+  backdrop-filter: none;
+}
+:root[data-skin='stickers'] .tab {
+  gap: 2px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+  color: rgb(var(--text-muted));
+  font-weight: 600;
+  line-height: 13px;
+}
+:root[data-skin='stickers'] .tab[data-active='true'] {
+  color: rgb(var(--text));
+  font-weight: 800;
+}
+:root[data-skin='stickers'] .tab[data-active='true']::before {
+  display: none;
+}
+:root[data-skin='stickers'] .tab > svg {
+  box-sizing: content-box;
+  padding: 2px 15px;
+  border: 2px solid transparent;
+  border-radius: 15px;
+}
+:root[data-skin='stickers'] .tab[data-active='true'] > svg {
+  border-color: #111111;
+  background-color: rgb(var(--sk-lemon));
+  color: #111111;
+  box-shadow: 2px 2px 0 #111111;
+}
+/* «＋ Записать»: a lemon sticker floating above the bar at the right (fixed with the bar,
+   over the scrolling page). Buttons never tilt. */
+:root[data-skin='stickers'] .sk-add {
+  border: 2px solid #111111;
+  border-radius: 16px;
+  background-color: rgb(var(--sk-lemon));
+  color: #111111;
+  font-size: 1rem;
+  font-weight: 800;
+  box-shadow: 4px 4px 0 rgb(var(--shade));
+}
+:root[data-skin='stickers'][data-shadow='soft'] .sk-add {
+  box-shadow: var(--sk-soft-shadow);
+}
+:root[data-skin='stickers'] .sk-add svg {
+  stroke-width: 2.6;
+}
+/* the page scrolls clear of the bar and the sticker above it (52 px + 14 px + its shadow) */
+:root[data-skin='stickers'] .pb-tabbar {
+  padding-bottom: calc(8.75rem + env(safe-area-inset-bottom, 0px));
+}
+:root[data-skin='stickers'] html,
+html[data-skin='stickers'] {
+  scroll-padding-bottom: calc(9rem + env(safe-area-inset-bottom, 0px));
+}
+
+/* what floats above the bar (toasts, the rest timer) floats above the sticker too */
+:root[data-skin='stickers'] .sk-toasts {
+  bottom: calc(8.5rem + env(safe-area-inset-bottom, 0px)) !important;
+}
+:root[data-skin='stickers'] .above-tabbar {
+  bottom: calc(8.5rem + env(safe-area-inset-bottom, 0px));
+}
+
+/* ---- category stickers (data-cat) -------------------------------------------- */
+/* a tile filled with its category's colour; text and outlines inside it are ink */
+:root[data-skin='stickers'] .sk-tile[data-cat='kcal'],
+:root[data-skin='stickers'] .sk-tile[data-cat='score'],
+:root[data-skin='stickers'] .sk-tile[data-cat='streak'],
+:root[data-skin='stickers'] .sk-tile[data-cat='water'],
+:root[data-skin='stickers'] .sk-tile[data-cat='steps'] {
+  --text: var(--sk-on-fill);
+  --text-muted: var(--sk-on-fill);
+  --accent: var(--sk-on-fill);
+  --on-accent: 255 255 255;
+  color: rgb(var(--sk-on-fill));
+}
+:root[data-skin='stickers'] .sk-tile[data-cat='kcal'] {
+  background-color: rgb(var(--sk-lemon));
+  --text-muted: var(--sk-soft-on-fill);
+}
+:root[data-skin='stickers'] .sk-tile[data-cat='score'] {
+  background-color: rgb(var(--sk-lavender));
+}
+:root[data-skin='stickers'] .sk-tile[data-cat='streak'] {
+  background-color: rgb(var(--sk-tomato));
+}
+:root[data-skin='stickers'] .sk-tile[data-cat='water'] {
+  background-color: rgb(var(--sk-sky));
+}
+:root[data-skin='stickers'] .sk-tile[data-cat='steps'] {
+  background-color: rgb(var(--sk-mint));
+}
+/* inside a bright sticker the nested stickers (bars, buttons, labels) are outlined in ink */
+:root[data-skin='stickers'] .sk-tile[data-cat='kcal'] .sk-bar,
+:root[data-skin='stickers'] .sk-tile[data-cat='water'] .sk-bar,
+:root[data-skin='stickers'] .sk-tile[data-cat='steps'] .sk-bar {
+  border-color: #111111;
+  background-color: #ffffff;
+}
+:root[data-skin='stickers'] .sk-tile[data-cat='kcal'] .sk-bar-fill {
+  background-color: rgb(var(--sk-tomato));
+}
+:root[data-skin='stickers'] .sk-tile[data-cat='water'] .sk-bar-fill,
+:root[data-skin='stickers'] .sk-tile[data-cat='steps'] .sk-bar-fill {
+  background-color: #111111;
+}
+/* a category-coloured icon or text on its own sticker would vanish: ink instead */
+:root[data-skin='stickers'] .sk-tile:is([data-cat='kcal'], [data-cat='score'], [data-cat='streak'], [data-cat='water'], [data-cat='steps'])
+  [class*='text-[rgb(var(--cat-'] {
+  color: #111111;
+}
+:root[data-skin='stickers'] .sk-tile[data-cat] .btn-secondary {
+  border-color: #111111;
+  background-color: #ffffff;
+  color: #111111;
+  box-shadow: 3px 3px 0 #111111;
+}
+/* night: a bright sticker keeps its #F5F3FF outline on the dark ground and a dark shadow */
+:root[data-skin='stickers'][data-theme='dark'] .sk-tile[data-cat='kcal'],
+:root[data-skin='stickers'][data-theme='dark'] .sk-tile[data-cat='score'],
+:root[data-skin='stickers'][data-theme='dark'] .sk-tile[data-cat='streak'],
+:root[data-skin='stickers'][data-theme='dark'] .sk-tile[data-cat='water'],
+:root[data-skin='stickers'][data-theme='dark'] .sk-tile[data-cat='steps'] {
+  --shade: 76 71 102;
+}
+
+/* die-cut: a white ring between the colour and the outline (score, streak, the level) */
+:root[data-skin='stickers'] .sk-tile[data-cat='score'],
+:root[data-skin='stickers'] .sk-tile[data-cat='streak'] {
+  box-shadow: inset 0 0 0 3px #ffffff, var(--sk-shadow);
+}
+
+/* controlled tilt (−3°…+3°): badges only, with «Наклон наклеек» on and motion allowed */
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-skin='stickers'][data-tilt='on'][data-motion='full'] .sk-tilt-l {
+    rotate: -2deg;
+  }
+  :root[data-skin='stickers'][data-tilt='on'][data-motion='full'] .sk-tilt-r {
+    rotate: 2deg;
+  }
+  :root[data-skin='stickers'][data-tilt='on'][data-motion='full'] .sk-status > [data-cat='score'] {
+    rotate: -2deg;
+  }
+}
+
+/* ---- Сегодня --------------------------------------------------------------- */
+/* the calorie sticker: an overhanging «Осталось» label and the peel corner */
+:root[data-skin='stickers'] .sk-hero {
+  margin-top: 1rem;
+}
+:root[data-skin='stickers'] .sk-overhang {
+  position: absolute;
+  top: -16px;
+  right: 16px;
+}
+:root[data-skin='stickers'] .sk-label {
+  padding: 5px 10px;
+  border: 2px solid #111111;
+  border-radius: 10px;
+  background-color: #ffffff;
+  color: #111111;
+  box-shadow: 2px 2px 0 #111111;
+  font-size: 0.875rem;
+  line-height: 1.125rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+:root[data-skin='stickers'] .sk-soft {
+  color: rgb(var(--sk-soft-on-fill));
+}
+:root[data-skin='stickers'] .sk-peel {
+  position: absolute;
+  right: -8px;
+  bottom: -8px;
+  display: block;
+}
+:root[data-skin='stickers'] .sk-peel-hole {
+  fill: rgb(var(--bg));
+}
+:root[data-skin='stickers'] .sk-peel-shade {
+  fill: rgb(var(--shade));
+}
+:root[data-skin='stickers'] .sk-peel-flap {
+  fill: #ffffff;
+  stroke: #111111;
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+:root[data-skin='stickers'][data-shadow='soft'] .sk-peel-shade {
+  fill: rgb(17 17 17 / 0.25);
+}
+
+/* the status: score (die-cut lavender), streak (die-cut tomato), the level strip */
+:root[data-skin='stickers'] .sk-status {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+  gap: 14px;
+}
+:root[data-skin='stickers'] .sk-status > [data-cat='score'],
+:root[data-skin='stickers'] .sk-status > [data-cat='streak'] {
+  padding: 12px 14px;
+}
+:root[data-skin='stickers'] .sk-status .stat-value {
+  font-size: 2.875rem;
+  line-height: 3.125rem;
+}
+:root[data-skin='stickers'] .sk-status [data-testid='score-provisional'] {
+  border: 2px solid #111111;
+  background-color: #ffffff;
+  color: #111111;
+  font-weight: 700;
+}
+/* the round level medal: black, a white die-cut ring, the lemon number */
+:root[data-skin='stickers'] .sk-medal {
+  height: 64px;
+  width: 64px;
+  border: 2px solid rgb(var(--ink));
+  border-radius: 999px;
+  background-color: #111111;
+  color: rgb(var(--sk-lemon));
+  box-shadow: inset 0 0 0 4px #ffffff, var(--sk-shadow-3);
+}
+:root[data-skin='stickers'] .sk-medal svg {
+  stroke-width: 2.6;
+}
+:root[data-skin='stickers'] .sk-medal-big {
+  height: 76px;
+  width: 76px;
+  margin-top: -22px;
+  box-shadow: inset 0 0 0 4px #ffffff, var(--sk-shadow);
+}
+:root[data-skin='stickers'] .sk-medal-word {
+  color: #ffffff;
+}
+:root[data-skin='stickers'] .sk-tile[data-cat='xp'] .sk-bar {
+  height: 12px;
+}
+
+/* large text: the four macro bars stack (two columns would cut «Углеводы») */
+:root[data-skin='stickers'][data-text='large'] .sk-macros {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* water and steps: two tiles of their own (label over the numbers, a thin bar) */
+:root[data-skin='stickers'] .sk-ws > div {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+}
+:root[data-skin='stickers'] .sk-ws > div > div:first-child {
+  flex-direction: column;
+  align-items: flex-start;
+}
+:root[data-skin='stickers'] .sk-ws > div > div:first-child > span:first-child {
+  font-size: 1rem;
+  line-height: 1.25rem;
+  font-weight: 800;
+}
+:root[data-skin='stickers'] .sk-ws > div > div:first-child > span:last-child {
+  font-weight: 600;
+  color: #111111;
+}
+:root[data-skin='stickers'] .sk-ws .sk-bar {
+  height: 10px;
+}
+:root[data-skin='stickers'] .sk-ws .btn {
+  margin-top: auto;
+  width: 100%;
+}
+:root[data-skin='stickers'] .sk-ws [class*='text-[rgb(var(--cat-'],
+:root[data-skin='stickers'] .sk-ws .text-violet-300 {
+  color: #111111;
+}
+
+/* ---- Тренировки ---------------------------------------------------------------- */
+:root[data-skin='stickers'] .sk-day {
+  border: 2px solid rgb(var(--ink));
+  border-radius: 12px;
+  background-color: rgb(var(--bg-elevated));
+  box-shadow: var(--sk-shadow-2);
+}
+:root[data-skin='stickers'] .sk-day[data-rest] {
+  border-style: dashed;
+  border-color: rgb(var(--text-muted));
+  background-color: transparent;
+  box-shadow: none;
+}
+:root[data-skin='stickers'] .sk-day[data-done] {
+  --text: var(--sk-on-fill);
+  --text-muted: var(--sk-on-fill);
+  --accent: var(--sk-on-fill);
+  --on-accent: 255 255 255;
+  border-color: #111111;
+  background-color: rgb(var(--sk-mint));
+  color: #111111;
+}
+:root[data-skin='stickers'] .sk-day[data-today] {
+  --text: var(--sk-on-fill);
+  --text-muted: var(--sk-on-fill);
+  --accent: var(--sk-on-fill);
+  --on-accent: 255 255 255;
+  border-color: #111111;
+  background-color: rgb(var(--sk-lemon));
+  color: #111111;
+  box-shadow: var(--sk-shadow-3);
+}
+
+/* ---- Статистика ------------------------------------------------------------ */
+:root[data-skin='stickers'] .sk-plaque {
+  margin-top: 0.75rem;
+}
+:root[data-skin='stickers'] .sk-plaque .sk-cell {
+  border-radius: 12px;
+  box-shadow: var(--sk-shadow-2);
+}
+:root[data-skin='stickers'] .sk-plaque .sk-cell-week {
+  border-color: #111111;
+  background-color: rgb(var(--sk-mint));
+  --text: var(--sk-on-fill);
+  --text-muted: var(--sk-on-fill);
+  color: #111111;
+}
+:root[data-skin='stickers'] .sk-plaque .sk-cell-streak {
+  border-color: #111111;
+  background-color: rgb(var(--sk-tomato));
+  box-shadow: inset 0 0 0 2px #ffffff, var(--sk-shadow-3);
+  --text: var(--sk-on-fill);
+  --text-muted: var(--sk-on-fill);
+  color: #111111;
+}
+:root[data-skin='stickers'] .sk-plaque .sk-cell-streak svg {
+  color: #111111;
+}
+/* the chart legend's swatches are outlined too (a white bar is a bar here) */
+:root[data-skin='stickers'] [data-testid='chart-legend'] li > span[aria-hidden='true'] {
+  outline: 1.5px solid rgb(var(--ink));
+  outline-offset: -1.5px;
+}
+:root[data-skin='stickers'] [data-testid='streak-calendar'] [data-state] {
+  border: 2px solid rgb(var(--ink));
+  border-radius: 9px;
+}
+:root[data-skin='stickers'] [data-testid='streak-calendar'] [data-state='overall'] {
+  border-color: #111111;
+}
+
+/* «Наклейки недели»: die-cut stickers in a strip, dashed empty places after them */
+:root[data-skin='stickers'] .sk-sticker-book {
+  min-height: 3.5rem;
+}
+:root[data-skin='stickers'] .sk-sticker {
+  display: flex;
+  flex: none;
+  max-width: 7.5rem;
+  min-height: 50px;
+  align-items: center;
+  padding: 4px 10px;
+  border: 2px solid #111111;
+  border-radius: 14px;
+  color: #111111;
+  font-size: 0.75rem;
+  line-height: 0.875rem;
+  font-weight: 800;
+  box-shadow: inset 0 0 0 3px #ffffff, var(--sk-shadow-3);
+}
+:root[data-skin='stickers'] .sk-sticker[data-cat='kcal'] {
+  background-color: rgb(var(--sk-lemon));
+}
+:root[data-skin='stickers'] .sk-sticker[data-cat='streak'] {
+  background-color: rgb(var(--sk-tomato));
+}
+:root[data-skin='stickers'] .sk-sticker[data-cat='water'] {
+  background-color: rgb(var(--sk-sky));
+}
+:root[data-skin='stickers'] .sk-sticker[data-cat='steps'] {
+  background-color: rgb(var(--sk-mint));
+}
+:root[data-skin='stickers'] .sk-sticker[data-cat='score'],
+:root[data-skin='stickers'] .sk-sticker[data-cat='xp'] {
+  background-color: rgb(var(--sk-lavender));
+}
+:root[data-skin='stickers'] .sk-sticker-slot {
+  min-width: 40px;
+  height: 50px;
+  flex: 1 1 0;
+  border: 2px dashed rgb(var(--text-muted));
+  border-radius: 14px;
+}
+
+/* ---- the quick-add sheet ------------------------------------------------------ */
+:root[data-skin='stickers'] .sk-qa {
+  min-height: 52px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 0 8px 0 10px;
+  border: 2px solid rgb(var(--ink));
+  border-radius: 14px;
+  background-color: rgb(var(--bg-elevated));
+  color: rgb(var(--text));
+  box-shadow: var(--sk-shadow-3);
+}
+:root[data-skin='stickers'] .sk-qa > span:last-child {
+  width: auto;
+}
+:root[data-skin='stickers'] .sk-qa-icon {
+  display: flex;
+  height: 30px;
+  width: 30px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #111111;
+  border-radius: 9px;
+  background-color: #ffffff;
+  color: #111111;
+}
+:root[data-skin='stickers'] .sk-qa-icon svg {
+  height: 18px;
+  width: 18px;
+}
+:root[data-skin='stickers'] .sk-qa[data-cat='kcal'] .sk-qa-icon {
+  background-color: rgb(var(--sk-lemon));
+}
+:root[data-skin='stickers'] .sk-qa[data-cat='water'] .sk-qa-icon {
+  background-color: rgb(var(--sk-sky));
+}
+:root[data-skin='stickers'] .sk-qa[data-cat='steps'] .sk-qa-icon {
+  background-color: rgb(var(--sk-mint));
+}
+:root[data-skin='stickers'] .sk-qa[data-cat='score'] .sk-qa-icon {
+  background-color: rgb(var(--sk-lavender));
+}
+/* the two AI ways (photo, text) are the primary stickers: ink, the tomato shadow */
+:root[data-skin='stickers'] .sk-qa-primary {
+  min-height: 64px;
+  border-radius: 16px;
+  background-color: rgb(var(--accent));
+  color: rgb(var(--on-accent));
+  box-shadow: 4px 4px 0 rgb(var(--sk-tomato));
+  font-size: 1.125rem;
+}
+:root[data-skin='stickers'] .sk-qa-primary .sk-qa-icon {
+  border-color: transparent;
+  background: none;
+  color: inherit;
+}
+
+/* ---- Настройки → Оформление ---------------------------------------------------- */
+:root[data-skin='stickers'] .sk-preview {
+  border: 2px solid rgb(var(--ink));
+  border-radius: var(--sk-radius);
+  box-shadow: var(--sk-shadow);
+}
+:root[data-skin='stickers'] .sk-preview .card {
+  border-radius: 14px;
+  box-shadow: var(--sk-shadow-3);
+}
+:root[data-skin='stickers'] .sk-choice {
+  border-color: #111111;
+  border-radius: 12px;
+}
+:root[data-skin='stickers'] .sk-choice[aria-checked='true'] {
+  border-width: 3px;
+  padding: 4px;
+  box-shadow: var(--sk-shadow);
+  --tw-ring-shadow: 0 0 #0000;
+}
+:root[data-skin='stickers'][data-theme='dark'] .sk-choice {
+  border-color: rgb(var(--ink));
+}
+:root[data-skin='stickers'] .sk-check {
+  border-color: #ffffff;
+  background-color: #111111;
+  color: rgb(var(--sk-lemon));
+}
+:root[data-skin='stickers'] .sk-swatch {
+  border: 2px solid rgb(var(--ink));
+  padding: 0 4px;
+  background-color: rgb(var(--bg-elevated));
+  box-shadow: var(--sk-shadow-3);
+}
+:root[data-skin='stickers'] .sk-swatch[aria-pressed='true'] {
+  border-color: #111111;
+  background-color: rgb(var(--sk-lemon));
+  color: #111111;
+}

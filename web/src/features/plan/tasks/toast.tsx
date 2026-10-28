@@ -97,7 +97,7 @@ function ToastStack({ items: stack, placement }: { items: PlanToastItem[]; place
   const offset = placement === 'top' ? -16 : 16
   return (
     <div
-      className="pointer-events-none fixed inset-x-0 z-[60] flex flex-col items-center gap-2 px-4"
+      className={`pointer-events-none fixed inset-x-0 z-[60] flex flex-col items-center gap-2 px-4 ${placement === 'bottom' ? 'sk-toasts' : ''}`}
       style={
         placement === 'top'
           ? { top: 'calc(0.75rem + env(safe-area-inset-top, 0px))' }
