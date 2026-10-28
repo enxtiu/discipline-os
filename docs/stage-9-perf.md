@@ -12,7 +12,8 @@
 >
 > - No migration (EXPLAIN found no hot query missing an index — see §6), no dependency
 >   change: the analyzers use the app's own Vite/esbuild and Playwright as before.
-> - This is the performance part of stage 9; the coordinator merges it into `docs/stage-9.md`.
+> - This is the performance part of stage 9; the stage report with the integrated evidence is
+>   [`stage-9.md`](stage-9.md).
 
 ## 1. How it was measured
 
@@ -47,7 +48,7 @@ the tab bar, counts the API requests of every switch and times it in the page: f
 tap event to the first frame painted with the new screen ready.
 
 The box is shared (2 cores, other agents' builds and browsers): all browser and API
-measurements ran under `flock /home/claude/locks/ui-check.lock`, and **before and after
+measurements ran under one shared lock (one browser or benchmark at a time), and **before and after
 were measured in turn** — the baseline build (served by a second `vite preview`) and this
 branch's build, run after run, against the same API and database, so a load spike slows
 both alike (`--targets before=…,after=…`). Medians of N runs.
@@ -441,7 +442,7 @@ script read digits of a UUID as the pairing code (§9) — not the app.
   worth sheets that open before their data.
 - **Compression**: already on (Caddy `encode zstd gzip`, `GZipMiddleware` ≥ 1 kB).
 
-## 9. Merge with `stage-9-hardening` (for the coordinator)
+## 9. Merge with `stage-9-hardening`
 
 `stage-9-hardening` (`f36e964`: stage 8 final with the review-8 fixes and the stats
 dashboards, `s9-offline`, `s9-notion`) is merged into this branch (`fc74c84`), so it

@@ -974,10 +974,11 @@ try {
         const mine = (list.devices ?? []).find((device) => device.is_current)
         if (!mine) return 'not-found'
         const response = await fetch(`/api/v1/devices/${mine.id}`, { method: 'DELETE', headers })
+        if (response.status === 409) return `kept: ${mine.name} is the only device (409 last_device)`
         return `${response.status} ${mine.name}`
       })
       .catch((error) => `error ${error?.message ?? error}`)
-    console.log(`\ncleanup: revoked this run's device — ${revoked}`)
+    console.log(`\ncleanup: this run's device — ${revoked}`)
   }
 
   await browser.close()

@@ -14,7 +14,7 @@
 >
 > - No migration, no dependency change. One additive backend change outside the
 >   planner: a meal / water log can be deleted by the client id it was logged with.
-> - The coordinator merges this part into `docs/stage-9.md`.
+> - Part of stage 9; the stage report with the integrated evidence is [`stage-9.md`](stage-9.md).
 
 ## 1. What was built
 

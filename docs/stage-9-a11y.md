@@ -218,16 +218,14 @@ cd api && .venv/bin/ruff check . && .venv/bin/ruff format --check .
 cd web && npm run typecheck && npm run build
 node scripts/perf/bundle-report.mjs --check
 node scripts/check-i18n.mjs
-# the whole browser run on a fresh DB, under the shared lock (Chromium is heavy on 2 cores)
-flock -o /home/claude/locks/ui-check.lock <fresh DB + API (fake AI, VAPID keys) + Vite> \
-  PAIRING_CODE=XXXX-XXXX FAKE_CAMERA=/tmp/barcode.y4m node scripts/ui-check.mjs
+# the whole browser run on a fresh DB with a running API (fake AI, VAPID keys) and web
+PAIRING_CODE=XXXX-XXXX FAKE_CAMERA=/tmp/barcode.y4m node scripts/ui-check.mjs
 # report: $SHOTS/a11y-axe.json (every axe node, target list, keyboard stops)
 ```
 
 ## 8. Evidence (this branch, merged with `stage-9-hardening`)
 
-Head `c45b1a6` (+ this report), on the 2-core box, every browser run under
-`flock -o /home/claude/locks/ui-check.lock`.
+Head `c45b1a6` (+ this report), on a shared 2-core machine, one browser run at a time.
 
 | Gate | Result |
 | --- | --- |
@@ -253,9 +251,9 @@ The accessibility module inside that run:
 | Zoom | no sideways scrolling at 320 × 568 or 640 × 400 on the seven screens |
 | Test data | removed (16 rows) |
 
-Screenshots and the full axe / target / keyboard report:
-`/home/claude/s9a11y-run/full4/shots/` (`90-a11y-today-{dark,light}.png`,
-`91-a11y-stats-{dark,light}.png`, `a11y-axe.json`).
+Screenshots: `docs/screenshots/90-a11y-today-{dark,light}.png`,
+`91-a11y-stats-{dark,light}.png` (from the final integrated run); every run writes the full
+axe / target / keyboard report to `$SHOTS/a11y-axe.json`.
 
 The whole run before it (580 ok, 1 failed) failed only on the then-new edit-conflict audit:
 the check looked for «Сохранить» inside the editor body, but it sits in the sheet's footer
