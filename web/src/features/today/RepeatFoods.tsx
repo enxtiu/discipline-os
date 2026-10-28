@@ -39,7 +39,7 @@ function portionOf(recent: Recent, language: string): Portion | null {
   const source = food ?? recipe
   if (!source) return null
   const name = food
-    ? language === 'en'
+    ? language.startsWith('en')
       ? (food.name_en ?? food.name_ru ?? '')
       : (food.name_ru ?? food.name_en ?? '')
     : (recipe?.name ?? '')
@@ -74,7 +74,8 @@ export function RepeatFoods() {
   const [busy, setBusy] = useState<string | null>(null)
 
   const portions = (recents.data?.items ?? [])
-    .map((recent) => portionOf(recent, i18n.language))
+    // resolvedLanguage: a device set to en-GB resolves to the app's «en» (i18n.language stays «en-GB»)
+    .map((recent) => portionOf(recent, i18n.resolvedLanguage ?? i18n.language))
     .filter((portion): portion is Portion => portion !== null)
     .slice(0, SHOWN)
   if (!portions.length) return null
