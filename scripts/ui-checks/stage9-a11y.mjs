@@ -714,7 +714,8 @@ export async function run(ctx) {
       })
       if (elsewhere.status !== 200) return false
       await sheet.locator('[data-testid="task-title-input"]').fill(`A11y отчёт, этот телефон (ui-check ${RUN})`)
-      await sheet.locator('[data-testid="task-save"]').click()
+      // the save button sits in the sheet's footer, outside the editor body
+      await page.locator('[role="dialog"] [data-testid="task-save"]').click()
       await sheet.locator('[data-testid="conflict-view"]').waitFor({ timeout: 8000 })
       return true
     }, { scope: 'dialog' })
