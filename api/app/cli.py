@@ -424,9 +424,14 @@ def vapid_keys_cmd() -> None:
     public_key = b64urlencode(
         vapid.public_key.public_bytes(serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint)
     )
-    typer.echo("Add these to .env and restart the api container:\n")
+    typer.echo("Add these two lines to .env (keep the single quotes) and restart the api container:\n")
     typer.secho(f"VAPID_PUBLIC_KEY={public_key}", fg=typer.colors.GREEN)
-    typer.echo("VAPID_PRIVATE_KEY=" + private_pem.replace("\n", "\\n"))
+    # Single-quoted on purpose. The PEM has spaces («BEGIN PRIVATE KEY»), and .env is not only read
+    # by docker compose and the API but also sourced by bash (deploy/backup/*.sh, healthcheck.sh):
+    # unquoted, `set -a; . ./.env` runs «PRIVATE» as a command. Bash, python-dotenv and docker
+    # compose all keep a single-quoted value literally, so the "\n" stays two characters here and
+    # push.py turns it back into line breaks; double quotes would make compose expand it instead.
+    typer.echo("VAPID_PRIVATE_KEY='" + private_pem.replace("\n", "\\n") + "'")
     typer.echo("\n(keep the private key secret — it never belongs in the repo)")
 
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import io
 import json
 import os
 import re
@@ -19,6 +20,7 @@ from datetime import UTC, date, datetime, time, timedelta
 import httpx
 import pytest
 from cryptography.hazmat.primitives import serialization
+from dotenv import dotenv_values
 from py_vapid import Vapid02
 from sqlalchemy import select
 
@@ -1096,7 +1098,10 @@ def test_cli_vapid_keys_prints_a_working_pair(monkeypatch) -> None:
 
     result = CliRunner().invoke(cli, ["vapid-keys"])
     assert result.exit_code == 0, result.output
-    lines = dict(line.split("=", 1) for line in result.output.splitlines() if line.startswith("VAPID_"))
+    # read the two lines the way .env readers do (the private key is single-quoted, see test_stage10_ops.py)
+    lines = dotenv_values(
+        stream=io.StringIO("\n".join(ln for ln in result.output.splitlines() if ln.startswith("VAPID_")))
+    )
     public, private = lines["VAPID_PUBLIC_KEY"], lines["VAPID_PRIVATE_KEY"]
     assert "\n" not in private and private.startswith("-----BEGIN PRIVATE KEY-----\\n")  # one .env line
     raw = base64.urlsafe_b64decode(public + "=" * (-len(public) % 4))

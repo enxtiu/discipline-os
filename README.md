@@ -260,7 +260,7 @@ is looked up once on Open Food Facts and cached);
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `VAPID_PUBLIC_KEY` | empty | base64url P-256 public key; the browser subscribes with it (`GET /api/v1/push/config`) |
-| `VAPID_PRIVATE_KEY` | empty | The matching private key as one-line PEM (`\n` escaped) — signs every push (RFC 8292). Secret |
+| `VAPID_PRIVATE_KEY` | empty | The matching private key as one-line PEM (`\n` escaped) **in single quotes**, exactly as `vapid-keys` prints it — signs every push (RFC 8292). Secret |
 | `VAPID_SUBJECT` | `mailto:admin@example.com` | Your contact for the push services: `mailto:you@domain` or `https://…` |
 | `PUSH_EXTRA_HOSTS` | empty | More push-service hosts to allow (comma-separated, `*.example.com` for subdomains) — see below |
 
@@ -277,7 +277,19 @@ next send (`last_error=endpoint_not_allowed`), and redirects are never followed.
 most 2048 bytes.
 
 Generate the pair once and keep it: `docker compose exec api python -m app.cli vapid-keys`
-prints both lines ready for `.env`; restart the API. Push is **on** only when both keys
+prints both lines ready for `.env`; restart the API. Paste them exactly as printed — the
+private key stays inside its **single quotes**: the PEM has spaces, and `.env` is also
+sourced by bash (`deploy/backup/backup.sh`, `restore.sh`, `deploy/healthcheck.sh`), where
+an unquoted value fails with `PRIVATE: command not found`. Single quotes are literal for
+bash, the API's `.env` reader and docker compose alike (double quotes are not: compose
+would turn the `\n` into line breaks). A key pasted unquoted from an older `vapid-keys`
+is repaired in place with
+
+```bash
+sed -i -E "/^VAPID_PRIVATE_KEY=[^']/ s/^(VAPID_PRIVATE_KEY=)(.*)$/\1'\2'/" .env
+```
+
+Push is **on** only when both keys
 are set (`features.push_notifications` in `/api/v1/meta/app-config`); without them the
 app says so in Settings → Уведомления instead of offering a button that cannot work.
 Changing the keys later orphans every browser subscription — each device has to tap
