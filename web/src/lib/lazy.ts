@@ -45,9 +45,11 @@ export function chunk<M extends Record<string, unknown>>(load: () => Promise<M>)
 
 /**
  * Runs `task` once the app has been up for `delay` ms and the browser is idle (an idle
- * callback where there is one — Safari has none: then at `delay`). Returns a cancel function.
+ * callback where there is one — Safari has none: then at `delay`). The first screen's
+ * reads started in index.html, so half a second after the shell its data is usually in.
+ * Returns a cancel function.
  */
-export function whenIdle(task: () => void, delay = 2000): () => void {
+export function whenIdle(task: () => void, delay = 500): () => void {
   let idle: number | undefined
   const timer = window.setTimeout(() => {
     if (typeof window.requestIdleCallback === 'function') idle = window.requestIdleCallback(task, { timeout: 2000 })
