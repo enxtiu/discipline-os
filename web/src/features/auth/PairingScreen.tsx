@@ -194,7 +194,7 @@ function LogoMark() {
         className="absolute inset-0 rounded-[22px] blur-xl"
         style={{ background: 'radial-gradient(circle, rgb(56 224 200 / .35), transparent 70%)' }}
       />
-      <svg width="72" height="72" viewBox="0 0 64 64" className="relative">
+      <svg width="72" height="72" viewBox="0 0 64 64" className="relative" aria-hidden="true">
         <rect width="64" height="64" rx="15" fill="#0B1220" stroke="rgba(56,224,200,.35)" />
         <circle cx="32" cy="32" r="18" fill="none" stroke="#1F2C45" strokeWidth="5" />
         <circle

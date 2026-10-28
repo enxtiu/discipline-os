@@ -99,7 +99,7 @@ export function DevicesSection() {
             {code.code}
           </p>
           <div className="flex justify-center">
-            <div className="rounded-2xl bg-white p-3">
+            <div className="rounded-2xl bg-white p-3" role="img" aria-label={t('a11y.qr_pairing', { code: code.code })}>
               <QRCodeSVG value={code.code} size={132} />
             </div>
           </div>

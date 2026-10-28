@@ -11,7 +11,10 @@
     "delete_meal": "Удалить: {{name}}",
     "nav_main": "Разделы приложения",
     "score_before": "Оценка дня",
-    "score_after": "— из чего она складывается"
+    "score_after": "— из чего она складывается",
+    "rest_started": "Отдых {{time}}",
+    "qr_pairing": "QR-код с кодом подключения {{code}}",
+    "qr_token": "QR-код с этим токеном"
   },
   "app": {
     "name": "DisciplineOS",

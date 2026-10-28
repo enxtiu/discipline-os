@@ -11,7 +11,10 @@
     "delete_meal": "Delete: {{name}}",
     "nav_main": "App sections",
     "score_before": "Day score",
-    "score_after": "— what it is made of"
+    "score_after": "— what it is made of",
+    "rest_started": "Rest {{time}}",
+    "qr_pairing": "QR code with the pairing code {{code}}",
+    "qr_token": "QR code with this token"
   },
   "app": {
     "name": "DisciplineOS",

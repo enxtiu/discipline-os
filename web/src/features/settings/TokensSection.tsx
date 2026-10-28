@@ -170,7 +170,7 @@ export function TokensSection() {
               <span className="block break-all font-mono text-xs">{issued.token}</span>
             </Callout>
             <div className="flex justify-center">
-              <div className="rounded-2xl bg-white p-3">
+              <div className="rounded-2xl bg-white p-3" role="img" aria-label={t('a11y.qr_token')}>
                 <QRCodeSVG value={issued.token} size={168} />
               </div>
             </div>

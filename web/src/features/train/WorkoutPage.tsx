@@ -764,9 +764,13 @@ function RestBar({
     onChange({ endsAt: Math.max(Date.now(), rest.endsAt + seconds * 1000), total: Math.max(15, rest.total + seconds) })
 
   return (
-    <div className="fixed inset-x-0 z-30 px-4 above-tabbar" role="timer" aria-live="polite" data-testid="rest-timer">
+    <div className="fixed inset-x-0 z-30 px-4 above-tabbar" data-testid="rest-timer">
+      {/* announced when the rest starts, changes length and ends — never every second */}
+      <p className="sr-only" role="status" aria-live="polite">
+        {left > 0 ? t('a11y.rest_started', { time: clock(rest.total) }) : t('train.rest_over')}
+      </p>
       <div className="mx-auto flex max-w-lg items-center gap-2 rounded-2xl border border-[rgb(var(--border))] bg-[rgb(var(--bg-elevated))]/95 p-2 pl-4 shadow-card backdrop-blur-xl">
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1" role="timer" aria-live="off">
           <p className="text-xs muted">{left > 0 ? t('train.rest') : t('train.rest_over')}</p>
           <p className="tnum text-xl font-semibold">{clock(Math.max(0, left))}</p>
           <div className="mt-1 h-1 overflow-hidden rounded-full bg-[rgb(var(--border))]">

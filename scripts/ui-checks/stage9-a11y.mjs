@@ -272,6 +272,20 @@ export async function run(ctx) {
             overridden.push({ selector: window.__a11yDescribe(el), name: window.__a11yName(el), role })
           }
         }
+        // a chart or other drawing (an svg with several shapes) is either hidden from screen
+        // readers (decoration, icons) or inside a named role="img" — its text alternative
+        const unnamedGraphics = []
+        for (const svg of root.querySelectorAll('svg')) {
+          if (scope !== 'dialog' && dialogs.some((dialog) => dialog.contains(svg))) continue
+          if (svg.closest('[aria-hidden="true"]')) continue
+          if (svg.querySelectorAll('path, rect, circle, line, polyline, polygon, ellipse').length < 3) continue
+          const box = svg.getBoundingClientRect()
+          if (box.width < 2 || box.height < 2) continue
+          const named = svg.closest('[role="img"][aria-label], [role="img"][aria-labelledby]')
+          if (!named || !(named.getAttribute('aria-label') || named.getAttribute('aria-labelledby'))) {
+            unnamedGraphics.push({ selector: window.__a11yDescribe(svg), name: `${Math.round(box.width)}×${Math.round(box.height)}` })
+          }
+        }
         // pinch-zoom is allowed, so iOS Safari zooms into any text field under 16 px on focus
         const tinyFields = []
         for (const el of root.querySelectorAll('input, textarea, select')) {
@@ -282,7 +296,7 @@ export async function run(ctx) {
           const size = parseFloat(getComputedStyle(el).fontSize)
           if (size < 16) tinyFields.push({ selector: window.__a11yDescribe(el), name: window.__a11yName(el), size: `${size}px` })
         }
-        return { small, excepted, tinyFields, overridden }
+        return { small, excepted, tinyFields, overridden, unnamedGraphics }
       },
       { scope, min: MIN_TARGET, exceptions: TARGET_EXCEPTIONS },
     )
@@ -326,6 +340,12 @@ export async function run(ctx) {
           bad(
             `a11y ${name}: text fields are at least 16 px (no zoom on focus)`,
             measured.tinyFields.slice(0, 4).map((entry) => `${entry.selector} ${entry.size}`).join(' | '),
+          )
+        }
+        if (measured.unnamedGraphics.length) {
+          bad(
+            `a11y ${name}: every chart or drawing has a text alternative`,
+            measured.unnamedGraphics.slice(0, 4).map((entry) => `${entry.selector} ${entry.name}`).join(' | '),
           )
         }
         if (measured.overridden.length) {
@@ -769,6 +789,54 @@ export async function run(ctx) {
       await pairing.waitForTimeout(1500)
     })
     await fresh.close()
+
+    // ---------------------------------------------------------------------- //
+    // 1b. live regions stay quiet unless something happened (timers tick silently)
+    // ---------------------------------------------------------------------- //
+    /** Text of every live region, keyed by element; a region that changes on every sample ticks aloud. */
+    const sampleLive = () =>
+      page.evaluate(() => {
+        window.__a11yLive ??= new Map()
+        const regions = document.querySelectorAll('[aria-live="polite"], [aria-live="assertive"], [role="status"], [role="alert"], [role="log"]')
+        for (const el of regions) {
+          if (el.getAttribute('aria-live') === 'off') continue
+          const entry = window.__a11yLive.get(el) ?? { texts: [], selector: window.__a11yDescribe?.(el) ?? el.tagName }
+          entry.texts.push((el.textContent ?? '').trim())
+          window.__a11yLive.set(el, entry)
+        }
+      })
+    const chattyRegions = () =>
+      page.evaluate(() => {
+        const out = []
+        for (const entry of window.__a11yLive?.values() ?? []) {
+          let changes = 0
+          for (let index = 1; index < entry.texts.length; index += 1) if (entry.texts[index] !== entry.texts[index - 1]) changes += 1
+          if (changes >= 3) out.push(`${entry.selector}: «${entry.texts.slice(-2).join('» → «')}»`)
+        }
+        window.__a11yLive = new Map()
+        return out
+      })
+    const quietFor = async (label, open) => {
+      try {
+        await open()
+        await settle(600)
+        await inject()
+        for (let sample = 0; sample < 5; sample += 1) {
+          await sampleLive()
+          await page.waitForTimeout(1050)
+        }
+        const chatty = await chattyRegions()
+        check(chatty.length === 0, `live regions on ${label} do not re-announce on their own (running timers tick silently)`, chatty.slice(0, 3).join(' | '))
+      } catch (error) {
+        bad(`live regions on ${label}`, String(error?.message ?? error).split('\n')[0])
+      }
+    }
+    await quietFor('Today with a running timer', () => goto('/today', '[data-testid="timer-bar"]'))
+    await quietFor('a live workout during a rest', async () => {
+      await goto(`/train/workout/${liveWorkout}`, '[data-testid="workout-exercise"]')
+      await page.locator('[data-testid="save-set"]').first().click()
+      await page.locator('[data-testid="rest-timer"]').waitFor({ timeout: 8000 })
+    })
 
     // ---------------------------------------------------------------------- //
     // 2. keyboard pass
