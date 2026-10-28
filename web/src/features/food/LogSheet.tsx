@@ -16,7 +16,6 @@ import { errorMessage } from '@/lib/errors'
 import { guessMealType } from './mealType'
 import { macrosFor, useLogMeal } from './useNutrition'
 import { VerifyNote } from './VerifyFood'
-import { guessMealType } from './mealType'
 
 export type LogTarget = { kind: 'food'; food: Food } | { kind: 'recipe'; recipe: Recipe }
 
