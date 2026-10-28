@@ -57,7 +57,7 @@ export function ThemeSection() {
 
   return (
     <div className="space-y-5 pb-6" data-testid="theme-section" data-skin={appearance.skin}>
-      <h1 className="h1">{t('look.title')}</h1>
+      <h1 className="h1 sk-settings-title">{t('look.title')}</h1>
 
       <Preview />
 

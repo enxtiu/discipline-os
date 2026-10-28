@@ -2195,5 +2195,33 @@
       "disconnect_confirm": "Отключить",
       "disconnected_toast": "Notion отключён. Данные в Notion остались."
     }
+  },
+  "board": {
+    "day_group": "Выбор дня",
+    "day_prev": "Предыдущий день",
+    "day_next": "Следующий день",
+    "day_today": "сегодня",
+    "totals": "Итог дня: калории и БЖУ",
+    "add_to": {
+      "breakfast": "Добавить в завтрак",
+      "lunch": "Добавить в обед",
+      "dinner": "Добавить в ужин",
+      "snack": "Добавить в перекус",
+      "other": "Добавить в «Другое»"
+    },
+    "ai": "ИИ",
+    "recents_title": "Недавнее · запись в одно касание",
+    "recent_again": "Записать снова:",
+    "plan_tag": "по плану: {{name}}",
+    "plan_label": "Сегодня по плану",
+    "exercises": "Упражнения",
+    "sets_reps": "{{sets}}×{{reps}}",
+    "sets_reps_kg": "{{sets}}×{{reps}} · {{kg}} кг",
+    "week_range": "{{from}} – {{to}}",
+    "left": "Осталось {{kcal}}",
+    "plaque_week": "+{{xp}} XP за неделю",
+    "plaque_today": "+{{xp}} XP сегодня",
+    "plaque_to": "до {{level}} · {{title}}",
+    "plaque_today_short": "+{{xp}} сегодня"
   }
 }

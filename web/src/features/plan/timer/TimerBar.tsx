@@ -101,7 +101,7 @@ export function TimerBar({ variant = 'plan' }: { variant?: 'plan' | 'today' }) {
         <button
           type="button"
           onClick={() => show('start')}
-          className="flex min-h-tap w-full items-center gap-2 rounded-2xl border border-dashed border-[rgb(var(--border))] px-4 text-sm font-medium text-[rgb(var(--text-muted))] transition-colors active:bg-[rgb(var(--border))]/40"
+          className="sk-timer-idle flex min-h-tap w-full items-center gap-2 rounded-2xl border border-dashed border-[rgb(var(--border))] px-4 text-sm font-medium text-[rgb(var(--text-muted))] transition-colors active:bg-[rgb(var(--border))]/40"
           data-testid="timer-start"
         >
           <IconPlay size={18} className="text-[rgb(var(--accent))]" />
@@ -117,7 +117,7 @@ export function TimerBar({ variant = 'plan' }: { variant?: 'plan' | 'today' }) {
 
   return (
     <div className="space-y-1.5" data-testid="timer-bar" data-entry-id={running.entry.id}>
-      <div className={clsx('card flex items-center gap-1 py-1 pl-1 pr-1.5', long ? 'shadow-glow-amber' : 'glow-accent')}>
+      <div className={clsx('card sk-timer flex items-center gap-1 py-1 pl-1 pr-1.5', long ? 'shadow-glow-amber' : 'glow-accent')}>
         <button
           type="button"
           onClick={() => navigate('/plan/time')}
@@ -153,7 +153,7 @@ export function TimerBar({ variant = 'plan' }: { variant?: 'plan' | 'today' }) {
           label={t('timer.stop')}
           icon={<IconStop size={22} />}
           variant="secondary"
-          className="shrink-0"
+          className="sk-timer-stop shrink-0"
           disabled={stopping}
           onClick={() => void onStop()}
           data-testid="timer-stop"

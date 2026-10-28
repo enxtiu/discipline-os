@@ -11,6 +11,7 @@ import clsx from 'clsx'
 
 import { IconButton } from '@/components/ui'
 import { IconPlus, IconSearch } from '@/components/ui/icons'
+import { PageActions } from '@/components/layout/headerSlot'
 import { TimerBar } from './timer/TimerBar'
 import { quickAdd } from './events'
 import { useCounts } from './queries'
@@ -63,7 +64,8 @@ export function PlanLayout() {
   return (
     <div className="space-y-4">
       <header className="flex items-center justify-between gap-3">
-        <h1 className="h1">{t('plan.title')}</h1>
+        <h1 className="h1 sk-h1">{t('plan.title')}</h1>
+        <PageActions>
         <div className="flex items-center gap-2">
           <IconButton
             label={t('plan.search')}
@@ -71,8 +73,9 @@ export function PlanLayout() {
             variant="secondary"
             onClick={() => navigate('/plan/search')}
           />
-          <IconButton label={t('plan.add_task')} icon={<IconPlus size={22} />} variant="primary" onClick={() => quickAdd()} />
+          <IconButton label={t('plan.add_task')} icon={<IconPlus size={22} />} variant="primary" className="sk-new" onClick={() => quickAdd()} />
         </div>
+        </PageActions>
       </header>
 
       <TimerBar />

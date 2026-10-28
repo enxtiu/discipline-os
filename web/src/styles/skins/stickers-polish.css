@@ -1,0 +1,766 @@
+/* ==========================================================================
+   Theme F «Наклейки» — the polish against the final boards (Ffin-Food · -Stats · -Train ·
+   -Plan · -Add · -Theme), on top of stickers.css. Same scope (:root[data-skin='stickers']),
+   same tokens; its own file so it merges next to the Сегодня work without touching it.
+   ========================================================================== */
+/* ---- the header row: the tab's title beside sync and settings ------------------ */
+:root[data-skin='stickers'] .sk-header {
+  padding-bottom: 6px;
+}
+:root[data-skin='stickers'] .sk-header > div {
+  gap: 10px;
+  padding-top: max(env(safe-area-inset-top, 0px), 12px);
+  padding-right: 1.25rem;
+  padding-bottom: 0;
+  padding-left: 1.25rem;
+}
+:root[data-skin='stickers'] main {
+  padding-right: 1.25rem;
+  padding-left: 1.25rem;
+}
+:root[data-skin='stickers']:has(.sk-title) main {
+  padding-top: 0.25rem;
+}
+:root[data-skin='stickers'] .sk-title {
+  font-size: 1.875rem;
+  line-height: 2.25rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: rgb(var(--text));
+}
+/* Статистика has three buttons beside the title: a size down, as the board (28 px) */
+:root[data-skin='stickers'] .sk-title[data-tab='nav.stats'] {
+  font-size: 1.75rem;
+}
+:root[data-skin='stickers'][data-text='large'] .sk-title[data-tab='nav.stats'] {
+  font-size: 1.5rem;
+}
+/* the page's own h1 stays for screen readers; the header shows the title */
+:root[data-skin='stickers'] .sk-h1 {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+:root[data-skin='stickers'] header:has(> .sk-h1) + * {
+  margin-top: 0 !important;
+}
+/* scrolled content stops at the header's shadow edge, not under the buttons */
+:root[data-skin='stickers'] .sk-header {
+  box-shadow: none;
+}
+
+/* ---- small labels (day tag, kcal tag, AI tag, counts) --------------------------- */
+:root[data-skin='stickers'] .sk-label-xs {
+  padding: 2px 7px;
+  border-radius: 8px;
+  background-color: rgb(var(--sk-lemon));
+  box-shadow: 2px 2px 0 #111111;
+  font-size: 0.75rem;
+  line-height: 1rem;
+}
+:root[data-skin='stickers'] .sk-label-sm {
+  padding: 2px 8px;
+  border-radius: 8px;
+  background-color: rgb(var(--sk-lemon));
+  font-size: 0.875rem;
+  line-height: 1.125rem;
+}
+:root[data-skin='stickers'] .sk-ai-tag {
+  position: absolute;
+  top: -9px;
+  right: -6px;
+  padding: 1px 5px;
+  border: 2px solid #111111;
+  border-radius: 6px;
+  background-color: rgb(var(--sk-lemon));
+  color: #111111;
+  box-shadow: 2px 2px 0 #111111;
+  font-size: 0.6875rem;
+  line-height: 13px;
+  font-weight: 800;
+  rotate: 3deg;
+}
+:root[data-skin='stickers'] .sk-capture > :nth-child(2) .sk-ai-tag,
+:root[data-skin='stickers'] .sk-qa-text .sk-ai-tag {
+  rotate: -2deg;
+}
+:root[data-skin='stickers'][data-tilt='off'] .sk-ai-tag,
+:root[data-skin='stickers'][data-motion='reduce'] .sk-ai-tag {
+  rotate: none;
+}
+
+/* ---- Питание ------------------------------------------------------------------ */
+:root[data-skin='stickers'] .sk-food {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+:root[data-skin='stickers'] .sk-meals {
+  order: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+:root[data-skin='stickers'] .sk-meals > * {
+  margin-top: 0;
+}
+:root[data-skin='stickers'] .sk-recents {
+  order: 2;
+}
+:root[data-skin='stickers'] .sk-favs {
+  order: 3;
+}
+:root[data-skin='stickers'] .sk-recipes {
+  order: 4;
+}
+:root[data-skin='stickers'] .sk-food-actions {
+  order: 5;
+}
+:root[data-skin='stickers'] .sk-food > p:last-child {
+  order: 6;
+}
+:root[data-skin='stickers'] .sk-dayswitch .sk-day-label {
+  white-space: nowrap;
+}
+/* the capture row: three stickers in one line, as the board */
+:root[data-skin='stickers'] .sk-capture {
+  grid-template-columns: 1fr 1fr 1.4fr;
+  gap: 10px;
+  margin-top: 2px;
+}
+:root[data-skin='stickers'] .sk-capture > * {
+  flex-direction: row;
+  height: 48px;
+  min-height: 48px;
+  padding: 0 6px;
+  gap: 6px;
+  font-size: 0.9375rem;
+  white-space: nowrap;
+}
+:root[data-skin='stickers'] .sk-totals {
+  padding: 10px 12px 12px 14px;
+}
+:root[data-skin='stickers'] .sk-totals-value {
+  font-size: 2.375rem;
+  line-height: 2.5rem;
+  font-weight: 800;
+}
+:root[data-skin='stickers'] .sk-totals .sk-bar-hero {
+  height: 18px;
+}
+:root[data-skin='stickers'] .sk-totals .sk-bar-mini {
+  height: 10px;
+  border-width: 2px;
+}
+:root[data-skin='stickers'] .sk-totals [data-cat-bar='protein'] .sk-bar-fill {
+  background-color: rgb(var(--sk-lavender));
+}
+:root[data-skin='stickers'] .sk-totals [data-cat-bar='fat'] .sk-bar-fill {
+  background-color: rgb(var(--sk-lemon));
+}
+:root[data-skin='stickers'] .sk-totals [data-cat-bar='carbs'] .sk-bar-fill {
+  background-color: rgb(var(--sk-sky));
+}
+:root[data-skin='stickers'] .sk-totals [data-cat-bar='fibre'] .sk-bar-fill {
+  background-color: rgb(var(--sk-mint));
+}
+:root[data-skin='stickers'] .sk-meal {
+  padding: 2px 6px 10px 14px;
+}
+:root[data-skin='stickers'] .sk-meal-head {
+  min-height: 48px;
+}
+:root[data-skin='stickers'] .sk-meal-add {
+  display: flex;
+  height: 48px;
+  width: 48px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+}
+:root[data-skin='stickers'] .sk-meal-add > span {
+  display: flex;
+  height: 38px;
+  width: 38px;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid rgb(var(--ink));
+  border-radius: 11px;
+  background-color: rgb(var(--bg-elevated));
+  box-shadow: var(--sk-shadow-2);
+}
+:root[data-skin='stickers'] .sk-meal-row + .sk-meal-row {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 2px dashed rgb(var(--ink));
+}
+:root[data-skin='stickers'] .sk-meal-row .sk-meal-del {
+  margin-top: -8px;
+}
+
+/* ---- Статистика ----------------------------------------------------------------- */
+:root[data-skin='stickers'] .btn-secondary.sk-achv {
+  width: 48px;
+  height: 48px;
+  min-height: 48px;
+  padding: 0;
+  border-radius: var(--sk-radius-control);
+  background-color: rgb(var(--sk-lavender));
+  color: #111111;
+}
+:root[data-skin='stickers'] .sk-achv-text {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+:root[data-skin='stickers'] .sk-tile.sk-plaque-board {
+  position: relative;
+  margin-top: 0.75rem !important;
+  padding: 12px 14px 11px;
+}
+:root[data-skin='stickers'] .sk-plaque-board .sk-medal-big {
+  position: absolute;
+  top: -10px;
+  left: 12px;
+  margin: 0;
+  height: 76px;
+  width: 76px;
+}
+:root[data-skin='stickers'] .sk-plaque-head {
+  display: flex;
+  min-height: 64px;
+  margin-left: 86px;
+  flex-direction: column;
+  gap: 1px;
+}
+:root[data-skin='stickers'] .sk-plaque-head > h2,
+:root[data-skin='stickers'] .sk-plaque-head > p {
+  padding-right: 88px;
+}
+:root[data-skin='stickers'] .sk-plaque-stickers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+:root[data-skin='stickers'] .sk-plaque-board .sk-cell {
+  padding: 2px 6px;
+  border: 2px solid #111111;
+  border-radius: 8px;
+  background-color: #ffffff;
+  color: #111111;
+  box-shadow: 2px 2px 0 #111111;
+  font-size: 0.6875rem;
+  line-height: 0.875rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+:root[data-skin='stickers'] .sk-plaque-board .sk-cell-week {
+  background-color: rgb(var(--sk-mint));
+}
+:root[data-skin='stickers'] .sk-plaque-board .sk-cell-streak {
+  position: absolute;
+  top: 6px;
+  right: 12px;
+  display: flex;
+  flex-direction: column;
+  padding: 3px 8px;
+  border-radius: 10px;
+  background-color: rgb(var(--sk-tomato));
+  box-shadow: inset 0 0 0 2px #ffffff, var(--sk-shadow-3);
+  font-size: 0.875rem;
+  line-height: 1.125rem;
+}
+:root[data-skin='stickers'][data-theme='dark'] .sk-plaque-board .sk-cell {
+  box-shadow: 2px 2px 0 rgb(var(--shade));
+}
+:root[data-skin='stickers'][data-theme='dark'] .sk-plaque-board .sk-cell-streak {
+  border-color: rgb(var(--ink));
+  box-shadow: inset 0 0 0 2px #ffffff, 3px 3px 0 rgb(var(--shade));
+}
+:root[data-skin='stickers'] .sk-tile.sk-plaque-board .sk-bar-big {
+  height: 22px;
+  overflow: hidden;
+}
+:root[data-skin='stickers'] .sk-bar-text {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  transform: translateY(-50%);
+  font-size: 0.75rem;
+  line-height: 1;
+  font-weight: 800;
+  color: #111111;
+  pointer-events: none;
+}
+/* past the half the numbers move onto the fill, so the fill's edge never cuts them */
+:root[data-skin='stickers'] .sk-bar-text[data-side='left'] {
+  right: auto;
+  left: 10px;
+}
+/* night: the track is dark, so the numbers sit on a small white label */
+:root[data-skin='stickers'][data-theme='dark'] .sk-bar-text {
+  right: 5px;
+  padding: 2px 6px;
+  border: 1.5px solid #111111;
+  border-radius: 999px;
+  background-color: #ffffff;
+}
+:root[data-skin='stickers'][data-theme='dark'] .sk-bar-text[data-side='left'] {
+  right: auto;
+  left: 5px;
+}
+/* the calorie card's three figures: flat, as the board (no wells) */
+:root[data-skin='stickers'] .card .sk-stat {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+
+/* ---- Тренировки ------------------------------------------------------------------ */
+:root[data-skin='stickers'] .sk-plancard {
+  position: relative;
+  padding: 10px 14px 12px;
+}
+:root[data-skin='stickers'] .sk-plancard > p:first-child {
+  font-size: 0.8125rem;
+  line-height: 1rem;
+  font-weight: 700;
+  color: #111111;
+}
+:root[data-skin='stickers'] .sk-plan-head h2 {
+  padding-right: 9.5rem;
+  font-size: 1.75rem;
+  line-height: 2rem;
+  font-weight: 800;
+}
+:root[data-skin='stickers'] .sk-plan-head p {
+  position: absolute;
+  top: 8px;
+  right: 14px;
+  width: max-content;
+  max-width: 9rem;
+  white-space: nowrap;
+  padding: 5px 10px;
+  border: 2px solid #111111;
+  border-radius: 10px;
+  background-color: #ffffff;
+  color: #111111;
+  box-shadow: 2px 2px 0 #111111;
+  font-size: 0.8125rem;
+  line-height: 1rem;
+  font-weight: 800;
+}
+:root[data-skin='stickers'] .sk-plan-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 10px 0 0;
+  padding: 6px 10px;
+  border: 2px solid #111111;
+  border-radius: 12px;
+  background-color: #ffffff;
+  color: #111111;
+  list-style: none;
+}
+:root[data-skin='stickers'] .sk-plan-num {
+  display: block;
+  height: 18px;
+  width: 18px;
+  flex: none;
+  border-radius: 999px;
+  background-color: #111111;
+  color: #ffffff;
+  font-size: 0.6875rem;
+  line-height: 18px;
+  font-weight: 800;
+  text-align: center;
+}
+:root[data-skin='stickers'] .sk-plan-actions > :first-child {
+  flex: 1 1 0;
+  width: auto;
+  min-width: 0;
+}
+:root[data-skin='stickers'] .sk-plan-actions > :last-child {
+  flex: none;
+}
+:root[data-skin='stickers'] .sk-week-range {
+  color: rgb(var(--text-muted));
+}
+:root[data-skin='stickers'] .sk-train > h1 + * {
+  margin-top: 0 !important;
+}
+:root[data-skin='stickers'] .sk-train [data-testid='week-strip'] {
+  /* seven cells of at least 48 px in the board's 350 px column: a 3 px gutter, 3 px of margin */
+  margin-right: -3px;
+  margin-left: -3px;
+  gap: 3px;
+}
+:root[data-skin='stickers'] .sk-day {
+  position: relative;
+  min-height: 58px;
+  justify-content: center;
+  gap: 0;
+  padding: 0;
+}
+:root[data-skin='stickers'] .sk-day[data-done] {
+  border-style: solid;
+}
+:root[data-skin='stickers'] .sk-day-wd {
+  font-size: 0.75rem;
+  line-height: 14px;
+  font-weight: 600;
+}
+:root[data-skin='stickers'] .sk-day-n {
+  font-size: 1.125rem;
+  line-height: 20px;
+  font-weight: 800;
+}
+:root[data-skin='stickers'] .sk-day-l {
+  margin-top: 0;
+  padding: 0;
+  font-size: 0.65625rem;
+  line-height: 13px;
+  font-weight: 700;
+}
+:root[data-skin='stickers'] .sk-day[data-rest] .sk-day-l {
+  font-weight: 600;
+}
+/* the burned card: the title, the figure, the note — one under another */
+:root[data-skin='stickers'] .sk-burn-head {
+  flex-direction: column;
+  gap: 2px;
+}
+:root[data-skin='stickers'] .sk-burn-left {
+  display: contents;
+}
+:root[data-skin='stickers'] .sk-burn-title {
+  order: 1;
+}
+:root[data-skin='stickers'] .sk-burn-total {
+  order: 2;
+  text-align: left;
+}
+:root[data-skin='stickers'] .sk-burn-total > p:first-child {
+  font-size: 1.5rem;
+  line-height: 1.75rem;
+  font-weight: 800;
+}
+:root[data-skin='stickers'] .sk-burn-note {
+  order: 3;
+  margin-top: 0;
+}
+:root[data-skin='stickers'] .sk-day-mark {
+  display: none;
+}
+:root[data-skin='stickers'] .sk-day[data-done] .sk-day-mark {
+  position: absolute;
+  top: -7px;
+  right: -6px;
+  display: flex;
+  height: 20px;
+  width: 20px;
+  margin: 0;
+  border: 2px solid #ffffff;
+  border-radius: 999px;
+  background-color: #111111;
+  color: #ffffff;
+}
+:root[data-skin='stickers'] .chart-burn:not([style*='height: 0px']) {
+  border: 2px solid rgb(var(--ink));
+  border-bottom: 0;
+  background-color: rgb(var(--sk-tomato));
+}
+:root[data-skin='stickers'] [data-testid='records-list'] svg {
+  fill: rgb(var(--sk-lavender));
+  stroke: #111111;
+}
+
+/* ---- План ------------------------------------------------------------------------- */
+:root[data-skin='stickers'] .btn-primary.sk-new {
+  background-color: rgb(var(--sk-lemon));
+  color: #111111;
+  box-shadow: var(--sk-shadow-3);
+}
+:root[data-skin='stickers'] .sk-timer {
+  min-height: 52px;
+  border-radius: 16px;
+  border-color: rgb(var(--ink));
+  background-color: #111111;
+  color: #ffffff;
+  box-shadow: 4px 4px 0 rgb(var(--sk-tomato));
+}
+:root[data-skin='stickers'] .sk-timer .muted {
+  color: #d9d7e6;
+}
+:root[data-skin='stickers'] .sk-timer [data-testid='timer-elapsed'] {
+  color: rgb(var(--sk-lemon));
+  font-size: 1.25rem;
+  font-weight: 800;
+}
+:root[data-skin='stickers'] .sk-timer .animate-pulse-soft {
+  background-color: rgb(var(--sk-tomato));
+}
+:root[data-skin='stickers'] .btn-secondary.sk-timer-stop {
+  border-color: #111111;
+  background-color: rgb(var(--sk-tomato));
+  color: #111111;
+  box-shadow: none;
+}
+:root[data-skin='stickers'] .sk-timer-idle {
+  border: 2px dashed rgb(var(--ink));
+  border-radius: 16px;
+  color: rgb(var(--text));
+  font-weight: 700;
+}
+:root[data-skin='stickers'] .sk-datehead {
+  padding-left: 0;
+  font-size: 1.125rem;
+  line-height: 1.375rem;
+  font-weight: 800;
+  color: rgb(var(--text));
+}
+:root[data-skin='stickers'] .sk-grp-title {
+  font-size: 1rem;
+  line-height: 1.25rem;
+  font-weight: 700;
+  color: rgb(var(--text));
+}
+:root[data-skin='stickers'] .sk-count {
+  padding: 1px 7px;
+  border: 2px solid #111111;
+  border-radius: 8px;
+  background-color: #ffffff;
+  color: #111111;
+  box-shadow: 2px 2px 0 #111111;
+  font-size: 0.8125rem;
+  line-height: 1rem;
+  font-weight: 800;
+}
+:root[data-skin='stickers'] .sk-count[data-tone='danger'] {
+  background-color: rgb(var(--sk-tomato));
+}
+:root[data-skin='stickers'] .sk-count[data-tone='accent'] {
+  background-color: rgb(var(--sk-mint));
+}
+:root[data-skin='stickers'] .sk-grp-head .btn-secondary {
+  padding-right: 10px;
+  padding-left: 10px;
+  font-size: 0.8125rem;
+}
+:root[data-skin='stickers'] .sk-collapse {
+  width: max-content;
+  max-width: 100%;
+  min-height: 48px;
+  margin-left: 0;
+  padding: 0 12px 0 14px;
+  border: 2px solid rgb(var(--ink));
+  border-radius: 14px;
+  background-color: rgb(var(--bg-elevated));
+  box-shadow: var(--sk-shadow);
+  font-size: 0.9375rem;
+}
+:root[data-skin='stickers'] .sk-collapse > svg {
+  order: 3;
+  margin-left: 8px;
+}
+:root[data-skin='stickers'] .sk-collapse .sk-grp-title {
+  font-size: 0.9375rem;
+}
+:root[data-skin='stickers'] button[role='checkbox'] > span {
+  border-color: rgb(var(--ink));
+}
+:root[data-skin='stickers'] .sk-prio {
+  flex: none;
+  margin-right: 12px;
+  padding: 1px 6px;
+  border: 2px solid #111111;
+  border-radius: 8px;
+  background-color: #ffffff;
+  color: #111111;
+  box-shadow: 2px 2px 0 #111111;
+  font-size: 0.75rem;
+  line-height: 15px;
+  font-weight: 800;
+}
+:root[data-skin='stickers'] .sk-prio[data-p='1'] {
+  background-color: rgb(var(--sk-tomato));
+  box-shadow: inset 0 0 0 2px #ffffff, 2px 2px 0 #111111;
+}
+:root[data-skin='stickers'] .sk-prio[data-p='2'] {
+  background-color: rgb(var(--sk-lemon));
+}
+:root[data-skin='stickers'] .sk-prio[data-p='3'] {
+  background-color: rgb(var(--sk-sky));
+  box-shadow: none;
+}
+
+/* ---- the quick add (a dialog) -------------------------------------------------------- */
+:root[data-skin='stickers'] .sk-qa-grid {
+  padding-top: 12px;
+}
+:root[data-skin='stickers'] .sk-qa-photo {
+  order: 1;
+}
+:root[data-skin='stickers'] .sk-qa-text {
+  order: 2;
+}
+:root[data-skin='stickers'] .sk-qa-barcode {
+  order: 3;
+}
+:root[data-skin='stickers'] .sk-qa-search {
+  order: 4;
+}
+:root[data-skin='stickers'] .sk-qa-water {
+  order: 5;
+}
+:root[data-skin='stickers'] .sk-qa-steps {
+  order: 6;
+}
+:root[data-skin='stickers'] .sk-qa-workout {
+  order: 7;
+  grid-column: 1 / -1;
+}
+:root[data-skin='stickers'] .sk-qa-task {
+  order: 8;
+}
+:root[data-skin='stickers'] .sk-qa-review {
+  order: 9;
+}
+:root[data-skin='stickers'] .sk-qa .sk-ai-tag {
+  right: 12px;
+  font-size: 0.75rem;
+  line-height: 14px;
+  padding: 1px 6px;
+}
+:root[data-skin='stickers'] .sk-qa-tag {
+  margin-left: auto;
+  padding: 1px 7px;
+  border: 2px solid rgb(var(--ink));
+  border-radius: 7px;
+  background-color: rgb(var(--bg-elevated));
+  color: rgb(var(--text-muted));
+  font-size: 0.75rem;
+  line-height: 15px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+:root[data-skin='stickers'] .sk-recent-block {
+  margin-top: 14px;
+}
+:root[data-skin='stickers'] .sk-recent-title {
+  margin-bottom: 8px;
+  font-size: 0.8125rem;
+  line-height: 1rem;
+  font-weight: 700;
+  color: rgb(var(--text-muted));
+}
+:root[data-skin='stickers'] .sk-recent-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  padding-bottom: 8px;
+}
+:root[data-skin='stickers'] .sk-recent {
+  display: flex;
+  min-height: 66px;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 6px 7px 6px 10px;
+  border: 2px solid rgb(var(--ink));
+  border-radius: 14px;
+  background-color: rgb(var(--bg-elevated));
+  color: rgb(var(--text));
+  box-shadow: var(--sk-shadow-3);
+  text-align: left;
+}
+:root[data-skin='stickers'] .sk-recent-name {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-size: 0.8125rem;
+  line-height: 15px;
+  font-weight: 700;
+}
+:root[data-skin='stickers'] .sk-recent-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  line-height: 15px;
+  font-weight: 700;
+  color: rgb(var(--text-muted));
+}
+:root[data-skin='stickers'] .sk-recent-plus {
+  display: flex;
+  height: 20px;
+  width: 20px;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #111111;
+  border-radius: 999px;
+  background-color: rgb(var(--sk-lemon));
+  color: #111111;
+}
+
+/* ---- Настройки → Оформление: the back button and the title share one row ------------------ */
+:root[data-skin='stickers'] .sk-sh {
+  height: 48px;
+}
+:root[data-skin='stickers'] .sk-sh .btn-secondary {
+  height: 48px;
+  min-height: 48px;
+  width: 48px;
+  border-radius: var(--sk-radius-control);
+}
+/* the title row of the other settings pages keeps its «Настройки» label; Оформление's own
+   title takes that row */
+:root[data-skin='stickers'] main:has(.sk-settings-title) .sk-sh-title {
+  display: none;
+}
+/* a segmented control beside a row's label (units, week start): a size down, so the label keeps its room */
+:root[data-skin='stickers'] .divide-y .segmented > button {
+  padding-right: 4px;
+  padding-left: 4px;
+  font-size: 0.75rem;
+}
+:root[data-skin='stickers'] .sk-settings-title {
+  position: relative;
+  margin-top: -52px;
+  margin-left: 60px;
+  font-size: 1.625rem;
+  line-height: 2rem;
+}
+
+/* ---- tilt for the labels the polish added (badges only) ---------------------------------------- */
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-skin='stickers'][data-tilt='on'][data-motion='full'] .sk-plan-head p {
+    rotate: 2deg;
+  }
+}
+
+/* ---- night: a sticker inside a bright tile keeps its #111 outline (the board's «Осталось», bars,
+   buttons are outlined in K on the lemon, mint, tomato, lavender, sky tiles); the tile's own
+   outline stays #F5F3FF ---------------------------------------------------------------------- */
+:root[data-skin='stickers'][data-theme='dark'] .sk-tile:is([data-cat='kcal'], [data-cat='water'], [data-cat='steps'], [data-cat='streak'], [data-cat='score']) {
+  --ink: 17 17 17;
+  border-color: #f5f3ff;
+}
+
+/* large text: the plan's four views share the 350 px column of the board */
+:root[data-skin='stickers'][data-text='large'] .segmented > a {
+  padding-right: 3px;
+  padding-left: 3px;
+  font-size: 13px;
+}

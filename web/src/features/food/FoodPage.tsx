@@ -22,7 +22,8 @@ import {
 } from '@/components/ui/icons'
 import { useToast } from '@/components/ui/Toast'
 import type { Food, MealLog, MealType, Recipe } from '@/api/types'
-import { number, time } from '@/lib/format'
+import { addDays, number, time, today as isoToday } from '@/lib/format'
+import { useSkinTraits } from '@/lib/appearance'
 import { errorMessage } from '@/lib/errors'
 import { useAuth } from '@/features/auth/AuthProvider'
 import { CustomFoodSheet } from './CustomFoodSheet'
@@ -41,6 +42,7 @@ import {
   useUpdateRecipe,
 } from './useNutrition'
 import { VerifyChip } from './VerifyFood'
+import { DaySwitch, DayTotals, MealCard } from './FoodBoard'
 import { PhotoTrigger, useAiCapture } from '@/features/ai/AiCapture'
 
 const MEAL_ORDER: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack', 'other']
@@ -56,12 +58,17 @@ export function FoodPage() {
   const [target, setTarget] = useState<LogTarget | null>(null)
   // stage 10: «Добавить» in Сегодня's «План дня» searches for one meal (?action=search&meal=dinner)
   const [mealFor, setMealFor] = useState<MealType | undefined>(undefined)
+  // stage 10 (a theme trait): the day switch, the day totals, the meal cards, the ИИ tags
+  const { boardContent } = useSkinTraits()
+  const [dayShift, setDayShift] = useState(0)
+  const [mealHint, setMealHint] = useState<MealType | undefined>(undefined)
   const [recipeSheet, setRecipeSheet] = useState(false)
   const [customSheet, setCustomSheet] = useState(false)
   const searchRef = useRef<HTMLInputElement>(null)
 
   // stage 9: the server's day plus meals still waiting in the offline queue
-  const day = useDayView()
+  const viewDay = addDays(isoToday(), dayShift)
+  const day = useDayView(dayShift === 0 ? undefined : viewDay)
   const pendingIds = day.pendingIds
   const recents = useRecents()
   const favorites = useFavorites()
@@ -122,17 +129,49 @@ export function FoodPage() {
     return grouped
   }, [day.data])
 
+  const removeMeal = (meal: MealLog) =>
+    deleteMeal.mutate(meal.id, {
+      onSuccess: (result) => {
+        if (result.withdrawn) toast.info(t('sync.meal_discarded'))
+        else if (result.queued) toast.info(t('sync.queued'))
+      },
+      onError: (error) => toast.error(errorMessage(error)),
+    })
+  const addToMeal = (type: MealType) => {
+    setMealHint(type)
+    searchRef.current?.focus()
+  }
+  const aiTag = boardContent ? (
+    <span className="sk-ai-tag" aria-hidden="true">
+      {t('board.ai')}
+    </span>
+  ) : null
+
   return (
-    <div className="space-y-5">
+    <div className={boardContent ? 'sk-food' : 'space-y-5'}>
       <h1 className="sr-only">{t('food.title')}</h1>
-      <div className="grid grid-cols-3 gap-2" role="group" aria-label={t('ai.capture_row')}>
-        <PhotoTrigger className="sk-ai btn-secondary btn-sm min-h-tap cursor-pointer flex-col gap-1 py-2 text-xs">
+      {boardContent && (
+        <>
+          <DaySwitch
+            day={viewDay}
+            isToday={dayShift === 0}
+            canNext={dayShift < 0}
+            onPrev={() => setDayShift((value) => value - 1)}
+            onNext={() => setDayShift((value) => Math.min(0, value + 1))}
+          />
+          <DayTotals day={day.data} targets={session?.targets as Record<string, number | null> | undefined} />
+        </>
+      )}
+      <div className="sk-capture grid grid-cols-3 gap-2" role="group" aria-label={t('ai.capture_row')}>
+        <PhotoTrigger className="sk-ai btn-secondary btn-sm min-h-tap relative cursor-pointer flex-col gap-1 py-2 text-xs">
           <IconCamera size={20} className="text-[rgb(var(--accent))]" />
           {t('food.photo')}
+          {aiTag}
         </PhotoTrigger>
-        <button type="button" onClick={capture.openText} className="sk-ai btn-secondary btn-sm min-h-tap flex-col gap-1 py-2 text-xs">
+        <button type="button" onClick={capture.openText} className="sk-ai btn-secondary btn-sm min-h-tap relative flex-col gap-1 py-2 text-xs">
           <IconText size={20} className="text-[rgb(var(--accent))]" />
           {t('food.text')}
+          {aiTag}
         </button>
         <button type="button" onClick={capture.openBarcode} className="btn-secondary btn-sm min-h-tap flex-col gap-1 py-2 text-xs">
           <IconScan size={20} className="text-[rgb(var(--accent))]" />
@@ -150,6 +189,9 @@ export function FoodPage() {
           aria-label={t('food.search')}
           className="pl-10"
           autoComplete="off"
+          onBlur={() => {
+            if (!query) setMealHint(undefined)
+          }}
         />
       </div>
 
@@ -203,7 +245,7 @@ export function FoodPage() {
       ) : (
         <>
           {recents.data && recents.data.items.length > 0 && (
-            <section className="space-y-2">
+            <section className="sk-recents space-y-2">
               <p className="label flex items-center gap-1.5">
                 <IconClock size={13} /> {t('food.recents')}
               </p>
@@ -234,7 +276,7 @@ export function FoodPage() {
           )}
 
           {favorites.data && favorites.data.length > 0 && (
-            <section className="space-y-2">
+            <section className="sk-favs space-y-2">
               <p className="label flex items-center gap-1.5">
                 <IconStar size={13} /> {t('food.favorites')}
               </p>
@@ -253,17 +295,34 @@ export function FoodPage() {
             </section>
           )}
 
-          <section className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h2 className="h2">{t('today.title')}</h2>
-              <span className="tnum text-sm muted">
-                {number(day.data?.totals.kcal ?? 0)} {t('common.kcal')}
-              </span>
-            </div>
+          <section className="sk-meals space-y-3">
+            {!boardContent && (
+              <div className="flex items-center justify-between">
+                <h2 className="h2">{t('today.title')}</h2>
+                <span className="tnum text-sm muted">
+                  {number(day.data?.totals.kcal ?? 0)} {t('common.kcal')}
+                </span>
+              </div>
+            )}
 
             {day.isLoading && <Skeleton className="h-24 rounded-2xl" />}
 
-            {MEAL_ORDER.filter((type) => mealsByType.has(type)).map((type) => (
+            {boardContent &&
+              MEAL_ORDER.filter((type) => mealsByType.has(type)).map((type, index) => (
+                <MealCard
+                  key={type}
+                  type={type}
+                  meals={mealsByType.get(type) ?? []}
+                  index={index}
+                  timezone={session?.settings.timezone}
+                  pendingIds={pendingIds}
+                  canAdd={dayShift === 0}
+                  onAdd={() => addToMeal(type)}
+                  onDelete={removeMeal}
+                />
+              ))}
+
+            {!boardContent && MEAL_ORDER.filter((type) => mealsByType.has(type)).map((type) => (
               <Card key={type} className="space-y-2">
                 <div className="flex items-center justify-between">
                   <p className="label">{t(`meal.${type}`)}</p>
@@ -300,15 +359,7 @@ export function FoodPage() {
                       type="button"
                       className="-my-2 -mr-3 flex h-tap w-tap shrink-0 items-center justify-center rounded-2xl muted"
                       aria-label={t('a11y.delete_meal', { name: (meal.items ?? []).map((item) => item.name).join(', ') })}
-                      onClick={() =>
-                        deleteMeal.mutate(meal.id, {
-                          onSuccess: (result) => {
-                            if (result.withdrawn) toast.info(t('sync.meal_discarded'))
-                            else if (result.queued) toast.info(t('sync.queued'))
-                          },
-                          onError: (error) => toast.error(errorMessage(error)),
-                        })
-                      }
+                      onClick={() => removeMeal(meal)}
                       data-testid="meal-delete"
                     >
                       <IconTrash size={16} />
@@ -332,7 +383,7 @@ export function FoodPage() {
             )}
           </section>
 
-          <section className="space-y-3">
+          <section className="sk-recipes space-y-3">
             <div className="flex items-center justify-between">
               <h2 className="h2">{t('food.recipes')}</h2>
               <Button size="sm" variant="secondary" icon={<IconPlus size={14} />} onClick={() => setRecipeSheet(true)}>
@@ -388,7 +439,7 @@ export function FoodPage() {
             )}
           </section>
 
-          <div className="flex gap-2">
+          <div className="sk-food-actions flex gap-2">
             <Button variant="secondary" size="sm" icon={<IconPlus size={14} />} onClick={() => setCustomSheet(true)}>
               {t('food.custom_title')}
             </Button>
@@ -405,7 +456,14 @@ export function FoodPage() {
         </>
       )}
 
-      <LogSheet target={target} onClose={() => setTarget(null)} defaultMealType={mealFor} />
+      <LogSheet
+        target={target}
+        defaultMealType={mealHint ?? mealFor}
+        onClose={() => {
+          setTarget(null)
+          setMealHint(undefined)
+        }}
+      />
       <RecipeSheet open={recipeSheet} onClose={() => setRecipeSheet(false)} />
       <CustomFoodSheet open={customSheet} onClose={() => setCustomSheet(false)} />
     </div>
