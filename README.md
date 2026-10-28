@@ -240,6 +240,15 @@ Stage 7 adds two jobs (no settings): `dispatch_notifications` every minute and
 `plan_daily_reminders` every 15 minutes (see [Web push on iPhone](#web-push-on-iphone)).
 With `SCHEDULER_ENABLED=false` nothing is delivered — `POST /api/v1/push/test` still works.
 
+The API image starts two uvicorn workers; only one of them owns the scheduler (the one that
+takes a PostgreSQL advisory lock, held on a connection of its own for as long as it runs). So
+that `GET /api/v1/meta/health` tells the same truth from whichever worker answers, the owner
+also publishes its jobs and next runs (the `scheduler_heartbeat` job, every minute, into
+`app_meta`) and the others read the lock from `pg_locks`. The `scheduler` object has `running`
+and `jobs` (as before — now those of the whole deployment, not just of the answering worker)
+and `enabled`, `owner` (this worker runs it), `lock_held`, `started_at`,
+`heartbeat_age_seconds` and `stale` (it runs but has not published for three minutes).
+
 ### AI (stage 3) and push (stage 7)
 
 `AI_PROVIDER` (`openai` \| `anthropic` \| `google` \| `openrouter` \| `fake` —
@@ -895,7 +904,10 @@ health endpoint reports `fuzzy_search: true/false`.
 **A scheduled job never fires.** APScheduler jobs created with
 `next_run_time=None` are *paused*. `/api/v1/meta/health` lists each job with its
 `next_run_time` — it must never be `null`. `deploy/healthcheck.sh` fails loudly
-if it is.
+if it is. The same object says whether the scheduler runs at all: `running: false` with
+`lock_held: false` means no worker holds the scheduler lock (the API is down or its
+owner died — `docker compose restart api`), `stale: true` that the owner holds the lock
+but has not published for three minutes (stuck, or it cannot write to the database).
 
 **The pairing code is rejected.** Codes are single-use and live 15 minutes
 (`PAIRING_CODE_TTL_MINUTES`). Print a new one with `make pair`. An expired or
