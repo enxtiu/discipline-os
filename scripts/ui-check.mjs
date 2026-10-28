@@ -878,7 +878,7 @@ try {
   // Stage 6+: feature checks live in scripts/ui-checks/<module>.mjs, one module
   // per workstream, each exporting `run(ctx)` with the helpers below.
   // stage9-a11y stays last: it audits every screen with the data the earlier modules leave
-  // (stage10-themes leaves the appearance as it found it: «Эволюция», dark)
+  // (stage10-themes and stage10-today leave the appearance as they found it: «Эволюция», dark)
   for (const module of [
     'stage6-plan',
     'stage6-calendar',
@@ -888,6 +888,7 @@ try {
     'stage9-offline',
     'stage9-notion',
     'stage10-themes',
+    'stage10-today',
     'stage9-a11y',
   ]) {
     const { run } = await import(`./ui-checks/${module}.mjs`)
