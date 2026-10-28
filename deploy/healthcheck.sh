@@ -13,8 +13,11 @@
 # ---------------------------------------------------------------------------
 set -uo pipefail
 
-cd "$(dirname "$0")/.."
-set -a; . ./.env; set +a
+cd "$(dirname "$0")/.." || exit 1
+set -a
+# shellcheck source=/dev/null
+. ./.env
+set +a
 
 DOMAIN="${DOMAIN:-$(grep -oP '^DOMAIN=\K.*' .env)}"
 HEALTH_URL="${HEALTH_URL:-https://${DOMAIN}/api/v1/meta/health}"
@@ -87,18 +90,30 @@ if command -v openssl >/dev/null 2>&1; then
 fi
 
 # ---- 6. last backup age ---------------------------------------------------
+# backup.sh writes <BACKUP_LOCAL_DIR>/<stamp>/dsos-<stamp>.dump.age, one directory per
+# run. (restore.sh's pre-restore-*.dump.age safety dumps sit directly in the directory:
+# they are not nightly backups and do not count.)
 BACKUP_DIR="${BACKUP_LOCAL_DIR:-/var/backups/dsos}"
 if [[ -d "$BACKUP_DIR" ]]; then
-  newest="$(ls -1t "$BACKUP_DIR"/*.age 2>/dev/null | head -1 || true)"
+  newest=""
+  newest_mtime=0
+  for archive in "$BACKUP_DIR"/*/*.dump.age; do
+    [[ -f "$archive" ]] || continue # the pattern matched nothing
+    mtime="$(stat -c %Y "$archive")"
+    if (( mtime > newest_mtime )); then
+      newest="$archive"
+      newest_mtime="$mtime"
+    fi
+  done
   if [[ -n "$newest" ]]; then
-    age_h=$(( ( $(date +%s) - $(stat -c %Y "$newest") ) / 3600 ))
+    age_h=$(( ( $(date +%s) - newest_mtime ) / 3600 ))
     if (( age_h <= 36 )); then
       ok "last backup ${age_h}h old ($(basename "$newest"))"
     else
       record "the newest backup is ${age_h}h old — is the backup job running?"
     fi
   else
-    record "no backups found in $BACKUP_DIR"
+    record "no backups found in $BACKUP_DIR (expected $BACKUP_DIR/<stamp>/dsos-<stamp>.dump.age)"
   fi
 fi
 

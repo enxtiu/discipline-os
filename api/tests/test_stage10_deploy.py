@@ -12,6 +12,7 @@ import os
 import re
 import shutil
 import stat
+import time
 from pathlib import Path
 
 import pytest
@@ -210,3 +211,91 @@ def test_nightly_workflow_verification_is_not_fooled_by_sigpipe_either(backup_bo
     out = plain(done.stdout + done.stderr)
     assert done.returncode == 0, out
     assert "archive header verified (PGDMP)" in out, out
+
+
+# --------------------------------------------------------------------------- #
+# 3. healthcheck.sh — where the nightly backups are
+# --------------------------------------------------------------------------- #
+GOOD_HEALTH = (
+    '{"status":"ok","database":true,"scheduler":{"running":true,'
+    '"jobs":[{"id":"housekeeping","name":"x","next_run_time":"2099-01-01T00:00:00+00:00"}]}}'
+)
+FAKE_CURL = r"""
+url="${*: -1}"
+case "$url" in
+  *meta/health) [[ -f "$FAKE_HEALTH_JSON" ]] || exit 22; cat "$FAKE_HEALTH_JSON" ;;
+  *) echo "$*" >> "${FAKE_CURL_LOG:-/dev/null}" ;;
+esac
+"""
+FAKE_DOCKER_UP = r"""
+case "$*" in
+  *"compose ps"*) echo '{"State":"running"}' ;;
+  *pg_isready*) exit 0 ;;
+  *) echo "fake docker: unexpected call: $*" >&2; exit 1 ;;
+esac
+"""
+FAKE_OPENSSL = r"""
+for arg in "$@"; do [[ "$arg" == x509 ]] && { echo "notAfter=Jan  1 00:00:00 2099 GMT"; exit 0; }; done
+exit 0
+"""
+
+
+@pytest.fixture
+def health_box(sandbox: Sandbox) -> Sandbox:
+    sandbox.fake("curl", FAKE_CURL)
+    sandbox.fake("docker", FAKE_DOCKER_UP)
+    sandbox.fake("openssl", FAKE_OPENSSL)
+    sandbox.write_env(DOMAIN="dsos.example.test", BACKUP_LOCAL_DIR=str(sandbox.root / "backups"))
+    (sandbox.root / "health.json").write_text(GOOD_HEALTH)
+    return sandbox
+
+
+def check_health(box: Sandbox, **extra: str):
+    done = box.run("deploy/healthcheck.sh", FAKE_HEALTH_JSON=str(box.root / "health.json"), MIN_FREE_MB="1", **extra)
+    return done, plain(done.stdout + done.stderr)
+
+
+def make_archive(box: Sandbox, rel: str, age_hours: float = 0) -> Path:
+    path = box.root / "backups" / rel
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"x")
+    stamp = time.time() - age_hours * 3600
+    os.utime(path, (stamp, stamp))
+    return path
+
+
+def test_healthcheck_finds_the_archive_in_the_stamp_directory_backup_sh_writes(health_box: Sandbox) -> None:
+    make_archive(health_box, "20261028T031500Z/dsos-20261028T031500Z.dump.age", age_hours=2)
+    make_archive(health_box, "20261027T031500Z/dsos-20261027T031500Z.dump.age", age_hours=26)
+    done, out = check_health(health_box)
+    assert "✓ last backup 2h old (dsos-20261028T031500Z.dump.age)" in out, out
+    assert "no backups found" not in out
+    assert done.returncode == 0, out
+
+
+def test_healthcheck_flags_a_stale_backup(health_box: Sandbox) -> None:
+    make_archive(health_box, "20261025T031500Z/dsos-20261025T031500Z.dump.age", age_hours=72)
+    done, out = check_health(health_box)
+    assert "the newest backup is 72h old" in out, out
+    assert done.returncode == 1
+
+
+def test_healthcheck_reports_an_empty_backup_directory(health_box: Sandbox) -> None:
+    (health_box.root / "backups").mkdir()
+    done, out = check_health(health_box)
+    assert "no backups found" in out and "<stamp>/dsos-<stamp>.dump.age" in out, out
+    assert done.returncode == 1
+
+
+def test_healthcheck_does_not_count_restore_safety_dumps_as_backups(health_box: Sandbox) -> None:
+    make_archive(health_box, "pre-restore-20261028T031500Z.dump.age")  # restore.sh drops these next to the stamps
+    done, out = check_health(health_box)
+    assert "no backups found" in out, out
+    assert done.returncode == 1
+
+
+def test_healthcheck_passes_when_everything_is_fine(health_box: Sandbox) -> None:
+    make_archive(health_box, "20261028T031500Z/dsos-20261028T031500Z.dump.age", age_hours=1)
+    done, out = check_health(health_box)
+    assert done.returncode == 0, out
+    assert "All checks passed" in out
