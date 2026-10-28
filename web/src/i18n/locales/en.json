@@ -272,6 +272,8 @@
     "remaining": "Remaining",
     "eaten": "Eaten",
     "target": "Target",
+    "of_kcal": "of {{kcal}} kcal",
+    "left_kcal": "{{kcal}} kcal left",
     "over": "Over",
     "no_target": "No target yet",
     "setup_targets": "Add your body parameters",
@@ -1396,8 +1398,6 @@
   "look": {
     "title": "Appearance",
     "preview_title": "This is how it will look",
-    "preview_of": "of {{kcal}} kcal",
-    "preview_left": "{{kcal}} kcal left",
     "skin_title": "Theme",
     "skins": {
       "forge": "Forge",
@@ -1417,6 +1417,7 @@
       "dark": "Dark",
       "system": "System"
     },
+    "params_title": "Stickers — theme settings",
     "ground_title": "Colour set",
     "ground": {
       "lilac": "Lilac",
@@ -1426,7 +1427,7 @@
     },
     "ground_night": "Dark mode uses the night set",
     "tilt": "Tilted stickers",
-    "tilt_hint": "Badges lean a little; straight with Reduce motion",
+    "tilt_hint": "Badges lean a little, up to ±3°",
     "shadow_title": "Shadows",
     "shadow": {
       "hard": "Hard",

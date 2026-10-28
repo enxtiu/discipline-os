@@ -11,7 +11,7 @@ import { useRef, type KeyboardEvent, type ReactNode } from 'react'
 import clsx from 'clsx'
 import { useTranslation } from 'react-i18next'
 
-import { ProgressBar, Row, Rows, SegmentedControl, Toggle } from '@/components/ui'
+import { Card, ProgressBar, Row, Rows, SegmentedControl, Toggle } from '@/components/ui'
 import { IconCheck } from '@/components/ui/icons'
 import { useAuth } from '@/features/auth/AuthProvider'
 import { useDayView } from '@/features/food/useNutrition'
@@ -79,49 +79,54 @@ export function ThemeSection() {
       </Group>
 
       {stickers && (
-        <div className="space-y-5" data-testid="theme-stickers-params">
-          <Group
-            title={t('look.ground_title')}
-            id="look-ground"
-            hint={theme === 'dark' ? t('look.ground_night') : undefined}
-          >
-            <div className="grid grid-cols-4 gap-2" role="group" aria-labelledby="look-ground">
-              {GROUNDS.map((ground) => (
-                <GroundSwatch
-                  key={ground}
-                  ground={ground}
-                  pressed={appearance.ground === ground}
-                  onPress={() => setAppearance({ ground })}
-                />
-              ))}
+        <Group title={t('look.params_title')} id="look-params">
+          <Card className="sk-params space-y-3" data-testid="theme-stickers-params">
+            <section className="space-y-2" aria-labelledby="look-ground">
+              <h3 id="look-ground" className="text-xs font-medium muted">
+                {t('look.ground_title')}
+              </h3>
+              <div className="grid grid-cols-4 gap-2" role="group" aria-labelledby="look-ground">
+                {GROUNDS.map((ground) => (
+                  <GroundSwatch
+                    key={ground}
+                    ground={ground}
+                    pressed={appearance.ground === ground}
+                    onPress={() => setAppearance({ ground })}
+                  />
+                ))}
+              </div>
+              {theme === 'dark' && <p className="text-xs muted">{t('look.ground_night')}</p>}
+            </section>
+            <div className="divider" />
+            <div className="flex items-center gap-3">
+              <div className="min-w-0 flex-1">
+                <p className="text-[15px] font-medium">{t('look.tilt')}</p>
+                <p className="text-xs muted">{t('look.tilt_hint')}</p>
+              </div>
+              <Toggle label={t('look.tilt')} checked={appearance.tilt} onChange={(tilt) => setAppearance({ tilt })} />
             </div>
-          </Group>
-
-          <Rows>
-            <Row
-              label={t('look.tilt')}
-              hint={t('look.tilt_hint')}
-              trailing={<Toggle label={t('look.tilt')} checked={appearance.tilt} onChange={(tilt) => setAppearance({ tilt })} />}
-            />
-          </Rows>
-
-          <Group title={t('look.shadow_title')} id="look-shadow">
-            <div className="flex gap-2" role="group" aria-labelledby="look-shadow">
-              {(['hard', 'soft'] as const).map((shadow) => (
-                <button
-                  key={shadow}
-                  type="button"
-                  aria-pressed={appearance.shadow === shadow}
-                  onClick={() => setAppearance({ shadow })}
-                  className={clsx('chip flex-1 font-medium', appearance.shadow === shadow && 'chip-active')}
-                  data-testid={`look-shadow-${shadow}`}
-                >
-                  {t(`look.shadow.${shadow}`)}
-                </button>
-              ))}
+            <div className="divider" />
+            <div className="flex items-center gap-3">
+              <p id="look-shadow" className="min-w-0 flex-1 text-[15px] font-medium">
+                {t('look.shadow_title')}
+              </p>
+              <div className="segmented w-[13rem] shrink-0" role="group" aria-labelledby="look-shadow">
+                {(['hard', 'soft'] as const).map((shadow) => (
+                  <button
+                    key={shadow}
+                    type="button"
+                    aria-pressed={appearance.shadow === shadow}
+                    data-active={appearance.shadow === shadow}
+                    onClick={() => setAppearance({ shadow })}
+                    data-testid={`look-shadow-${shadow}`}
+                  >
+                    {t(`look.shadow.${shadow}`)}
+                  </button>
+                ))}
+              </div>
             </div>
-          </Group>
-        </div>
+          </Card>
+        </Group>
       )}
 
       <Group title={t('look.global_title')} id="look-global">
@@ -156,14 +161,13 @@ export function ThemeSection() {
   )
 }
 
-function Group({ title, id, hint, children }: { title: string; id: string; hint?: string; children: ReactNode }) {
+function Group({ title, id, children }: { title: string; id: string; children: ReactNode }) {
   return (
     <section className="space-y-2" aria-labelledby={id}>
-      <h2 id={id} className="label">
+      <h2 id={id} className="label sk-group-title">
         {title}
       </h2>
       {children}
-      {hint && <p className="text-xs muted">{hint}</p>}
     </section>
   )
 }
@@ -184,29 +188,23 @@ function Preview() {
 
   return (
     <section className="space-y-2" aria-labelledby="look-preview">
-      <h2 id="look-preview" className="label">
+      <h2 id="look-preview" className="label sk-group-title">
         {t('look.preview_title')}
       </h2>
       <div
-        className="sk-preview space-y-3 rounded-card border border-[rgb(var(--border))] bg-[rgb(var(--bg))] p-3"
+        className="sk-preview grid grid-cols-[1.4fr_1fr] gap-2.5 rounded-card border border-[rgb(var(--border))] bg-[rgb(var(--bg))] p-3"
         data-testid="theme-preview"
       >
-        <div className="card sk-tile sk-hero space-y-2 p-3.5" data-cat="kcal">
-          <div className="flex items-start justify-between gap-3">
-            <p className="min-w-0 text-sm">
-              <span className="block text-xs font-medium muted">{t('today.eaten')}</span>
-              <span className="tnum text-2xl font-semibold leading-tight">{number(eaten.kcal)}</span>{' '}
-              <span className="tnum text-xs muted">
-                {target != null ? t('look.preview_of', { kcal: number(target) }) : kcal}
-              </span>
-            </p>
-            <span className="sk-badge sk-tilt-r tnum shrink-0 rounded-lg bg-[rgb(var(--bg-sunken))] px-2 py-1 text-xs font-semibold">
-              {left != null ? t('look.preview_left', { kcal: number(left) }) : t('today.no_target')}
-            </span>
-          </div>
-          <ProgressBar value={eaten.kcal} max={target ?? 1} tone="kcal" />
+        <div className="card sk-tile min-w-0 space-y-1 px-2.5 py-2" data-cat="kcal">
+          <p className="tnum truncate text-sm font-semibold">
+            {left != null ? t('today.left_kcal', { kcal: number(left) }) : t('today.no_target')}
+          </p>
+          <p className="sk-soft tnum truncate text-xs muted">
+            {number(eaten.kcal)} {target != null ? t('today.of_kcal', { kcal: number(target) }) : kcal}
+          </p>
+          <ProgressBar value={eaten.kcal} max={target ?? 1} tone="kcal" className="sk-bar-mini mt-1.5" />
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="card sk-tile min-w-0 space-y-1.5 px-2.5 py-2">
           <PreviewMacro label={t('today.protein')} value={eaten.protein_g} max={targets?.target_protein_g ?? null} unit={g} tone="protein" />
           <PreviewMacro label={t('today.fat')} value={eaten.fat_g} max={targets?.target_fat_g ?? null} unit={g} tone="fat" />
         </div>
@@ -229,15 +227,15 @@ function PreviewMacro({
   tone: 'protein' | 'fat'
 }) {
   return (
-    <div className="card sk-tile min-w-0 space-y-1.5 px-3 py-2.5" data-cat={tone}>
-      <p className="flex items-baseline justify-between gap-2 text-xs">
+    <div className="min-w-0 space-y-1">
+      <p className="flex items-baseline justify-between gap-1.5 text-xs">
         <span className="truncate font-semibold">{label}</span>
         <span className="tnum shrink-0 muted">
           {number(value)}
           {max != null ? `/${number(max)}` : ''} {unit}
         </span>
       </p>
-      <ProgressBar value={value} max={max ?? 1} tone={tone} />
+      <ProgressBar value={value} max={max ?? 1} tone={tone} className="sk-bar-mini h-1.5" />
     </div>
   )
 }
@@ -294,23 +292,28 @@ function ThemeGallery({ value, onChange }: { value: Skin; onChange: (skin: Skin)
             onClick={() => item.available && onChange(item.id as Skin)}
             onKeyDown={(event) => onKeyDown(event, index)}
             className={clsx(
-              'sk-choice relative flex min-h-tap min-w-0 flex-col gap-1.5 rounded-2xl border bg-[rgb(var(--bg-elevated))] p-1.5 pb-2 text-left',
-              checked ? 'border-2 border-[rgb(var(--accent))] p-[5px] pb-[7px]' : 'border-[rgb(var(--border))]',
+              'sk-choice relative flex min-h-[3.25rem] min-w-0 rounded-xl border-2 p-[5px] text-left',
+              checked ? 'border-[rgb(var(--accent))] ring-2 ring-[rgb(var(--accent))]' : 'border-[rgb(var(--border))]',
               !item.available && 'cursor-default',
             )}
+            style={{ background: item.colors.ground }}
             data-skin-option={item.id}
             data-available={item.available}
           >
-            <ThemeMini item={item} dim={!item.available} />
-            <span className="flex min-w-0 items-center justify-between gap-1 px-0.5">
-              <span className={clsx('truncate text-xs font-semibold', !item.available && 'muted')}>{t(`look.skins.${item.id}`)}</span>
-              {checked && (
-                <span className="sk-check flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[rgb(var(--accent))] text-on-accent">
-                  <IconCheck size={13} strokeWidth={2.5} />
-                </span>
-              )}
-            </span>
-            {!item.available && <span className="px-0.5 text-[11px] font-medium leading-none muted">{t('look.soon')}</span>}
+            <ThemeMini item={item} name={t(`look.skins.${item.id}`)} />
+            {checked && (
+              <span
+                aria-hidden="true"
+                className="sk-check absolute -right-2 -top-2 flex h-[22px] w-[22px] items-center justify-center rounded-full border-2 border-[rgb(var(--bg))] bg-[rgb(var(--accent))] text-on-accent"
+              >
+                <IconCheck size={12} strokeWidth={3} />
+              </span>
+            )}
+            {!item.available && (
+              <span className="sk-soon absolute -right-1.5 -top-2 rounded-md border border-[#111111] bg-white px-1 text-[10px] font-semibold leading-[14px] text-[#111111]">
+                {t('look.soon')}
+              </span>
+            )}
           </button>
         )
       })}
@@ -318,27 +321,27 @@ function ThemeGallery({ value, onChange }: { value: Skin; onChange: (skin: Skin)
   )
 }
 
-/** A thumbnail drawn with the theme's own colours (decoration — the name says it all). */
-function ThemeMini({ item, dim }: { item: GalleryItem; dim: boolean }) {
-  const { ground, card, text, accent } = item.colors
+/** The theme's own colours: its card on its ground, its name in its text colour, an accent bar. */
+function ThemeMini({ item, name }: { item: GalleryItem; name: string }) {
+  const { card, text, accent } = item.colors
   const stickers = item.id === 'stickers'
   return (
     <span
-      aria-hidden="true"
-      className={clsx('relative block h-12 overflow-hidden rounded-xl', dim && 'opacity-70')}
-      style={{ background: ground, boxShadow: 'inset 0 0 0 1px rgba(127,127,127,.28)' }}
+      className="flex min-w-0 flex-1 flex-col items-start justify-center gap-1 rounded-[7px] px-2"
+      style={{ background: card, border: stickers ? `1.5px solid ${text}` : undefined }}
     >
-      <span
-        className="absolute left-2 right-2 top-2 block h-8 rounded-lg"
-        style={{
-          background: card,
-          border: stickers ? `1.5px solid ${text}` : undefined,
-          boxShadow: stickers ? `2px 2px 0 ${text}` : 'inset 0 0 0 1px rgba(127,127,127,.18)',
-        }}
-      >
-        <span className="absolute left-1.5 top-1.5 block h-1 w-1/2 rounded-full" style={{ background: text }} />
-        <span className="absolute bottom-1.5 left-1.5 right-1.5 block h-1.5 rounded-full" style={{ background: accent }} />
+      <span className="max-w-full truncate text-xs font-semibold leading-[14px]" style={{ color: text }}>
+        {name}
       </span>
+      <span
+        aria-hidden="true"
+        className="block w-[34px] rounded-full"
+        style={{
+          height: stickers ? 6 : 4,
+          background: accent,
+          border: stickers ? `1.5px solid ${text}` : undefined,
+        }}
+      />
     </span>
   )
 }
@@ -353,19 +356,19 @@ function GroundSwatch({ ground, pressed, onPress }: { ground: Ground; pressed: b
       aria-label={name}
       onClick={onPress}
       className={clsx(
-        'sk-swatch flex min-h-tap min-w-0 flex-col items-center gap-1.5 rounded-2xl border px-1 py-2',
-        pressed ? 'border-2 border-[rgb(var(--accent))] px-[3px] py-[7px]' : 'border-[rgb(var(--border))]',
+        'sk-swatch flex min-h-[3.75rem] min-w-0 flex-col items-center justify-center gap-1 rounded-xl border px-1',
+        pressed ? 'border-2 border-[rgb(var(--accent))] px-[3px]' : 'border-[rgb(var(--border))]',
       )}
       data-ground-option={ground}
     >
       <span
         aria-hidden="true"
-        className="flex h-8 w-8 items-center justify-center rounded-full"
-        style={{ background: GROUND_HEX[ground], boxShadow: 'inset 0 0 0 2px #111111' }}
+        className="flex h-[26px] w-[26px] items-center justify-center rounded-full border-2 border-[#111111]"
+        style={{ background: GROUND_HEX[ground] }}
       >
-        {pressed && <IconCheck size={16} strokeWidth={2.5} className="text-[#111111]" />}
+        {pressed && <IconCheck size={14} strokeWidth={3} className="text-[#111111]" />}
       </span>
-      <span className="max-w-full truncate text-xs font-medium">{name}</span>
+      <span className={clsx('max-w-full truncate text-xs', pressed ? 'font-semibold' : 'font-medium')}>{name}</span>
     </button>
   )
 }
