@@ -422,3 +422,10 @@
 :root[data-text='large'] .tab {
   font-size: 11.5px;
 }
+/* the plan's four views share 390 px and size to their labels: less padding and growth, so
+   «Предстоящие» and «Календарь» never push the page wider (Наклейки sets its own) */
+:root[data-skin='evolution'][data-text='large'] .segmented > a {
+  padding-left: 0.25rem;
+  padding-right: 0.25rem;
+  font-size: 13.5px;
+}
