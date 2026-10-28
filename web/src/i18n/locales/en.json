@@ -2068,7 +2068,7 @@
       "page": "Page",
       "untitled": "Untitled",
       "open": "Open in Notion",
-      "open_kind": "Open “{{kind}}” in Notion",
+      "open_kind": "Open in Notion: “{{kind}}”",
       "connection": "Connection “{{name}}” · {{workspace}}",
       "kinds_title": "What to copy",
       "kinds_hint": "A section switched off stops updating; its database and pages stay in Notion.",

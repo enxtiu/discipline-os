@@ -2068,7 +2068,7 @@
       "page": "Страница",
       "untitled": "Без названия",
       "open": "Открыть в Notion",
-      "open_kind": "Открыть «{{kind}}» в Notion",
+      "open_kind": "Открыть в Notion: «{{kind}}»",
       "connection": "Подключение «{{name}}» · {{workspace}}",
       "kinds_title": "Что копировать",
       "kinds_hint": "Выключенный раздел перестаёт обновляться; его база и записи в Notion остаются.",

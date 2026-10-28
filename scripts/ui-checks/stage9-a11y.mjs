@@ -1096,6 +1096,8 @@ export async function run(ctx) {
       `${statuses.length} rows deleted${statuses.some((status) => status >= 300) ? `: ${statuses.join(',')}` : ''}`,
     )
     await page.close().catch(() => {})
+    // hand the shared tab back on an app page, as the other modules leave it
+    if (apiPage !== ctx.page) await ctx.page.goto(`${WEB_URL}/today`, { waitUntil: 'networkidle' }).catch(() => {})
   }
 }
 
