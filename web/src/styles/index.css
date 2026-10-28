@@ -17,7 +17,7 @@
     --bg-sunken: 8 13 22;        /* #080D16 */
     --border: 31 44 69;          /* #1F2C45 */
     --text: 232 238 247;         /* #E8EEF7 */
-    --text-muted: 132 146 171;   /* #8492AB */
+    --text-muted: 138 151 176;   /* #8A97B0 — was #8492AB (4.5:1 on accent-tinted cells) */
     --accent: 56 224 200;        /* #38E0C8 */
     --accent-2: 161 130 249;     /* #A182F9 — was #8B5CF6 (4.1:1 as text on cards) */
     --warn: 251 191 36;          /* #FBBF24 */
@@ -201,10 +201,11 @@
     @apply min-h-tap rounded-xl px-3 text-sm;
   }
 
+  /* focus-within: a date/time field keeps its accent border while its picker button is focused */
   .input {
     @apply w-full rounded-2xl border border-[rgb(var(--border))] bg-[rgb(var(--bg-sunken))]
       px-4 py-3 text-[rgb(var(--text))] placeholder:text-[rgb(var(--text-muted))]/70
-      focus:border-[rgb(var(--accent))] focus:outline-none;
+      focus:border-[rgb(var(--accent))] focus:outline-none focus-within:border-[rgb(var(--accent))];
   }
 
   .field {

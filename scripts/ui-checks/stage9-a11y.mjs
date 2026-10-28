@@ -834,7 +834,10 @@ export async function run(ctx) {
     await quietFor('Today with a running timer', () => goto('/today', '[data-testid="timer-bar"]'))
     await quietFor('a live workout during a rest', async () => {
       await goto(`/train/workout/${liveWorkout}`, '[data-testid="workout-exercise"]')
-      await page.locator('[data-testid="save-set"]').first().click()
+      // a new set (pre-filled from the last one) saved for the first time starts the rest
+      const card = page.locator('[data-testid="workout-exercise"]').first()
+      await card.getByRole('button', { name: 'Подход', exact: true }).click()
+      await card.locator('[data-testid="save-set"]').last().click()
       await page.locator('[data-testid="rest-timer"]').waitFor({ timeout: 8000 })
     })
 
