@@ -48,10 +48,14 @@ export async function run(ctx) {
     })
     await deviceContext.addInitScript(
       ({ token, storage }) => {
-        // the first visit only: a reload must keep what the app stored
-        if (window.localStorage.getItem('dsos.device_token')) return
-        window.localStorage.setItem('dsos.device_token', token)
-        for (const [key, value] of Object.entries(storage)) window.localStorage.setItem(key, value)
+        try {
+          // the first visit only: a reload must keep what the app stored
+          if (window.localStorage.getItem('dsos.device_token')) return
+          window.localStorage.setItem('dsos.device_token', token)
+          for (const [key, value] of Object.entries(storage)) window.localStorage.setItem(key, value)
+        } catch {
+          /* an opaque document (about:blank) has no storage */
+        }
       },
       { token, storage },
     )

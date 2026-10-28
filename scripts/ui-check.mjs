@@ -75,7 +75,11 @@ const context = await browser.newContext({
 // localStorage and expect it to stay on this device, so this browser starts with the switch off (only
 // when it has never been set); scripts/ui-checks/stage10-appearance-sync.mjs opens browsers of its own.
 await context.addInitScript(() => {
-  if (window.localStorage.getItem('dsos.appearance.sync') === null) window.localStorage.setItem('dsos.appearance.sync', 'off')
+  try {
+    if (window.localStorage.getItem('dsos.appearance.sync') === null) window.localStorage.setItem('dsos.appearance.sync', 'off')
+  } catch {
+    /* about:blank and other opaque documents have no storage */
+  }
 })
 const page = await context.newPage()
 
