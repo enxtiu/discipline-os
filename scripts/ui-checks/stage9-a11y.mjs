@@ -95,8 +95,17 @@ const describeElementSource = `
 `
 
 export async function run(ctx) {
-  const { page, context, WEB_URL, SHOTS, check, ok, bad, shot } = ctx
+  const { context, WEB_URL, SHOTS, check, ok, bad } = ctx
   console.log('\n9a. stage 9 accessibility — axe-core, 48 px targets, keyboard, live regions')
+  // The audit runs in a tab of its own (same context, same device token): it is long, and the
+  // shared tab has been through every earlier module (a renderer that crashed once on the
+  // shared machine took the rest of the run with it). The shared tab rests on about:blank.
+  await ctx.page.goto('about:blank').catch(() => {})
+  const page = await context.newPage()
+  const shot = (name) => page.screenshot({ path: `${SHOTS}/${name}.png` })
+  let apiPage = page
+  /** Names carry the run, so leftovers of an interrupted run never collide (unique area names). */
+  const RUN = String(Date.now()).slice(-5)
 
   const axe = loadAxe()
   if (!axe) {
@@ -106,7 +115,7 @@ export async function run(ctx) {
   ok('axe-core loaded for the browser checks', `v${axe.version}, tags ${AXE_TAGS.join(' ')}`)
 
   const apiFetch = (path, init = {}) =>
-    page.evaluate(
+    apiPage.evaluate(
       async ({ path, init }) => {
         const token = window.localStorage.getItem('dsos.device_token')
         const response = await fetch(`/api${path}`, {
@@ -476,7 +485,7 @@ export async function run(ctx) {
     const leftover = (await apiFetch('/v1/training/today')).body?.active
     if (leftover) await apiFetch(`/v1/training/workouts/${leftover.id}`, { method: 'DELETE' })
     const done = randomUUID()
-    remember(await apiFetch('/v1/training/workouts', { method: 'POST', body: JSON.stringify({ id: done, kind: 'strength', title: 'A11y силовая (ui-check)' }) }), created.workouts, done)
+    remember(await apiFetch('/v1/training/workouts', { method: 'POST', body: JSON.stringify({ id: done, kind: 'strength', title: `A11y силовая (ui-check ${RUN})` }) }), created.workouts, done)
     for (const index of [1, 2]) {
       statuses.push(
         (
@@ -489,7 +498,7 @@ export async function run(ctx) {
     }
     statuses.push((await apiFetch(`/v1/training/workouts/${done}/finish`, { method: 'POST', body: JSON.stringify({ duration_s: 1800 }) })).status)
     liveWorkout = randomUUID()
-    remember(await apiFetch('/v1/training/workouts', { method: 'POST', body: JSON.stringify({ id: liveWorkout, kind: 'strength', title: 'A11y живая (ui-check)' }) }), created.workouts, liveWorkout)
+    remember(await apiFetch('/v1/training/workouts', { method: 'POST', body: JSON.stringify({ id: liveWorkout, kind: 'strength', title: `A11y живая (ui-check ${RUN})` }) }), created.workouts, liveWorkout)
     statuses.push(
       (
         await apiFetch(`/v1/training/workouts/${liveWorkout}/sets/${randomUUID()}`, {
@@ -500,16 +509,16 @@ export async function run(ctx) {
     )
     // planner: an area, a project, a resource, tasks for today / tomorrow / the inbox, time
     const areaId = randomUUID()
-    remember(await apiFetch('/v1/planner/areas', { method: 'POST', body: JSON.stringify({ id: areaId, name: 'A11y сфера (ui-check)', weekly_target_minutes: 120 }) }), created.areas, areaId)
+    remember(await apiFetch('/v1/planner/areas', { method: 'POST', body: JSON.stringify({ id: areaId, name: `A11y сфера (ui-check ${RUN})`, weekly_target_minutes: 120 }) }), created.areas, areaId)
     project = randomUUID()
     remember(
-      await apiFetch('/v1/planner/projects', { method: 'POST', body: JSON.stringify({ id: project, name: 'A11y проект (ui-check)', area_id: areaId, color: '#8B5CF6' }) }),
+      await apiFetch('/v1/planner/projects', { method: 'POST', body: JSON.stringify({ id: project, name: `A11y проект (ui-check ${RUN})`, area_id: areaId, color: '#8B5CF6' }) }),
       created.projects,
       project,
     )
     const resourceId = randomUUID()
     remember(
-      await apiFetch('/v1/planner/resources', { method: 'POST', body: JSON.stringify({ id: resourceId, name: 'A11y справка (ui-check)', url: 'https://example.org/a11y', area_id: areaId }) }),
+      await apiFetch('/v1/planner/resources', { method: 'POST', body: JSON.stringify({ id: resourceId, name: `A11y справка (ui-check ${RUN})`, url: 'https://example.org/a11y', area_id: areaId }) }),
       created.resources,
       resourceId,
     )
@@ -519,7 +528,7 @@ export async function run(ctx) {
         method: 'POST',
         body: JSON.stringify({
           id: editTask,
-          title: 'A11y отчёт (ui-check)',
+          title: `A11y отчёт (ui-check ${RUN})`,
           priority: 2,
           project_id: project,
           due_date: T,
@@ -533,15 +542,15 @@ export async function run(ctx) {
       editTask,
     )
     const tomorrowTask = randomUUID()
-    remember(await apiFetch('/v1/planner/tasks', { method: 'POST', body: JSON.stringify({ id: tomorrowTask, title: 'A11y завтра (ui-check)', due_date: tomorrow, priority: 3 }) }), created.tasks, tomorrowTask)
+    remember(await apiFetch('/v1/planner/tasks', { method: 'POST', body: JSON.stringify({ id: tomorrowTask, title: `A11y завтра (ui-check ${RUN})`, due_date: tomorrow, priority: 3 }) }), created.tasks, tomorrowTask)
     const inboxTask = randomUUID()
-    remember(await apiFetch('/v1/planner/tasks', { method: 'POST', body: JSON.stringify({ id: inboxTask, title: 'A11y идея (ui-check)' }) }), created.tasks, inboxTask)
+    remember(await apiFetch('/v1/planner/tasks', { method: 'POST', body: JSON.stringify({ id: inboxTask, title: `A11y идея (ui-check ${RUN})` }) }), created.tasks, inboxTask)
     // a finished task (dimmed in lists and the calendar) and a daily repeat (future occurrences)
     const doneTask = randomUUID()
     remember(
       await apiFetch('/v1/planner/tasks', {
         method: 'POST',
-        body: JSON.stringify({ id: doneTask, title: 'A11y готово (ui-check)', due_date: T, block: { date: T, start: '07:00', end: '07:30' }, project_id: project }),
+        body: JSON.stringify({ id: doneTask, title: `A11y готово (ui-check ${RUN})`, due_date: T, block: { date: T, start: '07:00', end: '07:30' }, project_id: project }),
       }),
       created.tasks,
       doneTask,
@@ -553,7 +562,7 @@ export async function run(ctx) {
         method: 'POST',
         body: JSON.stringify({
           id: repeatTask,
-          title: 'A11y зарядка (ui-check)',
+          title: `A11y зарядка (ui-check ${RUN})`,
           due_date: T,
           block: { date: T, start: '18:00', end: '18:30' },
           recurrence_rule: 'FREQ=DAILY',
@@ -570,7 +579,7 @@ export async function run(ctx) {
       entryId,
     )
     const timerId = randomUUID()
-    const timer = await apiFetch('/v1/planner/timer/start', { method: 'POST', body: JSON.stringify({ id: timerId, project_id: project, description: 'A11y таймер (ui-check)' }) })
+    const timer = await apiFetch('/v1/planner/timer/start', { method: 'POST', body: JSON.stringify({ id: timerId, project_id: project, description: `A11y таймер (ui-check ${RUN})` }) })
     statuses.push(timer.status)
     if (timer.status === 200 || timer.status === 201) created.timer = timerId
     check(
@@ -968,7 +977,11 @@ export async function run(ctx) {
       `${totals.statesRun} audits (screens × themes): ${totals.blocking} serious/critical, ${totals.moderate} moderate, ${totals.minor} minor node(s) — ${SHOTS}/a11y-axe.json`,
     )
 
-    // clean up everything this module created
+    // clean up everything this module created (from the shared tab if this one died)
+    if (page.isClosed() || !(await page.evaluate(() => true).catch(() => false))) {
+      apiPage = ctx.page
+      await apiPage.goto(`${WEB_URL}/today`, { waitUntil: 'networkidle' }).catch(() => {})
+    }
     const statuses = []
     if (created.timer) {
       await apiFetch('/v1/planner/timer/stop', { method: 'POST', body: JSON.stringify({ entry_id: created.timer }) }).catch(() => null)
@@ -991,6 +1004,7 @@ export async function run(ctx) {
       'accessibility test data removed',
       `${statuses.length} rows deleted${statuses.some((status) => status >= 300) ? `: ${statuses.join(',')}` : ''}`,
     )
+    await page.close().catch(() => {})
   }
 }
 
