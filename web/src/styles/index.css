@@ -113,6 +113,14 @@
     border-radius: 6px;
   }
 
+  /* WebKit drops list semantics (VoiceOver «список, 7 объектов») from a list styled
+     list-style: none, as Tailwind's preflight does; an invisible marker keeps them.
+     Utilities (list-disc, list-decimal, list-none) still win. */
+  ul,
+  ol {
+    list-style: '\200B';
+  }
+
   /* a control scrolled into view by Tab or VoiceOver lands clear of the sticky
      header and of the fixed tab bar with its floating quick-add button */
   html {
