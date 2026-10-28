@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/icons'
 import type { PlanDay, Template, WorkoutBrief } from '@/api/types'
 import { addDays, dayLabel, number, today as isoToday } from '@/lib/format'
+import { useSkinTraits } from '@/lib/appearance'
 import { BurnedChart } from './BurnedChart'
 import { ExerciseHistorySheet } from './ExerciseHistorySheet'
 import { ExercisePicker } from './ExercisePicker'
@@ -27,6 +28,7 @@ import { clock, exerciseName, minutesLabel, recordExerciseName, recordValue, wee
 import { PlanDaySheet, QuickCardioSheet, StartWorkoutSheet } from './sheets'
 import { useStart } from './useStart'
 import { TemplateSheet } from './TemplateSheet'
+import { PlanExercises, dayRange } from './TrainBoard'
 import {
   useBurned,
   useRecords,
@@ -48,6 +50,7 @@ export function TrainPage() {
   const records = useRecords()
   const history = useWorkoutHistory()
   const start = useStart()
+  const { boardContent } = useSkinTraits() // stage 10: the planned card with its exercises, the week's range
 
   const [starting, setStarting] = useState(false)
   const [cardio, setCardio] = useState(false)
@@ -77,7 +80,7 @@ export function TrainPage() {
   const workouts = useMemo(() => history.data?.pages.flatMap((page) => page.items) ?? [], [history.data])
 
   return (
-    <div className="space-y-6">
+    <div className="sk-train space-y-6">
       <h1 className="sr-only">{t('train.title')}</h1>
       {/* the one thing to do now */}
       {today.isLoading ? (
@@ -85,21 +88,42 @@ export function TrainPage() {
       ) : today.data?.active ? (
         <ActiveCard workout={today.data.active} onOpen={() => navigate(`/train/workout/${today.data?.active?.id}`)} />
       ) : (
-        <Card className="space-y-3" data-testid="today-plan">
-          <p className="text-sm muted">{t('train.today_label')}</p>
+        <Card
+          className={clsx('space-y-3', boardContent && 'sk-tile sk-plancard')}
+          data-cat={boardContent && plan?.template && !planDone ? 'steps' : undefined}
+          data-testid="today-plan"
+        >
+          <p className="text-sm muted">{boardContent && plan?.template && !planDone ? t('board.plan_label') : t('train.today_label')}</p>
           {plan?.template && !planDone ? (
             <>
-              <div>
+              <div className="sk-plan-head">
                 <h2 className="text-xl font-semibold">{plan.template.name}</h2>
-                <p className="text-sm muted">
-                  {t('train.exercise_count', { n: plan.template.exercise_count })}
-                  {plan.template.estimated_minutes ? `, ~${plan.template.estimated_minutes} ${t('common.min')}` : ''}
-                </p>
+                {boardContent ? (
+                  <p className="text-sm muted">
+                    <span className="block">{t('train.exercise_count', { n: plan.template.exercise_count })}</span>
+                    {plan.template.estimated_minutes ? (
+                      <span className="block">{`~${plan.template.estimated_minutes} ${t('common.min')}`}</span>
+                    ) : null}
+                  </p>
+                ) : (
+                  <p className="text-sm muted">
+                    {t('train.exercise_count', { n: plan.template.exercise_count })}
+                    {plan.template.estimated_minutes ? `, ~${plan.template.estimated_minutes} ${t('common.min')}` : ''}
+                  </p>
+                )}
               </div>
-              <Button block size="md" loading={start.pending} onClick={() => start.run(plan.template?.id)}>
-                {t('train.start_planned')}
-              </Button>
-              {planned && planned.items.length > 0 && (
+              {boardContent && planned && planned.items.length > 0 && <PlanExercises template={planned} />}
+              <div className={boardContent ? 'sk-plan-actions flex gap-2.5' : undefined}>
+                <Button block size="md" loading={start.pending} onClick={() => start.run(plan.template?.id)}>
+                  {t('train.start_planned')}
+                </Button>
+                {boardContent && (
+                  <Button variant="secondary" size="md" icon={<IconFlame size={18} />} onClick={() => setCardio(true)}>
+                    {t('train.cardio')}
+                  </Button>
+                )}
+              </div>
+              {!boardContent && planned && planned.items.length > 0 && (
                 <p className="truncate text-xs muted">
                   {planned.items.map((item) => exerciseName(item.exercise)).join(', ')}
                 </p>
@@ -141,7 +165,21 @@ export function TrainPage() {
 
       {/* the week */}
       <Section
-        title={t('train.week')}
+        title={
+          boardContent && week.data?.days?.length ? (
+            <span className="flex items-baseline gap-1.5">
+              {t('train.week')}
+              <span className="sk-week-range tnum muted text-[13px] font-semibold">
+                {t('board.week_range', {
+                  from: dayRange(week.data.days[0].date),
+                  to: dayRange(week.data.days[week.data.days.length - 1].date),
+                })}
+              </span>
+            </span>
+          ) : (
+            t('train.week')
+          )
+        }
         action={
           <span className="flex items-center">
             <IconButton
@@ -333,17 +371,17 @@ function WeekDay({ day, onClick }: { day: PlanDay; onClick: () => void }) {
         {done && `, ${t('a11y.done')}`}
       </span>
       <span
-        className={clsx('text-[11px]', day.is_today ? 'font-semibold text-[rgb(var(--accent))]' : 'muted')}
+        className={clsx('sk-day-wd text-[11px]', day.is_today ? 'font-semibold text-[rgb(var(--accent))]' : 'muted')}
         aria-hidden="true"
       >
         {weekdayShort(day.weekday)}
       </span>
-      <span className="tnum text-sm font-semibold" aria-hidden="true">
+      <span className="sk-day-n tnum text-sm font-semibold" aria-hidden="true">
         {Number(day.date.slice(8, 10))}
       </span>
       <span
         className={clsx(
-          'mt-auto flex h-5 w-5 items-center justify-center rounded-full text-[10px]',
+          'sk-day-mark mt-auto flex h-5 w-5 items-center justify-center rounded-full text-[10px]',
           done
             ? 'bg-[rgb(var(--accent))] text-on-accent'
             : day.template
@@ -356,7 +394,7 @@ function WeekDay({ day, onClick }: { day: PlanDay; onClick: () => void }) {
       >
         {done && <IconCheck size={12} />}
       </span>
-      <span className="w-full truncate px-0.5 text-[10px] leading-tight muted" aria-hidden="true">
+      <span className="sk-day-l w-full truncate px-0.5 text-[10px] leading-tight muted" aria-hidden="true">
         {label}
       </span>
     </button>
