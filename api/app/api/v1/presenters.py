@@ -60,6 +60,7 @@ from app.schemas.health import (
     WeightOut,
     WeightSeriesOut,
 )
+from app.schemas.insights import InsightOut, TodayInsightOut
 from app.schemas.integrations import (
     IntegrationPageOut,
     IntegrationSummaryOut,
@@ -147,6 +148,7 @@ from app.schemas.training import (
     WorkoutSetOut,
 )
 from app.services import health as health_service
+from app.services import insights as insights_service
 from app.services import stats as stats_service
 from app.services import training as training_service
 from app.services.ai_meal import AiBudget, MealAnalysis, ResolvedItem, confidence_level
@@ -1348,6 +1350,28 @@ def progress_stats_out(series: stats_service.ProgressSeries) -> ProgressStatsOut
         scores=[ScorePointOut(date=day.day, score=day.score) for day in series.days],
         xp=[XpPointOut(date=day.day, xp=day.xp) for day in series.days],
         streak_calendar=[StreakDayOut(date=day.day, overall=day.overall, freeze=day.freeze) for day in series.days],
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Stage 10 — the insight of «Сегодня» (at most one; null = nothing to say)
+# --------------------------------------------------------------------------- #
+def today_insight_out(result: insights_service.TodayInsight) -> TodayInsightOut:
+    item = result.insight
+    return TodayInsightOut(
+        date=result.date,
+        insight=InsightOut(
+            metric=item.metric,  # type: ignore[arg-type]
+            day=item.day,  # type: ignore[arg-type]
+            date=item.date,
+            value=item.value,
+            average=item.average,
+            unit=item.unit,  # type: ignore[arg-type]
+            window_days=item.window_days,
+            days_with_data=item.days_with_data,
+        )
+        if item is not None
+        else None,
     )
 
 

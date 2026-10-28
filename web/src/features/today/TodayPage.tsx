@@ -9,7 +9,7 @@
  * stage 6, gamification in stage 8. Stage 10: the status of the day (score, streak,
  * level and XP) under the calories, and category colours from the theme's tokens.
  */
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useState, type ComponentType } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { m } from 'framer-motion'
@@ -47,6 +47,25 @@ import { useSkinTraits } from '@/lib/appearance'
 import { CalorieSticker, MacroBars } from './parts'
 import { TodayStatus } from '@/features/game/TodayStatus'
 import { useOnceTrue } from '@/lib/lazy'
+
+// stage 10: «План дня», «Повторить» and the insight sit below everything else — not part of
+// the first paint, so they load as a chunk of their own as soon as Today renders. They are
+// extras: a chunk that cannot be fetched (offline, not cached yet) leaves them out and is
+// asked for again the next time Today opens — the screen itself never depends on it.
+function TodayMoreLoader() {
+  const [More, setMore] = useState<ComponentType | null>(null)
+  useEffect(() => {
+    let live = true
+    import('./TodayMore').then(
+      (module) => live && setMore(() => module.TodayMore),
+      () => undefined,
+    )
+    return () => {
+      live = false
+    }
+  }, [])
+  return More ? <More /> : null
+}
 
 // stage 9: the recipe log sheet loads on first use (a pinned recipe). The health sheets
 // stay: mounted with Today, they read their series with it and open prefilled.
@@ -442,6 +461,8 @@ export function TodayPage() {
       </div>
 
       <DayScoreCard />
+
+      <TodayMoreLoader />
 
       <p className="pb-2 text-center text-xs muted">
         {today()} · {number(progressPercent)}%

@@ -257,3 +257,9 @@ export type SleepSeries = Schemas['SleepSeriesOut']
 export type StepsIn = Partial<Schemas['StepsIn']> & { steps: number }
 export type WeightIn = Partial<Schemas['WeightIn']> & { weight_kg: number }
 export type SleepIn = Partial<Schemas['SleepIn']> & { bed_time: string; wake_time: string }
+
+// --------------------------------------------------------------------------- //
+// Insights (stage 10)
+// --------------------------------------------------------------------------- //
+export type Insight = Schemas['InsightOut']
+export type TodayInsight = Schemas['TodayInsightOut']

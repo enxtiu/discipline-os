@@ -2158,6 +2158,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/insights/today": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** At most one observation for today: protein, fibre, water or steps above your 4-week average */
+        get: operations["today_insight_api_v1_insights_today_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -3804,6 +3821,52 @@ export interface components {
             day: components["schemas"]["HealthDayOut"];
             /** Created */
             created: boolean;
+        };
+        /** InsightOut */
+        InsightOut: {
+            /**
+             * Metric
+             * @description what the observation is about (more of it than usual)
+             * @enum {string}
+             */
+            metric: "protein" | "fiber" | "water" | "steps";
+            /**
+             * Day
+             * @description today (so far) or yesterday (a finished day)
+             * @enum {string}
+             */
+            day: "today" | "yesterday";
+            /**
+             * Date
+             * Format: date
+             * @description the local day the observation is about
+             */
+            date: string;
+            /**
+             * Value
+             * @description that day's amount: protein / fibre in g, water in ml, steps
+             */
+            value: number;
+            /**
+             * Average
+             * @description the mean of the 28 days before it, over the days that have data
+             */
+            average: number;
+            /**
+             * Unit
+             * @enum {string}
+             */
+            unit: "g" | "ml" | "steps";
+            /**
+             * Window Days
+             * @description how far back the average looks (28 days)
+             */
+            window_days: number;
+            /**
+             * Days With Data
+             * @description the days of the window the average is taken over (at least 7)
+             */
+            days_with_data: number;
         };
         /** IntegrationListOut */
         IntegrationListOut: {
@@ -7519,6 +7582,17 @@ export interface components {
              * Format: date-time
              */
             server_now: string;
+        };
+        /** TodayInsightOut */
+        TodayInsightOut: {
+            /**
+             * Date
+             * Format: date
+             * @description your today
+             */
+            date: string;
+            /** @description null = nothing worth saying today (the screen shows nothing) */
+            insight: components["schemas"]["InsightOut"] | null;
         };
         /** TodayViewOut */
         TodayViewOut: {
@@ -13336,6 +13410,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NotionSyncStartOut"];
+                };
+            };
+        };
+    };
+    today_insight_api_v1_insights_today_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TodayInsightOut"];
                 };
             };
         };
