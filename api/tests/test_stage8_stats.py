@@ -478,6 +478,7 @@ async def test_the_running_timer_counts_today(player, db) -> None:
 # --------------------------------------------------------------------------- #
 # Progress
 # --------------------------------------------------------------------------- #
+@pytest.mark.usefixtures("freezes_on")  # the calendar marks freeze days only under the opt-in rule
 async def test_progress_reads_scores_xp_and_the_streak_calendar(player, db) -> None:
     """The series as stored (a fixed clock: the service, without the on-read refresh)."""
     user_id = player["user_id"]

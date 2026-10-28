@@ -4,7 +4,8 @@
 * ``score``        — the 0–100 daily score and the rings (calorie curve peaks *in* the zone)
 * ``xp``           — the deterministic XP ledger (open window, frozen days, permanent awards)
 * ``levels``       — the 30-level curve
-* ``streaks``      — daily streaks and the weekly plan-aware workout streak, freeze tokens
+* ``streaks``      — daily streaks and the weekly plan-aware workout streak; freeze tokens
+                     only when ``STREAK_FREEZES_ENABLED`` (off by default: a miss breaks)
 * ``achievements`` — metrics, unlocks, progress
 * ``quests``       — daily/weekly selection, progress, claim, expiry
 * ``engine``       — the per-user run shared by the jobs and the endpoints

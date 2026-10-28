@@ -182,7 +182,8 @@ class Streak(UserScopedMixin, UuidPkMixin, Base):
     longest_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     last_event_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     broken_on: Mapped[date | None] = mapped_column(Date, nullable=True)
-    # weekly freeze token: consumes 1 to survive a single missed day
+    # weekly freeze token: consumes 1 to survive a single missed day. Opt-in since stage 10
+    # (STREAK_FREEZES_ENABLED, off by default): the engine then stores 0 and no used dates.
     freeze_tokens: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=1)
     freeze_used_dates: Mapped[list[str]] = mapped_column(
         JsonType, nullable=False, server_default=sa.text("'[]'::jsonb")

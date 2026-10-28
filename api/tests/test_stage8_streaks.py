@@ -1,6 +1,8 @@
-"""Stage 8: streaks — daily kinds, the weekly plan-aware workout streak, freeze tokens,
-longest kept, today counting once met, at_risk after 18:00 — and the stage-7 evening
-reminder for streaks at risk (never about eating less)."""
+"""Stage 8: streaks — daily kinds, the weekly plan-aware workout streak, freeze tokens
+(an opt-in since stage 10: these tests run with ``freezes_on``; the default, a miss
+breaks the streak, is in ``test_stage10_no_freezes.py``), longest kept, today counting
+once met, at_risk after 18:00 — and the stage-7 evening reminder for streaks at risk
+(never about eating less)."""
 
 from __future__ import annotations
 
@@ -71,6 +73,7 @@ def test_at_risk_from_18_local(hour: int, risky: bool) -> None:
     assert nothing.at_risk is False  # no streak, nothing to lose
 
 
+@pytest.mark.usefixtures("freezes_on")  # the opt-in rule; off by default (stage 10)
 def test_a_missed_day_uses_a_freeze_token_and_the_week_start_refills_it() -> None:
     met = days(date(2026, 7, 6), date(2026, 7, 8)) | days(date(2026, 7, 10), TODAY)  # Thursday 9 July missed
     state = simulate_daily(StreakKind.MEAL_LOGGING, met, TODAY, 1, 12)
@@ -80,6 +83,7 @@ def test_a_missed_day_uses_a_freeze_token_and_the_week_start_refills_it() -> Non
     assert state.broken_on is None
 
 
+@pytest.mark.usefixtures("freezes_on")  # the opt-in rule; off by default (stage 10)
 def test_two_misses_with_one_token_break_the_streak_and_longest_is_kept() -> None:
     met = days(date(2026, 7, 6), date(2026, 7, 7)) | days(date(2026, 7, 10), TODAY)
     state = simulate_daily(StreakKind.MEAL_LOGGING, met, TODAY, 1, 12)
@@ -89,6 +93,7 @@ def test_two_misses_with_one_token_break_the_streak_and_longest_is_kept() -> Non
     assert state.run_start == date(2026, 7, 10)
 
 
+@pytest.mark.usefixtures("freezes_on")  # the opt-in rule; off by default (stage 10)
 def test_freeze_tokens_are_capped_at_two() -> None:
     state = simulate_daily(StreakKind.REVIEW, days(date(2026, 6, 1), TODAY), TODAY, 1, 12)
     assert state.freeze_tokens == MAX_FREEZE_TOKENS == 2
@@ -124,6 +129,7 @@ def test_planned_weeks_count_and_rest_days_never_break_anything() -> None:
     assert (state.current, state.today_met) == (4, True)
 
 
+@pytest.mark.usefixtures("freezes_on")  # the opt-in rule; off by default (stage 10)
 def test_a_short_week_uses_a_token_and_a_rest_week_is_neutral() -> None:
     weekly = plans(3)
     weekly[WEEKS[2]] = WeekPlan(WEEKS[2], 0, True)  # a deload week planned as rest
@@ -133,6 +139,7 @@ def test_a_short_week_uses_a_token_and_a_rest_week_is_neutral() -> None:
     assert state.current == 1 and state.broken_on is None  # the rest week neither counts nor breaks
 
 
+@pytest.mark.usefixtures("freezes_on")  # the opt-in rule; off by default (stage 10)
 def test_without_a_plan_three_workouts_make_a_week() -> None:
     done = {WEEKS[1]: 3, WEEKS[2]: 2, WEEKS[3]: 0}
     state = simulate_weekly(done, plans(0, has_plan=False), TODAY, 1, 12)

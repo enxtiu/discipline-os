@@ -157,6 +157,14 @@ class Settings(BaseSettings):
     # and give a new server the same value to move to it with the whole history.
     backup_signing_key: str = ""
 
+    # ------------------------------------------------------- gamification (stage 10)
+    # Streak freezes: +1 token a week (at most 2) that is spent automatically on a missed
+    # day/week instead of breaking the streak. OFF by default — the owner's rule is "all by
+    # the hard rule": a missed day/week breaks the streak, no token is granted or used,
+    # ``freeze_tokens`` is reported as 0 and no freeze date is reported. The response
+    # shapes (OpenAPI) are the same either way.
+    streak_freezes_enabled: bool = False
+
     @field_validator("secret_key")
     @classmethod
     def _secret_must_be_set_in_prod(cls, v: str, info) -> str:

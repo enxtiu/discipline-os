@@ -171,9 +171,10 @@ async def ensure_defaults(db: AsyncSession, user: User) -> None:
 
     existing_streaks = (await db.execute(select(Streak.kind).where(Streak.user_id == user.id))).scalars().all()
     have_streaks = set(existing_streaks)
+    freezes = get_settings().streak_freezes_enabled  # off (the default): nobody starts with a freeze token
     for kind in StreakKind:
         if kind in have_streaks:
             continue
-        db.add(Streak(user_id=user.id, kind=kind, freeze_tokens=1 if kind == StreakKind.OVERALL else 0))
+        db.add(Streak(user_id=user.id, kind=kind, freeze_tokens=1 if freezes and kind == StreakKind.OVERALL else 0))
 
     await db.flush()
