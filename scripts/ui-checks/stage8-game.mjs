@@ -436,11 +436,15 @@ export async function run(ctx) {
     )
     const streakRows = await page
       .locator('[data-testid="streak-row"]')
-      .evaluateAll((els) => els.map((el) => `${el.dataset.kind}:${el.dataset.current}:${el.dataset.longest}:${el.dataset.freeze}`))
+      .evaluateAll((els) => els.map((el) => `${el.dataset.kind}:${el.dataset.current}:${el.dataset.longest}`))
+    // stage 10: no freezes in the app (the owner's decision) — none is shown, the rule says a miss resets
+    const streaksText = await page.locator('[data-testid="streaks-card"]').innerText()
     check(
-      JSON.stringify(streakRows) === JSON.stringify(profile.streaks.map((s) => `${s.kind}:${s.current}:${s.longest}:${s.freeze_tokens}`)) &&
-        (await page.locator('[data-testid="streaks-card"]').innerText()).includes('без плана — 3'),
-      'all 7 streaks with current, longest and freezes; the weekly workout rule explained',
+      JSON.stringify(streakRows) === JSON.stringify(profile.streaks.map((s) => `${s.kind}:${s.current}:${s.longest}`)) &&
+        streaksText.includes('без плана — 3') &&
+        !streaksText.replace('Заморозок нет', '').toLowerCase().includes('замороз') &&
+        (await page.locator('[data-testid="streak-freeze"]').count()) === 0,
+      'all 7 streaks with current and longest, no freezes; the weekly workout rule explained',
       streakRows.slice(0, 3).join(' '),
     )
     const todayQuests = (await game()).quests

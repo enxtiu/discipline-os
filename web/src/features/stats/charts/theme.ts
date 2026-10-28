@@ -12,7 +12,7 @@
  *  - `score`  the daily score (`--chart-score` = `--accent`)
  *  - `xp`     XP per day (`--chart-xp` = `--accent-2`)
  *  - `burn`   calories burned in workouts (`--chart-burn`)
- *  - `sleep`  sleep bars, freeze days (`--chart-sleep`)
+ *  - `sleep`  sleep bars (`--chart-sleep`)
  *  - `rest`   de-emphasised marks: outside the zone, below a target (`--chart-rest` = `--text-muted`)
  *  - `ink` / `muted`  text; `grid` hairlines (`--chart-grid` = `--border`); `surface` the card
  *  - `outline` a theme that draws marks with an outline (stickers): its colour and width

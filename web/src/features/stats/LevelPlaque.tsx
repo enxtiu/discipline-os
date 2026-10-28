@@ -1,7 +1,7 @@
 /**
  * Статистика → the level plaque at the top (stage 10, every theme): the level and its
  * title, a big XP bar to the next level («осталось 350 XP»), XP in total, this week
- * and today, and the overall streak with the freezes in reserve.
+ * and today, and the overall streak (no freezes: a missed day ends it).
  *
  * `GET /gamification/profile` (the ladder names the next level; the same read as the
  * achievements screen) and the current week's progress series (the request the
@@ -17,7 +17,7 @@ import { Card, ProgressBar, Skeleton } from '@/components/ui'
 import { ProgressRing } from '@/components/ui/ProgressRing'
 import { number } from '@/lib/format'
 import { levelTitle, streakLength } from '@/features/game/format'
-import { IconFlameLit, IconSnowflake } from '@/features/game/icons'
+import { IconFlameLit } from '@/features/game/icons'
 import { useGameProfile } from '@/features/game/queries'
 import { progressTotals } from './derive'
 import { CardError } from './parts'
@@ -53,7 +53,6 @@ export function LevelPlaque() {
   const { level } = xp
   const next = levels.find((row) => row.level === level.level + 1) ?? null
   const overall = streaks.find((streak) => streak.kind === 'overall')
-  const freezes = overall?.freeze_tokens ?? 0
   const weekXp = week.data && !week.isPlaceholderData ? progressTotals(week.data).xp : null
   const span = level.next_min_xp != null ? level.next_min_xp - level.min_xp : null
   const into = xp.total - level.min_xp
@@ -136,7 +135,6 @@ export function LevelPlaque() {
           className="sk-cell surface-sunken min-w-0 px-2.5 py-2"
           data-testid="plaque-streak"
           data-current={overall?.current ?? 0}
-          data-freezes={freezes}
         >
           <dt className="truncate text-xs muted">{t('game.status.streak')}</dt>
           <dd className="mt-0.5 flex min-w-0 items-center gap-1 leading-tight">
@@ -144,13 +142,6 @@ export function LevelPlaque() {
             <span className="tnum truncate text-[17px] font-semibold">
               {overall ? streakLength(overall, overall.current) : t('game.streak.days', { count: 0 })}
             </span>
-          </dd>
-          <dd className="mt-0.5 flex min-w-0 items-center gap-1 text-[11px] muted">
-            <IconSnowflake size={12} className="sk-freeze shrink-0 text-[rgb(var(--accent))]" />
-            <span className="tnum" aria-hidden="true">
-              {freezes}
-            </span>
-            <span className="sr-only">{t('game.status.freezes', { count: freezes })}</span>
           </dd>
         </div>
       </dl>

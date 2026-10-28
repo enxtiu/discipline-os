@@ -1,7 +1,7 @@
 /**
  * /stats/achievements (stage 8): the level card with the 30-level ladder, XP
  * of the last 30 days (small SVG bars — no chart library needed here),
- * streaks with freeze tokens and the weekly workout streak explained, daily
+ * streaks and the weekly workout streak explained (stage 10: no freezes), daily
  * and weekly quests with Claim, the achievements grid by category (unlocked
  * first, locked with progress, secret ones masked as «???») and how XP works.
  *
@@ -28,11 +28,11 @@ import {
   shortDay,
   streakLength,
 } from './format'
-import { IconFlameLit, IconSnowflake } from './icons'
+import { IconFlameLit } from './icons'
 import { AchievementBadge, RarityPill } from './parts'
 import { QuestList, useQuestClaimer } from './QuestList'
 import { useGameAutoRefresh, useGameProfile, useGameToday } from './queries'
-import { FREEZE, milestoneXp, STREAK_MILESTONES, XP_RULES } from './rules'
+import { milestoneXp, STREAK_MILESTONES, XP_RULES } from './rules'
 import type { Achievement, AchievementCategory, Level, ProfileXp, Streak, UserQuest, XpDay } from './types'
 
 const CATEGORIES: AchievementCategory[] = [
@@ -276,10 +276,7 @@ function StreaksCard({ streaks }: { streaks: Streak[] }) {
         ))}
       </ul>
       <div className="space-y-2 pt-1 text-xs leading-relaxed muted">
-        <p className="flex gap-2">
-          <IconSnowflake size={14} className="mt-0.5 shrink-0 text-[rgb(var(--accent))]" />
-          <span>{t('game.streak.freeze_rule', { perWeek: FREEZE.perWeek, max: FREEZE.max })}</span>
-        </p>
+        <p>{t('game.streak.reset_rule')}</p>
         <p>{t('game.streak.workout_rule')}</p>
       </div>
     </Card>
@@ -297,7 +294,6 @@ function StreakRow({ streak }: { streak: Streak }) {
       data-kind={streak.kind}
       data-current={streak.current}
       data-longest={streak.longest}
-      data-freeze={streak.freeze_tokens}
       data-at-risk={streak.at_risk}
     >
       <div className="flex items-center gap-3">
@@ -338,18 +334,6 @@ function StreakRow({ streak }: { streak: Streak }) {
                 : t('game.streak.today_pending')}
           </span>
         )}
-        <span className="inline-flex items-center gap-1" data-testid="streak-freeze">
-          <span className="inline-flex" aria-hidden="true">
-            {Array.from({ length: FREEZE.max }, (_, index) => (
-              <IconSnowflake
-                key={index}
-                size={13}
-                className={index < streak.freeze_tokens ? 'text-[rgb(var(--accent))]' : 'opacity-35'}
-              />
-            ))}
-          </span>
-          {t('game.streak.freeze', { count: streak.freeze_tokens, max: FREEZE.max })}
-        </span>
         {milestone != null && streak.next_milestone != null && (
           <span>{t('game.streak.next_milestone', { days: streak.next_milestone, xp: milestone })}</span>
         )}

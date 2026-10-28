@@ -69,6 +69,7 @@
 
     /* Stage 10 — chart roles (features/stats/charts/theme.ts): «Эволюция» = the stage-8 tokens */
     --chart-food: var(--accent);
+    --on-chart-food: var(--on-accent);
     --chart-move: var(--accent-2);
     --chart-score: var(--accent);
     --chart-xp: var(--accent-2);

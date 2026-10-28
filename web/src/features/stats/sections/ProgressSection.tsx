@@ -1,6 +1,6 @@
 /**
  * Прогресс: the stored daily score (0–100) as a line with the overall-streak
- * level, XP per day, and the streak calendar (counted / freeze days) — with a
+ * level, XP per day, and the streak calendar (counted days) — with a
  * way to the levels, streaks and achievements screen (`/stats/achievements`).
  * Every number is the server's; today's score is provisional and says so.
  */
@@ -43,11 +43,9 @@ function ScoreCard({ stats, dimmed }: { stats: ProgressStats; dimmed: boolean })
     const note =
       day.date === stats.today
         ? t('stats.progress.provisional')
-        : flag?.freeze
-          ? t('stats.progress.cell.freeze')
-          : flag?.overall
-            ? t('stats.progress.cell.overall')
-            : t('stats.progress.cell.missed')
+        : flag?.overall
+          ? t('stats.progress.cell.overall')
+          : t('stats.progress.cell.missed')
     return [{ label: note, value: t('stats.progress.score_value', { score: number(day.score) }), color: colour() }]
   }
   return (
@@ -177,7 +175,6 @@ function StreakCard({ stats, dimmed, weekStart }: { stats: ProgressStats; dimmed
       <Tiles
         items={[
           { label: t('stats.progress.counted'), value: number(totals.overallDays), sub: t('stats.days_short'), testId: 'stat-streak-days' },
-          { label: t('stats.progress.freezes'), value: number(totals.freezeDays), sub: t('stats.days_short'), testId: 'stat-freeze-days' },
         ]}
       />
       <StreakCalendar
@@ -188,13 +185,11 @@ function StreakCard({ stats, dimmed, weekStart }: { stats: ProgressStats; dimmed
         summary={t('stats.progress.calendar_summary', {
           period: periodLabel(stats),
           n: totals.overallDays,
-          f: totals.freezeDays,
         })}
       />
       <Legend
         items={[
           { mark: 'cell', color: theme.food, label: t('stats.progress.legend_counted') },
-          { mark: 'cell', color: theme.sleep, label: t('stats.progress.legend_freeze') },
           { mark: 'empty', color: theme.muted, label: t('stats.progress.legend_missed') },
         ]}
       />

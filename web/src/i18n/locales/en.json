@@ -1134,19 +1134,16 @@
       "xp_day": "that day",
       "xp_summary": "XP, {{period}}: {{xp}} XP in total.",
       "calendar_title": "Streak calendar",
-      "calendar_sub": "Days that counted (score {{min}} or more) and days a freeze saved",
+      "calendar_sub": "Days that counted (score from {{min}}); a missed day resets the streak",
       "counted": "Counted",
-      "freezes": "Freezes",
       "calendar_hint": "Tap a day to see it",
       "cell": {
         "overall": "counted for the streak",
-        "freeze": "a freeze saved the streak",
         "missed": "did not count",
         "future": "still ahead"
       },
-      "calendar_summary": "Streak calendar, {{period}}: {{n}} days counted, {{f}} freezes.",
+      "calendar_summary": "Streak calendar, {{period}}: {{n}} days counted.",
       "legend_counted": "counted",
-      "legend_freeze": "freeze",
       "legend_missed": "did not count",
       "to_achievements": "Streaks, levels and achievements",
       "legend_provisional": "today, provisional"
@@ -1944,17 +1941,14 @@
         "workout": "do this week's planned workouts"
       },
       "at_risk_title": "Not counted yet today",
-      "at_risk_freeze": "Miss it and a freeze is used — the streak goes on.",
-      "at_risk_no_freeze": "no freezes left",
       "longest": "Best {{length}}",
       "today_met": "Today counts",
       "today_pending": "Not yet today",
       "week_progress": "This week: {{done}}, needed {{required}}",
       "week_rest": "A planned rest week — the streak goes on",
-      "freeze": "Freezes: {{count}} of {{max}}",
       "next_milestone": "{{days}} days in a row — +{{xp}} XP",
-      "freeze_rule": "Freeze: +{{perWeek}} every week, {{max}} at most. A missed day (a week for workouts) uses one by itself, and the streak goes on.",
-      "workout_rule": "Workouts count by the week: a week counts when you do as many workouts as planned (3 without a plan). A planned rest week does not break the streak — rest days never do."
+      "workout_rule": "Workouts count by the week: a week counts when you do as many workouts as planned (3 without a plan). A planned rest week does not break the streak — rest days never do.",
+      "reset_rule": "No freezes: a missed day (a week for workouts) resets the streak."
     },
     "quests_today": "Today's quests",
     "quests_daily": "Today",
@@ -2095,9 +2089,8 @@
     "status": {
       "title": "Today's status",
       "streak": "Streak",
-      "freezes": "Freezes left: {{count}}",
-      "no_freezes": "No freezes left",
-      "xp_total": "{{xp}} XP"
+      "xp_total": "{{xp}} XP",
+      "reset_note": "A missed day resets the streak"
     }
   },
   "integrations": {

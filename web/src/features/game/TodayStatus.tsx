@@ -1,7 +1,7 @@
 /**
  * Today → the status of the day (stage 10, every theme): the day score, the
- * overall streak with the freezes in reserve, and the level («Ур. 12 · Профи»)
- * with its XP bar to the next level.
+ * overall streak (no freezes: a missed day ends it, and the tile says so), and
+ * the level («Ур. 12 · Профи») with its XP bar to the next level.
  *
  * `GET /gamification/today` as the server computed it — the same read as the
  * score card further down, so no extra request; while it loads the tiles keep
@@ -18,7 +18,7 @@ import { useTranslation } from 'react-i18next'
 import { ProgressBar, Skeleton } from '@/components/ui'
 import { number } from '@/lib/format'
 import { levelTitle, streakLength } from './format'
-import { IconFlameLit, IconSnowflake } from './icons'
+import { IconFlameLit } from './icons'
 import { ProvisionalPill } from './parts'
 import { useGameToday } from './queries'
 
@@ -42,7 +42,6 @@ export function TodayStatus() {
   const { level } = xp
   const overall = data.streaks.find((streak) => streak.kind === 'overall')
   const days = overall?.current ?? 0
-  const freezes = overall?.freeze_tokens ?? 0
 
   return (
     <section className="sk-status grid grid-cols-2 gap-3" aria-label={t('game.status.title')} data-testid="today-status">
@@ -60,7 +59,6 @@ export function TodayStatus() {
         data-cat="streak"
         data-testid="status-streak"
         data-current={days}
-        data-freezes={freezes}
       >
         <p className="truncate text-xs font-medium muted">{t('game.status.streak')}</p>
         <p className="mt-0.5 flex items-center gap-1.5">
@@ -73,17 +71,8 @@ export function TodayStatus() {
             {overall ? streakLength(overall, days) : t('game.streak.days', { count: 0 })}
           </span>
         </p>
-        <p className="mt-1.5 flex items-center gap-1 text-[11px] font-medium muted">
-          {freezes > 0 && (
-            <span className="flex shrink-0 items-center gap-0.5" aria-hidden="true">
-              {Array.from({ length: Math.min(freezes, 2) }).map((_, index) => (
-                <IconSnowflake key={index} size={13} className="sk-freeze text-[rgb(var(--accent))]" />
-              ))}
-            </span>
-          )}
-          <span className="min-w-0 truncate">
-            {freezes > 0 ? t('game.status.freezes', { count: freezes }) : t('game.status.no_freezes')}
-          </span>
+        <p className="mt-1.5 truncate text-[11px] font-medium muted" data-testid="status-streak-note">
+          {t('game.status.reset_note')}
         </p>
       </div>
 
