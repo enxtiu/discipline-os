@@ -89,7 +89,7 @@ export function TrainPage() {
         <ActiveCard workout={today.data.active} onOpen={() => navigate(`/train/workout/${today.data?.active?.id}`)} />
       ) : (
         <Card
-          className={clsx('space-y-3', boardContent && 'sk-tile sk-plancard')}
+          className={clsx('space-y-3', boardContent && plan?.template && !planDone && 'sk-tile sk-plancard')}
           data-cat={boardContent && plan?.template && !planDone ? 'steps' : undefined}
           data-testid="today-plan"
         >

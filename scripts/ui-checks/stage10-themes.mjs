@@ -699,7 +699,7 @@ export async function run(ctx) {
         const rect = el.getBoundingClientRect()
         return { name: (el.querySelector('span.text-sm')?.textContent ?? el.textContent ?? '').trim().slice(0, 24), top: Math.round(rect.top), left: Math.round(rect.left), width: Math.round(rect.width) }
       })
-      const recents = [...dialog.querySelectorAll('.sk-recent')].map((el) => el.getAttribute('aria-label'))
+      const recents = [...dialog.querySelectorAll('.sk-recent')].map((el) => (el.textContent ?? '').replace(/\s+/g, ' ').trim())
       return { tiles, tags: [...dialog.querySelectorAll('.sk-ai-tag')].length, planTag: dialog.querySelector('.sk-qa-tag')?.textContent ?? null, recents, role: dialog.getAttribute('aria-modal') }
     })
     const order = sheet.tiles.slice().sort((a, b) => a.top - b.top || a.left - b.left).map((tile) => tile.name)
@@ -710,7 +710,7 @@ export async function run(ctx) {
       order.join(' | '),
     )
     ok('Наклейки · быстрое добавление: the plan tag and «Недавнее»', `${sheet.planTag ?? 'no plan today — no tag'}; ${sheet.recents.length} recent(s)`)
-    check(sheet.recents.length <= 3 && sheet.recents.every((label) => /Записать снова: .+, \d+ ккал/.test(label)), 'Наклейки · быстрое добавление: at most three recents, each «Записать снова: …, N ккал»', sheet.recents.join(' | '))
+    check(sheet.recents.length <= 3 && sheet.recents.every((label) => /^Записать снова: .+\d ккал$/.test(label)), 'Наклейки · быстрое добавление: at most three recents, named «Записать снова: …» with its kcal', sheet.recents.join(' | '))
     await audit('Наклейки · быстрое добавление с «Недавнее» (Сирень)', 'dialog', 's10-16-stickers-add-recents-lilac')
     await page.keyboard.press('Escape')
     await page.waitForTimeout(400)

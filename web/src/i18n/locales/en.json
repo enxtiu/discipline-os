@@ -2189,7 +2189,7 @@
     },
     "ai": "AI",
     "recents_title": "Recent · log in one tap",
-    "recent_again": "Log again: {{name}}, {{kcal}} kcal",
+    "recent_again": "Log again:",
     "plan_tag": "planned: {{name}}",
     "plan_label": "Planned for today",
     "exercises": "Exercises",

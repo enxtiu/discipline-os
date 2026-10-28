@@ -150,9 +150,9 @@ function QuickRecents({ onDone }: { onDone: () => void }) {
             key={choice.recent.id}
             type="button"
             className="sk-recent"
-            aria-label={t('board.recent_again', { name: choice.name, kcal: number(choice.kcal) })}
             onClick={() => relog(choice, onDone)}
           >
+            <span className="sr-only">{t('board.recent_again')} </span>
             <span className="sk-recent-name">{choice.name}</span>
             <span className="sk-recent-foot">
               <span className="tnum">
