@@ -12,6 +12,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import { QueryClientProvider } from '@tanstack/react-query'
+import { MotionConfig } from 'framer-motion'
 import { registerSW } from 'virtual:pwa-register'
 
 import App from './App'
@@ -23,10 +24,13 @@ import { installOfflineSync } from '@/lib/offlineQueue'
 import { installQueueRefresh } from '@/lib/queueRefresh'
 import { MotionProvider } from '@/lib/motion'
 import { i18nReady } from '@/i18n'
+import { syncDocumentLanguage } from '@/i18n/documentLanguage'
 import '@/styles/index.css'
 
 // Theme first — avoids a flash of the wrong palette.
 applyTheme(storedTheme())
+// <html lang> follows the UI language (screen-reader voice, hyphenation).
+syncDocumentLanguage()
 
 // Offline queue: flush on reconnect, keep the indicator honest; one refresh after a flush.
 installOfflineSync()
@@ -60,9 +64,12 @@ void Promise.all([i18nReady, sessionReady()]).then(() =>
       <QueryClientProvider client={queryClient}>
         <BrowserRouter>
           <MotionProvider>
-            <ToastProvider>
-              <App />
-            </ToastProvider>
+            {/* prefers-reduced-motion: no slides, springs or layout animations anywhere */}
+            <MotionConfig reducedMotion="user">
+              <ToastProvider>
+                <App />
+              </ToastProvider>
+            </MotionConfig>
           </MotionProvider>
         </BrowserRouter>
       </QueryClientProvider>

@@ -118,7 +118,8 @@ export function FoodPage() {
 
   return (
     <div className="space-y-5">
-      <div className="grid grid-cols-3 gap-2" aria-label={t('ai.capture_row')}>
+      <h1 className="sr-only">{t('food.title')}</h1>
+      <div className="grid grid-cols-3 gap-2" role="group" aria-label={t('ai.capture_row')}>
         <PhotoTrigger className="btn-secondary btn-sm min-h-tap cursor-pointer flex-col gap-1 py-2 text-xs">
           <IconCamera size={20} className="text-[rgb(var(--accent))]" />
           {t('food.photo')}
@@ -140,6 +141,7 @@ export function FoodPage() {
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           placeholder={t('food.search_placeholder')}
+          aria-label={t('food.search')}
           className="pl-10"
           autoComplete="off"
         />
@@ -290,8 +292,8 @@ export function FoodPage() {
                     <span className="tnum shrink-0 text-sm">{number(meal.kcal)}</span>
                     <button
                       type="button"
-                      className="-my-2 -mr-3 flex h-tap w-tap shrink-0 items-center justify-center muted"
-                      aria-label={t('app.delete')}
+                      className="-my-2 -mr-3 flex h-tap w-tap shrink-0 items-center justify-center rounded-2xl muted"
+                      aria-label={t('a11y.delete_meal', { name: (meal.items ?? []).map((item) => item.name).join(', ') })}
                       onClick={() =>
                         deleteMeal.mutate(meal.id, {
                           onSuccess: (result) => {
@@ -339,7 +341,7 @@ export function FoodPage() {
                   <Card key={recipe.id} className="flex items-center gap-2 py-2 pr-2">
                     <button
                       type="button"
-                      className="min-w-0 flex-1 py-1 text-left"
+                      className="min-h-tap min-w-0 flex-1 py-1 text-left"
                       onClick={() => setTarget({ kind: 'recipe', recipe })}
                     >
                       <p className="truncate text-sm font-semibold">{recipe.name}</p>

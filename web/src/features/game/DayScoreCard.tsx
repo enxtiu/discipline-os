@@ -84,9 +84,10 @@ export function DayScoreCard() {
             type="button"
             onClick={() => setSheetOpen(true)}
             className="flex shrink-0 flex-col items-center gap-2 rounded-2xl"
-            aria-label={t('game.score_open', { score: scoreLabel })}
             data-testid="day-score-button"
           >
+            {/* named by what it shows: «Оценка дня 38 из 100 предварительно — из чего она складывается» */}
+            <span className="sr-only">{t('a11y.score_before')} </span>
             <ProgressRing
               value={score.value}
               max={100}
@@ -102,6 +103,7 @@ export function DayScoreCard() {
               sublabel={t('game.score_of')}
             />
             {score.provisional && <ProvisionalPill />}
+            <span className="sr-only"> {t('a11y.score_after')}</span>
           </button>
           <div className="min-w-0 flex-1">
             {data.rings.map((ring) => (

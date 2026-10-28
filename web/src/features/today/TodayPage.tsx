@@ -139,6 +139,7 @@ export function TodayPage() {
 
   return (
     <div className="space-y-5">
+      <h1 className="sr-only">{t('today.title')}</h1>
       <TimerBar variant="today" />
 
       <section className="flex flex-col items-center gap-4">
@@ -153,6 +154,12 @@ export function TodayPage() {
             tone={progressPercent > 100 ? 'warn' : 'accent'}
             label={hasTargets ? number(eaten.kcal) : '—'}
             sublabel={t('today.kcal')}
+            name={t('today.kcal')}
+            valueText={
+              hasTargets
+                ? t('a11y.value_of', { value: number(eaten.kcal), target: number(targetKcal), unit: t('common.kcal') })
+                : t('a11y.value_unit', { value: number(eaten.kcal), unit: t('common.kcal') })
+            }
           >
             {hasTargets ? (
               <span className="mt-1 text-[11px] muted">
@@ -348,8 +355,8 @@ export function TodayPage() {
                   <span className="tnum shrink-0 text-sm">{number(meal.kcal)}</span>
                   <button
                     type="button"
-                    className="-my-2 -mr-3 flex h-tap w-tap shrink-0 items-center justify-center muted"
-                    aria-label={t('app.delete')}
+                    className="-my-2 -mr-3 flex h-tap w-tap shrink-0 items-center justify-center rounded-2xl muted"
+                    aria-label={t('a11y.delete_meal', { name: (meal.items ?? []).map((item) => item.name).join(', ') })}
                     onClick={() => removeMeal(meal.id)}
                     data-testid="meal-delete"
                   >
@@ -448,10 +455,22 @@ function MacroRing({
   tone: 'accent' | 'violet' | 'warn'
   unit: string
 }) {
+  const { t } = useTranslation()
   return (
     <div className="flex flex-col items-center gap-2">
-      <ProgressRing size={64} thickness={6} value={value} max={max} tone={tone} glow={false} label={number(value)} />
-      <div className="text-center">
+      <ProgressRing
+        size={64}
+        thickness={6}
+        value={value}
+        max={max}
+        tone={tone}
+        glow={false}
+        label={number(value)}
+        name={title}
+        valueText={t('a11y.value_of', { value: number(value), target: number(max), unit })}
+      />
+      {/* the ring above already says «Белки, 8 из 160 г» */}
+      <div className="text-center" aria-hidden="true">
         <p className="text-[11px] font-semibold">{title}</p>
         <p className="text-[10px] muted tnum">
           / {number(max)} {unit}

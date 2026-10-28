@@ -1,4 +1,21 @@
 {
+  "a11y": {
+    "value_of": "{{value}} of {{target}} {{unit}}",
+    "value_unit": "{{value}} {{unit}}",
+    "quiet_hours_to": "Quiet hours until",
+    "device_revoke": "Disconnect the device {{name}}",
+    "token_revoke": "Revoke the token {{name}}",
+    "open_time_log": "Open the time log",
+    "nothing_planned": "nothing planned",
+    "done": "done",
+    "delete_meal": "Delete: {{name}}",
+    "nav_main": "App sections",
+    "score_before": "Day score",
+    "score_after": "— what it is made of",
+    "rest_started": "Rest {{time}}",
+    "qr_pairing": "QR code with the pairing code {{code}}",
+    "qr_token": "QR code with this token"
+  },
   "app": {
     "name": "DisciplineOS",
     "tagline": "Discipline by data, not by feel",
@@ -2051,7 +2068,7 @@
       "page": "Page",
       "untitled": "Untitled",
       "open": "Open in Notion",
-      "open_kind": "Open “{{kind}}” in Notion",
+      "open_kind": "Open in Notion: “{{kind}}”",
       "connection": "Connection “{{name}}” · {{workspace}}",
       "kinds_title": "What to copy",
       "kinds_hint": "A section switched off stops updating; its database and pages stay in Notion.",

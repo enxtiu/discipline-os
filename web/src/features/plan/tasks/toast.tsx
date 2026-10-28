@@ -100,7 +100,7 @@ function ToastStack({ items: stack, placement }: { items: PlanToastItem[]; place
       style={
         placement === 'top'
           ? { top: 'calc(0.75rem + env(safe-area-inset-top, 0px))' }
-          : { bottom: 'calc(5.5rem + env(safe-area-inset-bottom, 0px))' }
+          : { bottom: 'calc(7.25rem + env(safe-area-inset-bottom, 0px))' }
       }
       aria-live="polite"
       role="status"

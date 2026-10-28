@@ -9,18 +9,34 @@
    ========================================================================== */
 
 @layer base {
+  /* Contrast (stage 9): every colour used for text meets 4.5:1 on the cards, the page,
+     the sunken wells and its own 10–15 % tint in both themes (scripts/ui-checks/stage9-a11y.mjs). */
   :root {
     --bg: 11 18 32;              /* #0B1220 */
     --bg-elevated: 17 26 43;     /* #111A2B */
     --bg-sunken: 8 13 22;        /* #080D16 */
     --border: 31 44 69;          /* #1F2C45 */
     --text: 232 238 247;         /* #E8EEF7 */
-    --text-muted: 132 146 171;   /* #8492AB */
+    --text-muted: 138 151 176;   /* #8A97B0 — was #8492AB (4.5:1 on accent-tinted cells) */
     --accent: 56 224 200;        /* #38E0C8 */
-    --accent-2: 139 92 246;      /* #8B5CF6 */
+    --accent-2: 161 130 249;     /* #A182F9 — was #8B5CF6 (4.1:1 as text on cards) */
     --warn: 251 191 36;          /* #FBBF24 */
+    --on-accent: 8 13 22;        /* text on --accent fills */
+    --on-accent-2: 8 13 22;      /* text on --accent-2 fills */
     --chart-burn: 201 122 6;     /* #C97A06 — burned-kcal bars (validated for dark) */
     --chart-sleep: 96 165 250;   /* #60A5FA — sleep bars, 6.9:1 on cards */
+    /* palette shades used as text (tailwind.config.js); dark = the original hex values */
+    --aqua-300: 125 243 225;     /* #7DF3E1 */
+    --aqua-400: 56 224 200;      /* #38E0C8 */
+    --violet-300: 196 181 253;   /* #C4B5FD */
+    --violet-400: 167 139 250;   /* #A78BFA */
+    --amber-100: 254 243 199;    /* #FEF3C7 */
+    --amber-200: 253 230 138;    /* #FDE68A */
+    --amber-300: 252 211 77;     /* #FCD34D */
+    --amber-400: 251 191 36;     /* #FBBF24 */
+    --rose-200: 254 205 211;     /* #FECDD3 */
+    --rose-300: 253 164 175;     /* #FDA4AF */
+    --rose-400: 251 113 133;     /* #FB7185 */
   }
 
   :root[data-theme='light'] {
@@ -30,11 +46,25 @@
     --border: 214 222 235;
     --text: 17 26 43;
     --text-muted: 90 104 128;
-    --accent: 14 163 147;
-    --accent-2: 124 58 237;
-    --warn: 217 119 6;
+    --accent: 11 107 99;         /* #0B6B63 — was #0EA393 (3.1:1 as text on white) */
+    --accent-2: 109 40 217;      /* #6D28D9 — was #7C3AED (4.0:1 on its tint) */
+    --warn: 146 64 14;           /* #92400E — was #D97706 (3.2:1 as text on white) */
+    --on-accent: 255 255 255;
+    --on-accent-2: 255 255 255;
     --chart-burn: 217 119 6;     /* #D97706 */
     --chart-sleep: 37 99 235;    /* #2563EB, 5.2:1 on white */
+    /* the dark theme's light pastel text shades read as dark shades of the same hue here */
+    --aqua-300: 17 94 89;        /* #115E59 */
+    --aqua-400: 15 118 110;      /* #0F766E */
+    --violet-300: 91 33 182;     /* #5B21B6 */
+    --violet-400: 109 40 217;    /* #6D28D9 */
+    --amber-100: 120 53 15;      /* #78350F */
+    --amber-200: 120 53 15;      /* #78350F */
+    --amber-300: 146 64 14;      /* #92400E */
+    --amber-400: 180 83 9;       /* #B45309 */
+    --rose-200: 136 19 55;       /* #881337 */
+    --rose-300: 159 18 57;       /* #9F1239 */
+    --rose-400: 190 18 60;       /* #BE123C */
   }
 
   * {
@@ -85,6 +115,26 @@
     outline: 2px solid rgb(var(--accent));
     outline-offset: 2px;
     border-radius: 6px;
+  }
+
+  /* <main> takes focus (tabindex -1) when a sheet closes and its opener is gone */
+  main:focus {
+    outline: none;
+  }
+
+  /* WebKit drops list semantics (VoiceOver «список, 7 объектов») from a list styled
+     list-style: none, as Tailwind's preflight does; an invisible marker keeps them.
+     Utilities (list-disc, list-decimal, list-none) still win. */
+  ul,
+  ol {
+    list-style: '\200B';
+  }
+
+  /* a control scrolled into view by Tab or VoiceOver lands clear of the sticky
+     header and of the fixed tab bar with its floating quick-add button */
+  html {
+    scroll-padding-top: calc(4.5rem + env(safe-area-inset-top, 0px));
+    scroll-padding-bottom: calc(7.5rem + env(safe-area-inset-bottom, 0px));
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -150,7 +200,7 @@
       disabled:opacity-50;
   }
   .btn-primary {
-    @apply btn bg-[rgb(var(--accent))] text-ink-950 hover:brightness-110;
+    @apply btn bg-[rgb(var(--accent))] text-on-accent hover:brightness-110;
     box-shadow: 0 0 24px -8px rgb(var(--accent) / 0.7);
   }
   .btn-secondary {
@@ -163,14 +213,16 @@
   .btn-danger {
     @apply btn border border-rose-500/40 bg-rose-500/10 text-rose-400 hover:bg-rose-500/20;
   }
+  /* compact text, still a 48 px target (stage 9: was 36 px) */
   .btn-sm {
-    @apply min-h-[2.25rem] rounded-xl px-3 text-sm;
+    @apply min-h-tap rounded-xl px-3 text-sm;
   }
 
+  /* focus-within: a date/time field keeps its accent border while its picker button is focused */
   .input {
     @apply w-full rounded-2xl border border-[rgb(var(--border))] bg-[rgb(var(--bg-sunken))]
       px-4 py-3 text-[rgb(var(--text))] placeholder:text-[rgb(var(--text-muted))]/70
-      focus:border-[rgb(var(--accent))] focus:outline-none;
+      focus:border-[rgb(var(--accent))] focus:outline-none focus-within:border-[rgb(var(--accent))];
   }
 
   .field {
@@ -184,13 +236,18 @@
   .chip-active {
     @apply border-[rgb(var(--accent))]/50 bg-[rgb(var(--accent))]/10 text-[rgb(var(--accent))];
   }
+  /* a chip you can press is a 48 px target; label chips (spans) keep their size */
+  button.chip,
+  a.chip {
+    @apply min-h-tap min-w-tap justify-center;
+  }
 
   /* segmented control */
   .segmented {
     @apply flex gap-1 rounded-2xl border border-[rgb(var(--border))] bg-[rgb(var(--bg-sunken))] p-1;
   }
   .segmented > button {
-    @apply min-h-[2.5rem] flex-1 rounded-xl px-3 text-sm font-medium text-[rgb(var(--text-muted))]
+    @apply min-h-tap flex-1 rounded-xl px-3 text-sm font-medium text-[rgb(var(--text-muted))]
       transition-colors;
   }
   /* five or more options (meal types) must fit a 390 px screen */
@@ -239,8 +296,10 @@
     box-shadow: 0 0 0 1px rgb(var(--accent-2) / 0.35), 0 0 28px -6px rgb(var(--accent-2) / 0.5);
   }
 
+  /* relative: screen-reader-only text inside (position: absolute) scrolls with the row
+     instead of widening the whole page */
   .scroll-x {
-    @apply -mx-4 flex gap-3 overflow-x-auto px-4 pb-1;
+    @apply relative -mx-4 flex gap-3 overflow-x-auto px-4 pb-1;
     scrollbar-width: none;
   }
   .scroll-x::-webkit-scrollbar {
@@ -262,12 +321,13 @@
   .chart-sleep {
     background-color: rgb(var(--chart-sleep));
   }
+  /* clear of the bar and of the quick-add button floating 3 rem above it (stage 9) */
   .above-tabbar {
-    bottom: calc(4.75rem + env(safe-area-inset-bottom, 0px));
+    bottom: calc(7rem + env(safe-area-inset-bottom, 0px));
   }
 
-  /* space for the fixed tab bar */
+  /* space for the fixed tab bar and the floating quick-add button */
   .pb-tabbar {
-    padding-bottom: calc(6.5rem + env(safe-area-inset-bottom, 0px));
+    padding-bottom: calc(7rem + env(safe-area-inset-bottom, 0px));
   }
 }

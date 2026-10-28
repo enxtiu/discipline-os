@@ -291,7 +291,6 @@ function MonthStrip({ date, today, onPick }: { date: string; today: string | und
                 disabled={future}
                 onClick={() => onPick(day)}
                 aria-pressed={selected}
-                aria-label={has ? t('journal.day_with_entry', { day: dayTitle(day) }) : dayTitle(day)}
                 className={clsx(
                   'flex h-14 w-12 flex-col items-center justify-center gap-0.5 rounded-2xl border text-xs transition-colors',
                   selected
@@ -304,8 +303,13 @@ function MonthStrip({ date, today, onPick }: { date: string; today: string | und
                 data-date={day}
                 data-has-entry={has ? 'true' : 'false'}
               >
-                <span className="text-[10px] uppercase leading-none muted">{weekdayShort(day)}</span>
-                <span className="tnum text-sm font-semibold leading-none">{dayNumber(day)}</span>
+                <span className="sr-only">{has ? t('journal.day_with_entry', { day: dayTitle(day) }) : dayTitle(day)}</span>
+                <span className="text-[10px] uppercase leading-none muted" aria-hidden="true">
+                  {weekdayShort(day)}
+                </span>
+                <span className="tnum text-sm font-semibold leading-none" aria-hidden="true">
+                  {dayNumber(day)}
+                </span>
                 <span
                   className={clsx('h-1.5 w-1.5 rounded-full', has ? 'bg-[rgb(var(--accent))]' : 'bg-transparent')}
                   aria-hidden="true"
@@ -349,7 +353,7 @@ function ScaleField({ scale, value, onChange }: { scale: Scale; value: number | 
               className={clsx(
                 'tnum min-h-tap rounded-2xl border text-lg font-semibold transition-colors',
                 active
-                  ? 'border-transparent bg-[rgb(var(--accent))] text-ink-950'
+                  ? 'border-transparent bg-[rgb(var(--accent))] text-on-accent'
                   : filled
                     ? 'border-[rgb(var(--accent))]/40 bg-[rgb(var(--accent))]/10 text-[rgb(var(--accent))]'
                     : 'border-[rgb(var(--border))] bg-[rgb(var(--bg-sunken))] text-[rgb(var(--text-muted))]',
