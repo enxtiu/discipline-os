@@ -77,7 +77,7 @@ default, one-handed, every frequent action within two taps.
 | Health: iOS Shortcut ingest (scoped token, idempotent per day, lenient numbers, 62-day backfill), steps on Today with a manual fallback, weight (profile + targets follow) and sleep entries, a /health page with 14-day steps, 90-day weight and a sleep timeline | ✅ stage 5 |
 | Planner: PARA (inbox, projects, areas, resources, archive), tasks P1–P4 with tags, subtasks, due dates, time blocks, estimates, RRULE repeats, reminders and Markdown notes; Today / Inbox / Upcoming / Calendar (day, week, month with drag) and project, area, tag and search pages; natural-language quick add (ru/en) with a live preview; a timer that survives reloads and device switches, a time log; a daily journal with the server's day summary — all offline-queued | ✅ stage 6 |
 | Web push: VAPID subscriptions per device, task reminders and smart daily reminders (meal logging, water, planned workout, evening review) re-checked at send time, quiet hours (task reminders wait, daily nudges are dropped), per-category times, test notification, history; iPhone «На экран Домой» guidance in onboarding and Settings | ✅ stage 7 |
-| Gamification & insight: a daily score whose calorie part peaks inside the target zone (0 below the safe floor), three rings, XP and 30 levels, streaks with freeze tokens (the workout streak is weekly and follows the plan), 46 achievements, daily/weekly quests with a claim; /stats dashboards (nutrition, activity, body, planner, progress; week to year); JSON, CSV and a signed backup download, restored by `python -m app.cli restore-backup` | ✅ stage 8 |
+| Gamification & insight: a daily score whose calorie part peaks inside the target zone (0 below the safe floor), three rings, XP and 30 levels, streaks (a missed day or week breaks them; freeze tokens are an opt-in, off by default — the workout streak is weekly and follows the plan), 46 achievements, daily/weekly quests with a claim; /stats dashboards (nutrition, activity, body, planner, progress; week to year); JSON, CSV and a signed backup download, restored by `python -m app.cli restore-backup` | ✅ stage 8 |
 | Notion (optional, off until connected): a one-way copy of areas, projects, tasks, the journal and day summaries into databases DisciplineOS creates on a page you choose; every 10 minutes or on demand, resumable, never a duplicate | ✅ stage 9 |
 | Offline sync: nothing lost — failed writes kept with the server's reason, retries with backoff, writes in dependency order, meals/water and task edits shown at once while they wait, a sync sheet behind the header pill; edits from another device surface as a conflict («Оставить их версию» / «Сохранить мою») instead of being overwritten | ✅ stage 9 |
 | Performance: main chunk 640 → 283 kB (only the active locale, lazy motion and screens), the first screen's reads start from `index.html`, tab switches without refetching (8 API requests instead of 28), three SQL statements fewer per request; `scripts/perf/` and `api/scripts/bench_api.py` to measure again | ✅ stage 9 |
@@ -294,6 +294,12 @@ belong together).
 
 The Notion secret itself is not an environment variable: the owner enters it in
 **Настройки → Интеграции** (see [Notion (optional)](#notion-optional)).
+
+### Gamification (stage 10)
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `STREAK_FREEZES_ENABLED` | `false` | Streak freezes. **Off** (the owner's rule, "all by the hard rule"): a missed day/week breaks the streak, no freeze token is granted, refilled or used, new accounts start with 0, and the API keeps its shapes but reports `freeze_tokens: 0` and no freeze dates. **On**: the stage-8 rule (1 token to start, +1 every week, at most 2, one is spent on a missed day/week). Streaks are recomputed from the history, so flipping it changes the current counts on the next sync; `longest` never decreases |
 
 ### Backups
 

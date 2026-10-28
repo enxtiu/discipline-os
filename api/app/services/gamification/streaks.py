@@ -21,11 +21,14 @@ requirement frozen when it ended (``score.frozen_weeks``); the current targets a
 the open window (yesterday, today) and the current plan to the current week only — a
 weigh-in or a plan edit never re-judges the past.
 
-Freeze tokens: +1 every week (on the user's week start), at most 2; a missed past
-day/week uses one automatically (``freeze_used_dates``) instead of breaking the
-streak — a saved day does not add to the count. Today (this week) counts as soon as
-its condition is met and is never a miss while it lasts. ``at_risk`` = not met
-yet, there is a streak to lose and it is 18:00 or later locally (weekly: on the
+Freeze tokens are an opt-in rule (``STREAK_FREEZES_ENABLED``, **off by default**: the
+owner's "all by the hard rule"). Off: a missed past day/week breaks the streak, no token
+is ever granted, refilled or used, ``freeze_tokens`` is 0 and ``freeze_used`` stays
+empty. On: a new streak starts with 1 token, +1 every week (on the user's week start),
+at most 2; a missed past day/week uses one automatically (``freeze_used_dates``) instead
+of breaking the streak — a saved day does not add to the count. Today (this week)
+counts as soon as its condition is met and is never a miss while it lasts. ``at_risk`` =
+not met yet, there is a streak to lose and it is 18:00 or later locally (weekly: on the
 last day of the week). The ``longest`` value never decreases.
 """
 
@@ -41,6 +44,7 @@ from sqlalchemy import exists, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.core.ids import new_id
 from app.models import Streak, StreakKind, XpKind
 from app.services.day_metrics import DayMetrics, WeekPlan, required_workouts, week_start_for
@@ -74,6 +78,16 @@ DISPLAY_ORDER: tuple[StreakKind, ...] = (
 DAILY_KINDS: tuple[StreakKind, ...] = tuple(kind for kind in DISPLAY_ORDER if kind is not StreakKind.WORKOUT)
 
 
+def freezes_enabled() -> bool:
+    """Are streak freezes on? ``STREAK_FREEZES_ENABLED`` — off unless the owner opts in."""
+    return get_settings().streak_freezes_enabled
+
+
+def initial_freeze_tokens() -> int:
+    """Tokens a streak starts with: the starting token with freezes on, none otherwise."""
+    return INITIAL_FREEZE_TOKENS if freezes_enabled() else 0
+
+
 @dataclass(slots=True)
 class StreakState:
     kind: StreakKind
@@ -82,7 +96,7 @@ class StreakState:
     longest: int = 0
     today_met: bool = False
     at_risk: bool = False
-    freeze_tokens: int = INITIAL_FREEZE_TOKENS
+    freeze_tokens: int = field(default_factory=initial_freeze_tokens)
     freeze_used: list[date] = field(default_factory=list)
     last_met: date | None = None
     broken_on: date | None = None
@@ -117,10 +131,11 @@ def simulate_daily(
     if not past_or_today:
         return state
     start = min(past_or_today)
-    tokens = INITIAL_FREEZE_TOKENS
+    freezes = freezes_enabled()  # off: no token is granted or refilled, so a miss always breaks
+    tokens = initial_freeze_tokens()
     day = start
     while day <= today:
-        if day != start and week_start_for(day, week_start) == day:
+        if freezes and day != start and week_start_for(day, week_start) == day:
             tokens = min(MAX_FREEZE_TOKENS, tokens + 1)
         if day in met:
             if state.current == 0:
@@ -164,10 +179,11 @@ def simulate_weekly(
     weeks = [week for week, done in done_by_week.items() if done > 0 and week <= this_week]
     if weeks:
         start = min(weeks)
-        tokens = INITIAL_FREEZE_TOKENS
+        freezes = freezes_enabled()  # off: no token is granted or refilled, so a miss always breaks
+        tokens = initial_freeze_tokens()
         week = start
         while week <= this_week:
-            if week != start:
+            if freezes and week != start:
                 tokens = min(MAX_FREEZE_TOKENS, tokens + 1)
             need, done = required(week), done_by_week.get(week, 0)
             if need == 0:
