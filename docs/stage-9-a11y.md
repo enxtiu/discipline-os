@@ -10,6 +10,8 @@
 > - One new package: **axe-core 4.14.0**, a pinned devDependency, injected into the page
 >   by the browser check only — nothing in `src` imports it, it is not in `dist/`.
 > - No API change, no migration.
+> - Merged with `stage-9-hardening` (offline, Notion, perf); the numbers in §8 are from the
+>   merged tree, including the sync sheet, Settings → Интеграции and the edit-conflict view.
 
 ## 1. How it is measured
 
@@ -20,7 +22,7 @@ entry, a running timer) and removes all of it at the end.
 
 | Check | What fails it |
 | --- | --- |
-| **axe-core** (`wcag2a wcag2aa wcag21a wcag21aa`) on 44 states × 2 themes = 88 audits: Today (with data), quick-add, score, steps, recipe, log, AI review sheets, Food, Train, template editor, live workout, Health, Plan today / inbox / upcoming, calendar day / week / month, task editor, task quick add, projects, project page, project sheet, areas, resources, journal, time log, Stats dashboards, achievements + sheet, Settings and profile / appearance / notifications / data / devices / tokens / shortcut, onboarding steps 1–4, pairing (empty and refused code); a sheet is audited inside its dialog | any `serious` / `critical` node (printed with its selector); `moderate` / `minor` are printed as notes. Everything lands in `$SHOTS/a11y-axe.json` |
+| **axe-core** (`wcag2a wcag2aa wcag21a wcag21aa`) on 49 states × 2 themes = 98 audits (50 / 100 with the celebration sheet): Today (with data), quick-add, score, steps, recipe, log, AI review sheets, Food, Train, template editor, live workout, Health, Plan today / inbox / upcoming, calendar day / week / month, task editor, the task editor with an edit conflict, task quick add, projects, project page, project sheet, areas, resources, journal, time log, Stats dashboards, achievements + sheet, Settings and profile / appearance / notifications / data / devices / tokens / shortcut / integrations (not connected, and connected), the sync sheet (nothing waiting, and a write queued offline), onboarding steps 1–4, pairing (empty and refused code); a sheet is audited inside its dialog | any `serious` / `critical` node (printed with its selector); `moderate` / `minor` are printed as notes. Everything lands in `$SHOTS/a11y-axe.json` |
 | **48 px targets**: the bounding box of every button, link, field, `summary`, ARIA widget and `tabindex ≥ 0` element of each state | under 48 × 48 px, except inline links in a sentence and the five documented exceptions (§4); a tab-bar or header control whose centre is covered by another element |
 | Text fields | font under 16 px (pinch-zoom is allowed now, so iOS would zoom into them on focus) |
 | Roles | a control whose role is overridden by a non-interactive one (`<button role="listitem">`) |
@@ -29,18 +31,23 @@ entry, a running timer) and removes all of it at the end.
 | A toast | not in a polite status region, or focus leaves the button that caused it |
 | **Keyboard**: Tab through Today; the quick-add sheet and the task editor opened with Enter | focus not visible on a stop, a stop hidden under the header / tab bar, focus not moved into the sheet, Tab / Shift+Tab escaping it, Escape not closing it, focus not back on the opener |
 | Reduced motion (`prefers-reduced-motion: reduce`) | a sheet that still slides in, CSS transitions that still run |
-| `<html lang>` | not following ru → en → ru |
+| `<html lang>` | not following ru → en → ru, or not `en` after a reload in English (only the active locale is downloaded since the perf pass) |
 | Page width | any audited state wider than the screen (a phone would zoom the whole screen out) |
 | Zoom | sideways scrolling at 320 px (WCAG 1.4.10: 400 % of a 1280 px window) or at 640 × 400 (200 % of a 1280 × 800 window) on Today, Food, Train, Plan, the week calendar, Stats, profile settings; pinch-zoom itself is axe's `meta-viewport` |
 
-Visited when present, skipped with a note otherwise (the coordinator runs the module on the
-integrated branch): **Settings → Интеграции** (`/settings/integrations`), the **sync sheet**
-behind the header pill, and the **celebration sheet** (only when an achievement is unseen).
+States that need something outside the app are staged: the **connected Notion card** needs
+a Notion workspace, so `GET /integrations/notion` is answered from a fixture (as
+`stage9-notion` does); the **queued write** is a «+250 мл» made offline, then sent and
+removed; the **edit conflict** («Изменено на другом устройстве», the view the sync sheet
+shows for a queued conflict too) is a task title changed on the server while the editor is
+open, so saving answers 409, settled with «Оставить их версию». Every state must open or
+the check fails; only the **celebration sheet** is skipped with a note when no achievement
+is unseen.
 
 ## 2. Before / after
 
 Same harness, same 39 states (78 audits) on the base of this branch (`7fb4530`) and on its
-head; the head adds 5 more sheets (88 audits), all clean.
+head; the head audits 10 more states (98 audits; 100 with the celebration sheet), all clean.
 
 | axe rule (impact) | before: dark | before: light | after |
 | --- | ---: | ---: | ---: |
@@ -64,12 +71,22 @@ head; the head adds 5 more sheets (88 audits), all clean.
 | `<html lang>` after switching to English | `ru` | `en` |
 | Rest timer live region | one `aria-live` region updated every 250 ms (found in the code; the sampling check came with the fix) | silent ticks; announced on start / change / end |
 
+**After the merge** with `stage-9-hardening` the screens it brought were audited the same
+way. Found: the connected Notion card's four «Открыть в Notion» links,
+`label-content-name-mismatch` (serious) × 2 themes = 8 nodes → 0; and, in the merged code
+before the run, two pastel text shades the sync UI used as fixed colours — `rose-300` (a
+failed write's reason, the attention pill) 1.9:1 and `amber-100/80` (the conflict text)
+1.05:1 on the light theme → theme tokens (8.0:1 and ≥ 4.7:1). The sync sheet (empty and
+with a queued write), Settings → Интеграции (not connected) and the edit-conflict view were
+clean otherwise. Every other state stayed at 0.
+
 ## 3. Found and fixed — per class
 
 - **Sheets were not modal for a keyboard or VoiceOver user** (`components/ui` `Sheet`):
   focus now moves into the sheet (an `autoFocus` field keeps it), Tab / Shift+Tab cycle
-  inside, Escape closes, focus returns to the control that opened it; only the topmost of
-  stacked sheets answers. The dialog is named by its title (`aria-labelledby`), the
+  inside, Escape closes, focus returns to the control that opened it — or to `<main>` when
+  that control is gone (starting a timer replaces «Запустить таймер» with the timer bar);
+  only the topmost of stacked sheets answers. The dialog is named by its title (`aria-labelledby`), the
   backdrop and grab handle are `aria-hidden`, and a body that scrolls without anything
   focusable in it takes the focus itself (axe `scrollable-region-focusable`).
 - **Progress bars and rings without names** (142 nodes): `ProgressBar` is decorative
@@ -80,8 +97,8 @@ head; the head adds 5 more sheets (88 audits), all clean.
 - **Contrast** (103 nodes, 90 of them light): the fix is in the tokens. Light theme
   `--accent` #0EA393 → #0B6B63, `--accent-2` → #6D28D9, `--warn` #D97706 → #92400E; new
   `--on-accent` / `--on-accent-2` for text on accent fills (dark ink / white); the pastel
-  palette shades used as text (`aqua-300/400`, `violet-300/400`, `amber-200/300/400`,
-  `rose-200/400`) are theme tokens in `tailwind.config.js` — the dark theme keeps the exact
+  palette shades used as text (`aqua-300/400`, `violet-300/400`, `amber-100/200/300/400`,
+  `rose-200/300/400`) are theme tokens in `tailwind.config.js` — the dark theme keeps the exact
   hex values, the light theme reads them as darker shades of the same hue. Dark theme
   `--accent-2` #8B5CF6 → #A182F9 and `--text-muted` #8492AB → #8A97B0. Text faded with
   `opacity` (out-of-month days, future streak days, done tasks and future repeats in lists
@@ -93,7 +110,14 @@ head; the head adds 5 more sheets (88 audits), all clean.
   timer bar without its clock, month cells without their task chips) now take the name from
   their content: the full date / value is screen-reader text, the short on-screen forms are
   `aria-hidden` (Train week strip, calendar day headers and month cells, journal strip,
-  time-log / steps / burned bars, sleep nights, the day-score button, the timer bar).
+  time-log / steps / burned bars, sleep nights, the day-score button, the timer bar). The
+  Notion card's per-database links (merged) say «Открыть в Notion: «Задачи»» — the visible
+  words first.
+- **Headings and window titles**: Today, Food and Train had no `h1` (the header shows the
+  greeting) — a screen-reader heading names them, as on the other screens; `document.title`
+  follows the section («План · DisciplineOS», WCAG 2.4.2), so a screen reader says where a
+  navigation landed. An `aria-label` on a plain `div` / `span` is ignored: the capture row
+  and tag suggestions are named groups, the record star is an image.
 - **Charts**: the stage-4 burned chart was `<button role="listitem">` (announced as a list
   item, never as a button) — a `<ul role="list">` of buttons now, with `aria-pressed` like
   the other bar charts; each bar's value is its name. Stats and Health charts were already
@@ -126,9 +150,11 @@ head; the head adds 5 more sheets (88 audits), all clean.
   — the countdown is a silent `role="timer"`, a polite status says «Отдых 1:30» on start /
   change and «Отдых окончен» at the end.
 - **Reduced motion**: CSS already honoured it; framer-motion did not — `MotionConfig
-  reducedMotion="user"` at the root (sheets, toasts, layout animations).
+  reducedMotion="user"` at the root (sheets, toasts, layout animations), inside the perf
+  pass's `MotionProvider` (`LazyMotion`; the merged components use `m.*`).
 - **Language**: `<html lang>` follows the UI language (`i18n/documentLanguage.ts`), so
-  VoiceOver reads English UI with an English voice.
+  VoiceOver reads English UI with an English voice. With the perf pass's lazily loaded
+  locales i18next announces the change once the locale chunk has arrived, at start-up too.
 - **Lists in Safari**: Tailwind's preflight `list-style: none` makes WebKit drop list
   semantics (VoiceOver never says «список, 7 объектов»); `ul` / `ol` get an invisible
   zero-width marker in the base layer instead, utilities (`list-disc`, …) still win.
@@ -163,13 +189,15 @@ web/src/styles/index.css                     tokens (contrast), 48 px btn-sm / s
                                              scroll-padding, focus-within on fields, tab-bar offsets
 web/src/main.tsx                             MotionConfig reducedMotion="user", <html lang> sync
 web/src/i18n/documentLanguage.ts             ★ <html lang> follows i18next
+web/src/lib/useDocumentTitle.ts              ★ document.title per section (used by AppShell)
 web/src/components/ui/index.tsx              Sheet (modal focus), Field (labels), Button (busy keeps
                                              focus), Toggle (48 px), ProgressBar, SegmentedControl
 web/src/components/ui/ProgressRing.tsx       name / valueText, token strokes
 web/src/components/layout/                   BottomTabBar (Stats tab, nav label), AppShell, SyncStatus
 web/src/components/ui/Toast.tsx · features/plan/tasks/toast.tsx   above the floating «+»
 web/src/features/**                          per-screen names, targets, list semantics, dimming
-web/src/i18n/locales/{ru,en}.json            + a11y.* (15 keys each, the section opens the file)
+web/src/i18n/locales/{ru,en}.json            + a11y.* (15 keys each, the section opens the file);
+                                             integrations.notion.open_kind worded visible-text first
 docs/stage-9-a11y.md                         this report
 ```
 
@@ -185,17 +213,53 @@ docs/stage-9-a11y.md                         this report
 ## 7. Commands
 
 ```bash
+cd api && TEST_DATABASE_URL=postgresql+psycopg://postgres@127.0.0.1:5432/dsos_test_s9a11y .venv/bin/pytest -q
+cd api && .venv/bin/ruff check . && .venv/bin/ruff format --check .
 cd web && npm run typecheck && npm run build
+node scripts/perf/bundle-report.mjs --check
 node scripts/check-i18n.mjs
 # the whole browser run on a fresh DB, under the shared lock (Chromium is heavy on 2 cores)
-flock -o /home/claude/locks/ui-check.lock <fresh DB + API + Vite> \
+flock -o /home/claude/locks/ui-check.lock <fresh DB + API (fake AI, VAPID keys) + Vite> \
   PAIRING_CODE=XXXX-XXXX FAKE_CAMERA=/tmp/barcode.y4m node scripts/ui-check.mjs
 # report: $SHOTS/a11y-axe.json (every axe node, target list, keyboard stops)
 ```
 
-## 8. Evidence (this branch)
+## 8. Evidence (this branch, merged with `stage-9-hardening`)
 
-FILLED IN BELOW AFTER THE RUN
+Head `c45b1a6` (+ this report), on the 2-core box, every browser run under
+`flock -o /home/claude/locks/ui-check.lock`.
+
+| Gate | Result |
+| --- | --- |
+| `pytest -q` (own DB `dsos_test_s9a11y`) | **1 319 passed**, 0 failed (≈ 7 min) |
+| `ruff check .` · `ruff format --check .` | all checks passed · 170 files already formatted |
+| `npm run typecheck` | 0 errors |
+| `npm run build` | ok — PWA `generateSW`, 61 precache entries (2 230.8 KiB) |
+| `bundle-report.mjs --check` | ok — main chunk **282.6 kB** raw / 87.7 kB gzip (≤ 300 kB; 277.7 kB on the perf branch before this merge); no Recharts, stats code or motion features at start; every animated element is `m.*` |
+| `check-i18n.mjs` | complete and in sync (35 reserved keys unreferenced, as on the base) |
+| whole `ui-check.mjs` — fresh DB `dsos_s9a11y`, fake AI, VAPID keys, every module | **585 ok, 0 failed** (exit 0) |
+
+The accessibility module inside that run:
+
+| Check | Result |
+| --- | --- |
+| axe-core 4.14.0, `wcag2a wcag2aa wcag21a wcag21aa` | **100 audits** (50 states × dark / light, the celebration sheet and the edit conflict included, nothing skipped): **0 serious / critical, 0 moderate, 0 minor** nodes |
+| 48 px targets | 0 under 48 × 48 px outside the five exceptions (§4); no field under 16 px, no overridden role, no unnamed drawing, no state wider than the screen |
+| Keyboard | Today 35 Tab stops, focus visible on each, none under the header / tab bar; quick-add sheet 10 controls and task editor 53 controls: focus moves in, Tab / Shift+Tab stay in (0 escapes), Escape closes, focus returns to the opener |
+| Live regions | quiet on Today with a running timer and on a live workout during a rest |
+| Toast | polite status region, focus stays on «+250 мл» |
+| Reduced motion | sheet transform `none`, CSS transitions 1 µs |
+| `<html lang>` | ru → en → reload en → ru |
+| Zoom | no sideways scrolling at 320 × 568 or 640 × 400 on the seven screens |
+| Test data | removed (16 rows) |
+
+Screenshots and the full axe / target / keyboard report:
+`/home/claude/s9a11y-run/full4/shots/` (`90-a11y-today-{dark,light}.png`,
+`91-a11y-stats-{dark,light}.png`, `a11y-axe.json`).
+
+The whole run before it (580 ok, 1 failed) failed only on the then-new edit-conflict audit:
+the check looked for «Сохранить» inside the editor body, but it sits in the sheet's footer
+(`c45b1a6`); the same steps then passed alone, and in the run above.
 
 ## 9. What remains and why
 
@@ -214,5 +278,7 @@ FILLED IN BELOW AFTER THE RUN
   checked. Moving them to rem is a redesign-wide change (stage 10).
 - **Calendar drag** has no keyboard equivalent on the grid itself; the task editor sets the
   same date and time by keyboard.
-- **Settings → Интеграции and the sync sheet** are not on this branch; the check audits them
-  (and the header pill) on the integrated branch and fails if they break a rule.
+- **Staged states**: the connected Notion card is audited with a fixture (the shape
+  `stage9-notion` uses), not a live workspace; a queued conflict in the sync sheet needs a
+  second device, so its view is audited where the same `ConflictView` opens in the task
+  editor — `stage9-offline` walks the sheet's conflict flow and checks its 48 px buttons.
