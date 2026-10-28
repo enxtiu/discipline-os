@@ -108,4 +108,4 @@ and the machine was shared — and passed on the next full run without a change 
 
 Screenshots, 390 × 844: `/home/claude/runint/s10-fpolish/shots/before/` and `/shots/after/` — `f-lilac-*`,
 `f-night-*`, `f-mint-*` (tilt off), each `today · food · food-more · stats · stats-more · train · train-more ·
-plan · plan-more · plan-timer · add · theme · theme-more · region` (before: the first nine of them).
+plan · plan-more · plan-timer · add · theme · theme-more · region` (before: today, today-more, food, stats, train, plan, add, theme).
