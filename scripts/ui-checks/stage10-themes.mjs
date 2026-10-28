@@ -20,6 +20,7 @@
  *  - axe-core (WCAG 2.1 A/AA, serious + critical = 0) and the 48 px target rule on
  *    «Оформление» (dark and light) and on the stickers skin's Сегодня, Питание, Статистика,
  *    Тренировки, План and the quick-add sheet, in Сирень (light) and Ночь (dark).
+ *  - «Крупный текст» in both themes: no screen wider than the 390 px screen.
  *  - Screenshots s10-*.png at 390 × 844 in $SHOTS.
  */
 import { randomUUID } from 'node:crypto'
@@ -625,6 +626,22 @@ export async function run(ctx) {
     await audit('Наклейки · План (Ночь)', null, 's10-25-stickers-plan-night')
     await goto('/settings/theme', '[data-testid="theme-gallery"]')
     await audit('Оформление (Наклейки, Ночь)', null, 's10-26-theme-stickers-night')
+
+    // «Крупный текст» in both themes: no screen becomes wider than the 390 px screen
+    for (const [label, mode, stored] of [
+      ['Эволюция', 'dark', { skin: 'evolution', largeText: true }],
+      ['Наклейки', 'light', { skin: 'stickers', ground: 'lilac', tilt: true, shadow: 'hard', largeText: true }],
+    ]) {
+      await appearance(mode, stored)
+      const paths = ['/today', '/food', '/train', '/health', '/plan', '/plan/calendar', '/stats', '/settings', '/settings/theme']
+      const wide = []
+      for (const path of paths) {
+        await goto(path, 'main')
+        const widened = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1)
+        if (widened) wide.push(path)
+      }
+      check(wide.length === 0, `Крупный текст (${label}): no screen is wider than 390 px`, wide.length ? wide.join(' ') : `${paths.length} screens`)
+    }
   } catch (error) {
     bad('stage 10 theme checks', String(error?.message ?? error).split('\n')[0])
   } finally {
