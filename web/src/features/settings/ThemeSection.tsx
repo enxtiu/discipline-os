@@ -4,12 +4,15 @@
  *
  * Every theme has the same screens and features; only the look differs. Today two can
  * be chosen («Эволюция», the default, and «Наклейки»); the others are shown as «Скоро».
- * Per device (lib/appearance.ts — localStorage, applied before the first paint); the
- * change repaints the whole app at once, nothing is sent to the server yet.
+ * Per device first (lib/appearance.ts — localStorage, applied before the first paint): a
+ * change repaints the whole app at once. The switch «Одинаково на всех устройствах» (on by
+ * default, stored on the device) also keeps the choice on the account, so another device
+ * shows the same look (lib/appearanceSync.ts, docs/stage-10-appearance-sync.md).
  */
-import { useRef, type KeyboardEvent, type ReactNode } from 'react'
+import { useEffect, useRef, type KeyboardEvent, type ReactNode } from 'react'
 import clsx from 'clsx'
 import { useTranslation } from 'react-i18next'
+import { useQueryClient } from '@tanstack/react-query'
 
 import { Card, ProgressBar, Row, Rows, SegmentedControl, Toggle } from '@/components/ui'
 import { IconCheck } from '@/components/ui/icons'
@@ -27,6 +30,7 @@ import {
   type ReservedSkin,
   type Skin,
 } from '@/lib/appearance'
+import { installAppearanceSync, setAppearanceSync, useAppearanceSync } from '@/lib/appearanceSync'
 import { number } from '@/lib/format'
 
 /** The gallery, A–I as in the design boards: the colours each mini preview is drawn with. */
@@ -156,8 +160,42 @@ export function ThemeSection() {
         </Rows>
       </Group>
 
-      <p className="text-xs muted">{t('look.device_note')}</p>
+      <SyncGroup />
     </div>
+  )
+}
+
+/** «Одинаково на всех устройствах»: a switch stored on this device (on by default). */
+function SyncGroup() {
+  const { t } = useTranslation()
+  const queryClient = useQueryClient()
+  const { on, status } = useAppearanceSync()
+  useEffect(() => installAppearanceSync(queryClient), [queryClient])
+  const progress = on && status !== 'idle' ? t(`look.sync_${status}`) : null
+
+  return (
+    <Group title={t('look.sync_title')} id="look-sync">
+      <Card className="sk-params" data-testid="theme-sync">
+        <div className="flex items-center gap-3">
+          <div className="min-w-0 flex-1">
+            <p id="look-sync-label" className="text-[15px] font-medium">
+              {t('look.sync_label')}
+            </p>
+            <p className="text-xs muted">{on ? t('look.sync_on') : t('look.sync_off')}</p>
+          </div>
+          <Toggle label={t('look.sync_label')} checked={on} onChange={setAppearanceSync} />
+        </div>
+        <p
+          className={clsx('text-xs muted', progress && 'mt-2')}
+          role="status"
+          aria-live="polite"
+          data-testid="theme-sync-status"
+          data-status={on ? status : 'off'}
+        >
+          {progress}
+        </p>
+      </Card>
+    </Group>
   )
 }
 

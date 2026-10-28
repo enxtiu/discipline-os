@@ -71,6 +71,12 @@ const context = await browser.newContext({
   geolocation: undefined,
   permissions: FAKE_CAMERA ? ['geolocation', 'camera'] : ['geolocation'],
 })
+// stage 10: «Одинаково на всех устройствах» is on by default. The earlier modules set the look through
+// localStorage and expect it to stay on this device, so this browser starts with the switch off (only
+// when it has never been set); scripts/ui-checks/stage10-appearance-sync.mjs opens browsers of its own.
+await context.addInitScript(() => {
+  if (window.localStorage.getItem('dsos.appearance.sync') === null) window.localStorage.setItem('dsos.appearance.sync', 'off')
+})
 const page = await context.newPage()
 
 let offlineMode = false // stage 3 offline check: failures while offline are expected
@@ -893,6 +899,7 @@ try {
     'stage9-offline',
     'stage9-notion',
     'stage10-themes',
+    'stage10-appearance-sync',
     'stage10-today',
     'stage9-a11y',
   ]) {

@@ -184,7 +184,9 @@ class UserSettings(UuidPkMixin, TimestampMixin, Base):
     extras: Mapped[dict[str, Any]] = mapped_column(JsonType, nullable=False, server_default=sa.text("'{}'::jsonb"))
     # The account's appearance (stage 10, «Одинаково на всех устройствах»): the validated object of
     # schemas/appearance.py, NULL = never synced. Per user like every setting.
-    appearance: Mapped[dict[str, Any] | None] = mapped_column(JsonType, nullable=True)
+    # none_as_null: Python None is SQL NULL (the default would store the JSON value `null`, which a
+    # restore's comparison would see as a change of a row that has none)
+    appearance: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True), nullable=True)
 
     user: Mapped[User] = relationship(back_populates="settings")
 

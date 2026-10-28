@@ -88,6 +88,12 @@ async def test_null_puts_the_account_back_to_never_synced(authed) -> None:
     assert (await read(authed))["appearance"] is None
 
 
+async def test_never_synced_is_sql_null_not_a_json_null(authed, db) -> None:
+    await save(authed, appearance=STICKERS)
+    await save(authed, appearance=None)
+    assert (await db.execute(sa.text("SELECT appearance IS NULL FROM user_settings"))).scalar_one() is True
+
+
 async def test_the_column_is_nullable_and_existing_rows_stay_null(db) -> None:
     info = (
         await db.execute(

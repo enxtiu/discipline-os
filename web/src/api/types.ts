@@ -49,6 +49,9 @@ export type Targets = Omit<Schemas['TargetsOut'], 'warnings' | 'macros_kcal'> & 
   macros_kcal: Record<string, number>
 }
 
+/** The account's appearance (stage 10, «Одинаково на всех устройствах»); `null` on the settings = never synced. */
+export type AccountAppearance = Schemas['AppearanceOut']
+
 export type UserSettings = Omit<
   Schemas['UserSettingsOut'],
   'notification_prefs' | 'xp_weights'

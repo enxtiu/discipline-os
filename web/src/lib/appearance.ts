@@ -1,7 +1,8 @@
 /**
  * Appearance (stage 10): the theme ("skin"), the light / dark / system mode, the
  * skin's own parameters and two switches for every theme. Per device — kept in
- * localStorage next to the device token (no server sync yet, see docs/stage-10-part1.md).
+ * localStorage next to the device token, and (switch «Одинаково на всех устройствах», on by
+ * default) also on the account: lib/appearanceSync.ts, docs/stage-10-appearance-sync.md.
  *
  * Everything is applied as data attributes on <html>, which the stylesheets key on:
  *
