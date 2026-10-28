@@ -1045,3 +1045,90 @@ html[data-skin='stickers'] {
   background-color: rgb(var(--sk-lemon));
   color: #111111;
 }
+
+/* ==========================================================================
+   Сегодня, ниже — the unified «Сегодня» blocks (stage 10, Ffin-TodayMore): «План дня»,
+   «Повторить» and the insight. Hooks of features/today/{DayPlan,RepeatFoods,
+   TodayInsight}.tsx; every rule of this section is new (nothing above is changed).
+   Contrast: as everywhere in this file — ink on white tiles and on the lemon «Далее»
+   (#3B3A33 as its second shade), #111111 on the mint, lemon and lavender marks; night:
+   the tiles' #F5F3FF / #B4B0C8, the marks keep #111111 and take the light outline.
+   ========================================================================== */
+
+/* «План дня»: an ink line through sticker dots — mint with a tick when done, ink with a
+   white play mark for «Далее», white when open, dashed for a meal not logged yet */
+:root[data-skin='stickers'] .sk-plan-line {
+  border-color: rgb(var(--ink));
+}
+:root[data-skin='stickers'] .sk-plan-dot {
+  height: 22px;
+  width: 22px;
+  border: 2px solid rgb(var(--ink));
+  background-color: rgb(var(--bg-elevated));
+  color: rgb(var(--ink));
+}
+:root[data-skin='stickers'] .sk-plan-row[data-state='done'] .sk-plan-dot {
+  background-color: rgb(var(--sk-mint));
+  color: #111111;
+}
+:root[data-skin='stickers'] .sk-plan-row[data-state='missing'] .sk-plan-dot {
+  border-style: dashed;
+}
+:root[data-skin='stickers'] .sk-plan-time {
+  font-weight: 800;
+}
+/* «Далее»: the next task is a lemon sticker lifted over the line, a white label beside it */
+:root[data-skin='stickers'] .sk-plan-row[data-state='next'] {
+  --text: var(--sk-on-fill);
+  --text-muted: var(--sk-soft-on-fill);
+  --accent: var(--sk-on-fill);
+  --on-accent: 255 255 255;
+  border: 2px solid rgb(var(--ink));
+  border-radius: 14px;
+  background-color: rgb(var(--sk-lemon));
+  color: #111111;
+  box-shadow: var(--sk-shadow-3);
+}
+:root[data-skin='stickers'] .sk-plan-row[data-state='next'] .sk-plan-line {
+  display: none;
+}
+:root[data-skin='stickers'] .sk-plan-row[data-state='next'] .sk-plan-dot {
+  border-color: #111111;
+  background-color: #111111;
+  color: #ffffff;
+}
+:root[data-skin='stickers'] .sk-plan-next {
+  padding: 2px 7px;
+  border: 2px solid #111111;
+  border-radius: 8px;
+  background-color: #ffffff;
+  color: #111111;
+  box-shadow: 2px 2px 0 #111111;
+  font-weight: 800;
+}
+
+/* «Повторить»: three small white stickers that sit down when pressed, a lemon «+» on each */
+:root[data-skin='stickers'] .sk-repeat {
+  border-radius: 14px;
+  box-shadow: var(--sk-shadow-3);
+}
+:root[data-skin='stickers'] .sk-repeat:active {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 rgb(var(--shade));
+}
+:root[data-skin='stickers'] .sk-repeat-plus {
+  border: 2px solid #111111;
+  background-color: rgb(var(--sk-lemon));
+  color: #111111;
+}
+
+/* the insight: a white tile with a small die-cut lavender badge (it may lean, as badges do) */
+:root[data-skin='stickers'] .sk-insight-badge {
+  height: 34px;
+  width: 34px;
+  border: 2px solid rgb(var(--ink));
+  border-radius: 10px;
+  background-color: rgb(var(--sk-lavender));
+  color: #111111;
+  box-shadow: inset 0 0 0 2px #ffffff, 2px 2px 0 rgb(var(--shade));
+}
