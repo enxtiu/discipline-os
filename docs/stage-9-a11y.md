@@ -30,6 +30,7 @@ entry, a running timer) and removes all of it at the end.
 | **Keyboard**: Tab through Today; the quick-add sheet and the task editor opened with Enter | focus not visible on a stop, a stop hidden under the header / tab bar, focus not moved into the sheet, Tab / Shift+Tab escaping it, Escape not closing it, focus not back on the opener |
 | Reduced motion (`prefers-reduced-motion: reduce`) | a sheet that still slides in, CSS transitions that still run |
 | `<html lang>` | not following ru → en → ru |
+| Page width | any audited state wider than the screen (a phone would zoom the whole screen out) |
 | Zoom | sideways scrolling at 320 px (WCAG 1.4.10: 400 % of a 1280 px window) or at 640 × 400 (200 % of a 1280 × 800 window) on Today, Food, Train, Plan, the week calendar, Stats, profile settings; pinch-zoom itself is axe's `meta-viewport` |
 
 Visited when present, skipped with a note otherwise (the coordinator runs the module on the
@@ -131,6 +132,10 @@ head; the head adds 5 more sheets (88 audits), all clean.
 - **Lists in Safari**: Tailwind's preflight `list-style: none` makes WebKit drop list
   semantics (VoiceOver never says «список, 7 объектов»); `ul` / `ol` get an invisible
   zero-width marker in the base layer instead, utilities (`list-disc`, …) still win.
+- **Screen-reader text in a scrolling row** (found by the whole run, caused by this pass):
+  `.sr-only` is `position: absolute`; inside the journal's 30-day strip it escaped the
+  horizontal scroller and made the page 1 661 px wide. `.scroll-x` is `position: relative`
+  now, and the check fails any state wider than the screen.
 - **Zoom**: the viewport set `maximum-scale=1` (axe `meta-viewport`); pinch-zoom works now.
   Every text field is 16 px or more (checked), so iOS does not zoom into it on focus.
 
