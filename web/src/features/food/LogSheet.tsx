@@ -15,6 +15,7 @@ import { number } from '@/lib/format'
 import { errorMessage } from '@/lib/errors'
 import { macrosFor, useLogMeal } from './useNutrition'
 import { VerifyNote } from './VerifyFood'
+import { guessMealType } from './mealType'
 
 export type LogTarget = { kind: 'food'; food: Food } | { kind: 'recipe'; recipe: Recipe }
 
@@ -170,12 +171,4 @@ function Preview({ label, value, accent }: { label: string; value: string; accen
       <p className="text-[10px] muted">{label}</p>
     </div>
   )
-}
-
-function guessMealType(): MealType {
-  const hour = new Date().getHours()
-  if (hour < 11) return 'breakfast'
-  if (hour < 16) return 'lunch'
-  if (hour < 22) return 'dinner'
-  return 'snack'
 }
