@@ -29,14 +29,20 @@ export function TaskGroup({
   const label = (
     <span
       className={clsx(
-        'flex items-center gap-2 text-sm font-semibold',
+        'sk-grp-title flex items-center gap-2 text-sm font-semibold',
         tone === 'danger' && 'text-rose-400',
         tone === 'accent' && 'text-[rgb(var(--accent))]',
       )}
     >
       {title}
       {count !== undefined && (
-        <span className="tnum rounded-pill bg-[rgb(var(--border))]/60 px-1.5 text-[11px] font-medium text-[rgb(var(--text-muted))]">
+        <span
+          className={clsx(
+            'sk-count tnum rounded-pill bg-[rgb(var(--border))]/60 px-1.5 text-[11px] font-medium text-[rgb(var(--text-muted))]',
+            tone === 'danger' ? 'sk-tilt-l' : 'sk-tilt-r',
+          )}
+          data-tone={tone}
+        >
           {count}
         </span>
       )}
@@ -44,14 +50,14 @@ export function TaskGroup({
   )
   return (
     <section className="space-y-1.5" aria-labelledby={headingId} data-testid={testId}>
-      <header className="flex min-h-tap items-center justify-between gap-2 px-1">
+      <header className="sk-grp-head flex min-h-tap items-center justify-between gap-2 px-1">
         <h2 id={headingId} className="min-w-0 flex-1">
           {collapsible ? (
             <button
               type="button"
               aria-expanded={open}
               onClick={() => setOpen((value) => !value)}
-              className="-ml-1 flex min-h-tap w-full items-center gap-1 px-1 text-left"
+              className="sk-collapse -ml-1 flex min-h-tap w-full items-center gap-1 px-1 text-left"
             >
               <IconChevronRight
                 size={16}

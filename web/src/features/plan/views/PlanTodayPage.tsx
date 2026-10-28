@@ -56,7 +56,7 @@ export function PlanTodayPage() {
 
   return (
     <div className="space-y-5" data-testid="plan-today">
-      <p className="px-1 text-sm muted first-letter:uppercase">{dayLabel(today, 'long')}</p>
+      <p className="sk-datehead px-1 text-sm muted first-letter:uppercase">{dayLabel(today, 'long')}</p>
 
       {data.overdue.length > 0 && (
         <TaskGroup
