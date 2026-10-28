@@ -1955,7 +1955,7 @@
       "week_rest": "A planned rest week — the streak goes on",
       "next_milestone": "{{days}} days in a row — +{{xp}} XP",
       "workout_rule": "Workouts count by the week: a week counts when you do as many workouts as planned (3 without a plan). A planned rest week does not break the streak — rest days never do.",
-      "reset_rule": "No freezes: a missed day (a week for workouts) resets the streak."
+      "reset_rule": "A missed day (a week for workouts) resets the streak."
     },
     "quests_today": "Today's quests",
     "quests_daily": "Today",

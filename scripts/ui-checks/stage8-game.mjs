@@ -442,7 +442,7 @@ export async function run(ctx) {
     check(
       JSON.stringify(streakRows) === JSON.stringify(profile.streaks.map((s) => `${s.kind}:${s.current}:${s.longest}`)) &&
         streaksText.includes('без плана — 3') &&
-        !streaksText.replace('Заморозок нет', '').toLowerCase().includes('замороз') &&
+        !streaksText.toLowerCase().includes('замороз') &&
         (await page.locator('[data-testid="streak-freeze"]').count()) === 0,
       'all 7 streaks with current and longest, no freezes; the weekly workout rule explained',
       streakRows.slice(0, 3).join(' '),
