@@ -211,6 +211,35 @@ export function installAppearance(): void {
 }
 
 // --------------------------------------------------------------------------- //
+// Skin traits: the few widgets a theme draws in another form
+// --------------------------------------------------------------------------- //
+/**
+ * Almost everything a theme changes is CSS (tokens and the shared classes). These are
+ * the exceptions — a form CSS cannot reshape (a ring cannot become a bar) — so a
+ * component asks for its form instead of checking the theme's name. «Эволюция» keeps
+ * the stage-1–9 forms.
+ */
+export interface SkinTraits {
+  /** Today's calories: the ring with three numbers under it, or a sticker with a bar */
+  calorieHero: 'ring' | 'sticker'
+  /** Today's macros: four small rings, or four labelled bars */
+  macros: 'rings' | 'bars'
+  /** Today's water and steps: inside the macros card, or two tiles of their own */
+  waterSteps: 'inline' | 'tiles'
+  /** the level as a round medal with the number (else a small «ур. N» chip) */
+  levelMedal: boolean
+  /** the quick add: a round «+» over the Stats tab, or a «＋ Записать» sticker floating above the bar */
+  addButton: 'round' | 'sticker'
+  /** Статистика: the achievements earned this week as a strip of stickers */
+  weekStickers: boolean
+}
+
+export const SKIN_TRAITS: Record<Skin, SkinTraits> = {
+  evolution: { calorieHero: 'ring', macros: 'rings', waterSteps: 'inline', levelMedal: false, addButton: 'round', weekStickers: false },
+  stickers: { calorieHero: 'sticker', macros: 'bars', waterSteps: 'tiles', levelMedal: true, addButton: 'sticker', weekStickers: true },
+}
+
+// --------------------------------------------------------------------------- //
 // React
 // --------------------------------------------------------------------------- //
 export function useAppearance(): Appearance {
@@ -226,4 +255,9 @@ export function useResolvedTheme(): ResolvedTheme {
 export function useReducedMotionPref(): boolean {
   const appearance = useAppearance()
   return appearance.reduceMotion || systemReducedMotion()
+}
+
+/** The current theme's widget forms (live). */
+export function useSkinTraits(): SkinTraits {
+  return SKIN_TRAITS[useAppearance().skin]
 }

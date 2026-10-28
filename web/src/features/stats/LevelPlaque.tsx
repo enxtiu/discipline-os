@@ -15,6 +15,7 @@ import { useTranslation } from 'react-i18next'
 
 import { Card, ProgressBar, Skeleton } from '@/components/ui'
 import { ProgressRing } from '@/components/ui/ProgressRing'
+import { useSkinTraits } from '@/lib/appearance'
 import { number } from '@/lib/format'
 import { levelTitle, streakLength } from '@/features/game/format'
 import { IconFlameLit } from '@/features/game/icons'
@@ -25,6 +26,7 @@ import { useStats } from './queries'
 
 export function LevelPlaque() {
   const { t } = useTranslation()
+  const { levelMedal } = useSkinTraits()
   const profile = useGameProfile()
   const week = useStats('progress', 'week', null)
 
@@ -69,19 +71,26 @@ export function LevelPlaque() {
       role="region"
     >
       <div className="flex items-center gap-4">
-        {/* the heading says «Уровень 12 · Профи»; the medal repeats it for the eye */}
-        <span aria-hidden="true" className="shrink-0">
-          <ProgressRing
-            value={level.progress}
-            max={1}
-            size={76}
-            thickness={7}
-            tone="xp"
-            className="sk-medal sk-tilt-l [&_svg]:overflow-visible"
-            label={<span className="text-[1.75rem]">{level.level}</span>}
-            sublabel={t('game.page.level_word')}
-          />
-        </span>
+        {/* the heading says «Уровень 12 · Профи»; the ring (or the theme's medal) repeats it for the eye */}
+        {levelMedal ? (
+          <span aria-hidden="true" className="sk-medal sk-medal-big sk-tilt-l flex shrink-0 flex-col items-center justify-center">
+            <span className="tnum text-[1.875rem] font-extrabold leading-none">{level.level}</span>
+            <span className="sk-medal-word text-[11px] font-bold leading-[13px]">{t('game.page.level_word')}</span>
+          </span>
+        ) : (
+          <span aria-hidden="true" className="shrink-0">
+            <ProgressRing
+              value={level.progress}
+              max={1}
+              size={76}
+              thickness={7}
+              tone="xp"
+              className="[&_svg]:overflow-visible"
+              label={<span className="text-[1.75rem]">{level.level}</span>}
+              sublabel={t('game.page.level_word')}
+            />
+          </span>
+        )}
         <div className="min-w-0 flex-1">
           <h2 id="level-plaque-title" className="truncate text-xl font-semibold leading-tight">
             <span className="sr-only">{t('stats.plaque.level_sr', { level: level.level })} </span>
@@ -119,20 +128,20 @@ export function LevelPlaque() {
       </div>
 
       <dl className="grid grid-cols-3 gap-2">
-        <div className="sk-cell surface-sunken min-w-0 px-2.5 py-2" data-testid="plaque-week" data-xp={weekXp ?? undefined}>
+        <div className="sk-cell sk-cell-week surface-sunken min-w-0 px-2.5 py-2" data-testid="plaque-week" data-xp={weekXp ?? undefined}>
           <dt className="truncate text-xs muted">{t('stats.plaque.week')}</dt>
           <dd className="tnum mt-0.5 truncate text-[17px] font-semibold leading-tight">
             {weekXp != null ? t('stats.plaque.plus_xp', { xp: number(weekXp) }) : '—'}
           </dd>
         </div>
-        <div className="sk-cell surface-sunken min-w-0 px-2.5 py-2" data-testid="plaque-today" data-xp={xp.today}>
+        <div className="sk-cell sk-cell-today surface-sunken min-w-0 px-2.5 py-2" data-testid="plaque-today" data-xp={xp.today}>
           <dt className="truncate text-xs muted">{t('stats.plaque.today')}</dt>
           <dd className="tnum mt-0.5 truncate text-[17px] font-semibold leading-tight">
             {t('stats.plaque.plus_xp', { xp: number(xp.today) })}
           </dd>
         </div>
         <div
-          className="sk-cell surface-sunken min-w-0 px-2.5 py-2"
+          className="sk-cell sk-cell-streak surface-sunken min-w-0 px-2.5 py-2"
           data-testid="plaque-streak"
           data-current={overall?.current ?? 0}
         >
