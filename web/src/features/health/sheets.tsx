@@ -59,9 +59,10 @@ function DayToggle({ value, onChange }: { value: WhichDay; onChange: (next: Whic
 }
 
 /**
- * Stage 9: a sheet reads the day's entry when it opens (Today no longer loads the
- * series of closed sheets), so the entry can arrive after the first keystroke. The
- * fields take the stored values only until the user edits them — per open and day.
+ * Stage 9: the fields take the day's stored values only until the user starts editing
+ * (focus or input) — per open and day. The series can still arrive after the sheet
+ * opened (right after the app started, or on a slow network); it then never replaces
+ * or mixes into what is being typed.
  */
 function useEdited(open: boolean, day: string): [boolean, () => void] {
   const [edited, setEdited] = useState(false)
@@ -76,7 +77,7 @@ export function StepsSheet({ open, onClose }: { open: boolean; onClose: () => vo
   const { t } = useTranslation()
   const toast = useToast()
   const { which, setWhich, day, ready, tz } = useDayChoice(open)
-  const series = useStepsSeries(7, open)
+  const series = useStepsSeries(7)
   const save = useSaveSteps()
   const remove = useDeleteSteps()
   const existing = series.data?.days.find((row) => row.date === day)
@@ -118,6 +119,7 @@ export function StepsSheet({ open, onClose }: { open: boolean; onClose: () => vo
             className="tnum text-lg"
             placeholder={number(8000)}
             value={value}
+            onFocus={markEdited}
             onChange={(event) => {
               markEdited()
               setValue(event.target.value)
@@ -164,7 +166,7 @@ export function WeightSheet({ open, onClose }: { open: boolean; onClose: () => v
   const { t } = useTranslation()
   const toast = useToast()
   const { which, setWhich, day, ready } = useDayChoice(open)
-  const series = useWeightSeries(90, open)
+  const series = useWeightSeries(90)
   const save = useSaveWeight()
   const remove = useDeleteWeight()
   const items = series.data?.items ?? []
@@ -216,6 +218,7 @@ export function WeightSheet({ open, onClose }: { open: boolean; onClose: () => v
               className="tnum text-lg"
               placeholder={number(latest?.weight_kg ?? 75, 1)}
               value={weight}
+              onFocus={markEdited}
               onChange={(event) => {
                 markEdited()
                 setWeight(event.target.value)
@@ -231,6 +234,7 @@ export function WeightSheet({ open, onClose }: { open: boolean; onClose: () => v
               className="tnum text-lg"
               placeholder="—"
               value={fat}
+              onFocus={markEdited}
               onChange={(event) => {
                 markEdited()
                 setFat(event.target.value)
@@ -289,7 +293,7 @@ export function SleepSheet({ open, onClose }: { open: boolean; onClose: () => vo
   const { t } = useTranslation()
   const toast = useToast()
   const { which, setWhich, day, ready, tz } = useDayChoice(open)
-  const series = useSleepSeries(14, open)
+  const series = useSleepSeries(14)
   const save = useSaveSleep()
   const remove = useDeleteSleep()
   const existing = series.data?.items.find((row) => row.date === day)
@@ -343,6 +347,7 @@ export function SleepSheet({ open, onClose }: { open: boolean; onClose: () => vo
               type="time"
               className="tnum text-lg"
               value={bed}
+              onFocus={markEdited}
               onChange={(e) => {
                 markEdited()
                 setBed(e.target.value)
@@ -355,6 +360,7 @@ export function SleepSheet({ open, onClose }: { open: boolean; onClose: () => vo
               type="time"
               className="tnum text-lg"
               value={wake}
+              onFocus={markEdited}
               onChange={(e) => {
                 markEdited()
                 setWake(e.target.value)

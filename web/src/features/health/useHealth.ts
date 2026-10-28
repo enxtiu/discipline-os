@@ -22,17 +22,16 @@ export function useHealthToday() {
   })
 }
 
-/** `enabled`: a sheet asks only while it is open (stage 9: Today opened without three series reads). */
-export function useStepsSeries(days = 14, enabled = true) {
-  return useQuery({ queryKey: queryKeys.steps(days), queryFn: () => endpoints.stepsSeries(days), enabled })
+export function useStepsSeries(days = 14) {
+  return useQuery({ queryKey: queryKeys.steps(days), queryFn: () => endpoints.stepsSeries(days) })
 }
 
-export function useWeightSeries(days = 90, enabled = true) {
-  return useQuery({ queryKey: queryKeys.weight(days), queryFn: () => endpoints.weightSeries(days), enabled })
+export function useWeightSeries(days = 90) {
+  return useQuery({ queryKey: queryKeys.weight(days), queryFn: () => endpoints.weightSeries(days) })
 }
 
-export function useSleepSeries(days = 14, enabled = true) {
-  return useQuery({ queryKey: queryKeys.sleep(days), queryFn: () => endpoints.sleepSeries(days), enabled })
+export function useSleepSeries(days = 14) {
+  return useQuery({ queryKey: queryKeys.sleep(days), queryFn: () => endpoints.sleepSeries(days) })
 }
 
 function useInvalidateHealth(alsoSession = false) {

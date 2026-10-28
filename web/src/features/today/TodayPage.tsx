@@ -36,17 +36,16 @@ import { MealPhoto } from '@/features/ai/MealPhoto'
 import { TrainingTodayCard } from '@/features/train/TrainingTodayCard'
 import { useTrainingToday } from '@/features/train/useTraining'
 import { HealthTodayCard } from '@/features/health/HealthTodayCard'
+import { SleepSheet, StepsSheet, WeightSheet } from '@/features/health/sheets'
 import { useHealthQueueRefresh, useHealthToday } from '@/features/health/useHealth'
 import { PlanTodayCard } from '@/features/plan/PlanTodayCard'
 import { TimerBar } from '@/features/plan/timer/TimerBar'
 import { DayScoreCard } from '@/features/game/DayScoreCard'
 import { useOnceTrue } from '@/lib/lazy'
 
-// stage 9: the sheets load on first use (a pinned recipe, a health entry)
+// stage 9: the recipe log sheet loads on first use (a pinned recipe). The health sheets
+// stay: mounted with Today, they read their series with it and open prefilled.
 const LogSheet = lazy(() => import('@/features/food/LogSheet').then((module) => ({ default: module.LogSheet })))
-const StepsSheet = lazy(() => import('@/features/health/sheets').then((module) => ({ default: module.StepsSheet })))
-const WeightSheet = lazy(() => import('@/features/health/sheets').then((module) => ({ default: module.WeightSheet })))
-const SleepSheet = lazy(() => import('@/features/health/sheets').then((module) => ({ default: module.SleepSheet })))
 
 const MEAL_ORDER: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack', 'other']
 
@@ -81,7 +80,6 @@ export function TodayPage() {
   }, [action, setParams])
   const [logRecipe, setLogRecipe] = useState<Recipe | null>(null)
   const logSheetUsed = useOnceTrue(logRecipe !== null)
-  const healthSheetsUsed = useOnceTrue(healthSheet !== null)
   const pinned = (recipes.data?.items ?? []).filter((recipe) => recipe.is_pinned)
 
   const day = dayQuery.data
@@ -358,13 +356,9 @@ export function TodayPage() {
           />
         </Suspense>
       )}
-      {healthSheetsUsed && (
-        <Suspense fallback={null}>
-          <StepsSheet open={healthSheet === 'steps'} onClose={() => setHealthSheet(null)} />
-          <WeightSheet open={healthSheet === 'weight'} onClose={() => setHealthSheet(null)} />
-          <SleepSheet open={healthSheet === 'sleep'} onClose={() => setHealthSheet(null)} />
-        </Suspense>
-      )}
+      <StepsSheet open={healthSheet === 'steps'} onClose={() => setHealthSheet(null)} />
+      <WeightSheet open={healthSheet === 'weight'} onClose={() => setHealthSheet(null)} />
+      <SleepSheet open={healthSheet === 'sleep'} onClose={() => setHealthSheet(null)} />
     </div>
   )
 }
