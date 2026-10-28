@@ -51,7 +51,7 @@ export function AppShell() {
               icon={<IconSettings size={20} />}
               onClick={() => navigate('/settings')}
               variant="secondary"
-              className="h-9 w-9 min-h-9 rounded-xl"
+              className="rounded-xl"
             />
           </div>
         </header>

@@ -367,7 +367,7 @@ function TargetsCard({
         <MacroPill label={t('today.carbs')} value={targets.target_carbs_g} />
         <MacroPill label={t('today.fiber')} value={targets.target_fiber_g} />
         <MacroPill label={t('today.water')} value={targets.target_water_ml} unit={t('common.ml')} />
-        <MacroPill label={t('today.steps')} value={targets.target_steps} />
+        <MacroPill label={t('today.steps')} value={targets.target_steps} unit="" />
       </div>
 
       {targets.warnings.length > 0 && (
@@ -518,13 +518,16 @@ function Metric({
   )
 }
 
-function MacroPill({ label, value, unit = 'g' }: { label: string; value: number | null | undefined; unit?: string }) {
+function MacroPill({ label, value, unit }: { label: string; value: number | null | undefined; unit?: string }) {
+  const { t } = useTranslation()
+  // grams unless told otherwise, in the UI language (a fixed «g» was English text in a Russian UI)
+  const shown = unit ?? t('common.g')
   return (
     <div className="surface-sunken px-2 py-1.5">
       <p className="text-[10px] uppercase tracking-wide muted">{label}</p>
       <p className="tnum text-sm font-semibold">
         {number(value)}
-        <span className="ml-0.5 text-[10px] muted">{unit}</span>
+        {shown && <span className="ml-0.5 text-[10px] muted">{shown}</span>}
       </p>
     </div>
   )

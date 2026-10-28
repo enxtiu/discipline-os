@@ -60,7 +60,7 @@ export function BottomTabBar({ onQuickAdd }: { onQuickAdd: () => void }) {
             labelKey="stats"
             Icon={IconStats}
             active={location.pathname.startsWith('/stats')}
-            className="mt-2 h-tap w-full flex-none py-0"
+            className="mt-2 h-tap w-full flex-none justify-end pb-2 pt-0"
           />
         </div>
 

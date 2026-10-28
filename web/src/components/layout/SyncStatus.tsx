@@ -56,7 +56,7 @@ export function SyncStatus() {
       onClick={hasPending || offline ? retry : undefined}
       disabled={!hasPending && !offline}
       className={clsx(
-        'flex min-h-[2.25rem] items-center gap-1.5 rounded-pill border px-3 text-xs font-medium transition-colors',
+        'flex min-h-tap min-w-tap items-center justify-center gap-1.5 rounded-pill border px-3 text-xs font-medium transition-colors',
         offline
           ? 'border-amber-400/40 bg-amber-400/10 text-amber-300'
           : hasPending
